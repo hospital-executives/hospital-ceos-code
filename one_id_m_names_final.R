@@ -3,24 +3,24 @@
 manual_one_id_m_names <- function(df) {
   
   ############    GET NICKNAMES DICTIONARIES   ############ 
-  if (exists("user_directory")) {
+  if (exists("data_path")) {
     # Print the provided arguments
-    names1 <- read.csv(paste0(user_directory, "nicknames dictionaries/carltonnorthernnames.csv"), header = FALSE)
+    names1 <- read.csv(paste0(data_path, "supplemental/carltonnorthernnames.csv"), header = FALSE)
     
-    female <- read.csv(paste0(user_directory, "nicknames dictionaries/female_diminutives.csv"), header = FALSE)
+    female <- read.csv(paste0(data_path, "supplemental/female_diminutives.csv"), header = FALSE)
     female_lower <- female
     female_lower[] <- lapply(female_lower, function(x) {
       if (is.character(x)) tolower(x) else x
     })
     
-    male <- read.csv(paste0(user_directory, "nicknames dictionaries/male_diminutives.csv"), header = FALSE)
+    male <- read.csv(paste0(data_path, "supplemental/male_diminutives.csv"), header = FALSE)
     male_lower <- male
     male_lower[] <- lapply(male_lower, function(x) {
       if (is.character(x)) tolower(x) else x
     })
   }
     else {
-      print("Please set user_directory.")
+      print("Please set data_path.")
     }
   
   
