@@ -35,16 +35,10 @@ df <- read_feather(paste0(data_path,
   filter(!grepl("[A-Za-z]", entity_zip) & 
            !str_detect(entity_state, "AB|BC|PE|NB|NL|NS|MB|SK|PR")) 
 
-# outliers <- read.csv(paste0(user_directory, "derived/temp_one_id_m_names.csv"))
-
 # set up one id m names
 normalized_levenshtein_cutoff <- 0.3 # default is 0.3
-# source("/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_code/one_id_m_names_final.R") # update
-#source("/Users/gard/BFI Dropbox/Michelle Gard/hospital_ceos/_code/one_id_m_names_final.R") # update
 source(paste0(code_path, "one_id_m_names_final.R"))
 # set up one name m ids
-# source("/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_code/one_name_m_ids_final.R") # update
-#source("/Users/gard/BFI Dropbox/Michelle Gard/hospital_ceos/_code/one_name_m_ids_final.R") # update
 source(paste0(code_path, "one_name_m_ids_final.R"))
 ```
 
@@ -85,19 +79,16 @@ outliers <- remaining_pt1
 
 outliers <- outliers %>%
   select(-c(add_list, entity_name_list, entityid_list))
-write.csv(outliers, paste0(user_directory, "derived/temp_one_id_m_names.csv"), row.names = FALSE)
+write.csv(outliers, paste0(data_path, "derived/auxiliary/outliers.csv"), row.names = FALSE)
 ```
 
 
 ```{r multiple_ids, echo=FALSE}
 all_objects <- ls()
-objects_to_keep <- c("df", "outliers", "user_directory", "input_path")
+objects_to_keep <- c("df", "outliers", "code_path", "data_path")
 objects_to_remove <- setdiff(all_objects, objects_to_keep)
 rm(list = objects_to_remove)
-# source("/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_code/one_name_m_ids_final.R")
-#source("/Users/gard/BFI Dropbox/Michelle Gard/hospital_ceos/_code/one_name_m_ids_final.R")
-source(paste0(input_path, "_code/one_name_m_ids_final.R"))
-
+source(paste0(code_path, "one_name_m_ids_final.R"))
 
 ########## algorithm(s) to consolidate "multiple" ids ########## 
 
@@ -149,8 +140,9 @@ mult_state_per_year_confirmed <- mult_state_per_year_output$confirmed
 
 ## generate final dataframes
 all_objects <- ls()
-objects_to_keep <- c("df", "outliers", "user_directory", "one_m_confirmed1", 
-                     "one_id", "one_state_confirmed", "one_state_per_year_confirmed",
+objects_to_keep <- c("df", "outliers", "code_path", 'data_path',
+                     "one_m_confirmed1", "one_id", "one_state_confirmed", 
+                     "one_state_per_year_confirmed",
                      "mult_state_per_year_confirmed", "one_state_remaining",
                             "one_state_per_year_remaining",
                             "mult_state_per_year_remaining", "mult_id")
@@ -174,12 +166,11 @@ one_name_m_ids_remaining <- final_remaining %>% #18,979 remaining
 
 final_confirmed <- final_confirmed %>%
   select(-c(add_list, entity_name_list, entityid_list))
-#write.csv(final_confirmed, paste0(user_directory, "derived/himss_entity_contacts_0517_confirmed"), row.names = FALSE)
-write_feather(final_confirmed, paste0(user_directory, "derived/confirmed_test.feather"))
+write_feather(final_confirmed, paste0(data_path, "derived/confirmed_R.feather"))
 
 final_remaining <- final_remaining %>%
   select(-c(add_list, entity_name_list, entityid_list))
-write_feather(final_remaining, paste0(user_directory, "derived/remaining_test.feather"))
+write_feather(final_remaining, paste0(data_path, "derived/remaining_R.feather"))
 
 
 ```
