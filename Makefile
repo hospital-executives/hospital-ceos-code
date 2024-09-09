@@ -74,3 +74,20 @@ $(cleaned_targets): $(CONFIRMED_R) $(REMAINING_R) $(HIMSS_ENTITIES_CONTACTS_NEW)
 UPDATED_GENDER := $(DERIVED_DIR)/auxiliary/updated_gender.csv
 $(UPDATED_GENDER): $(CONFIRMED_1)
 	python3 helper-scripts/update_gender.py $(CONFIRMED_1) $(UPDATED_GENDER) $(DATA_DIR)
+
+# GENERATE BLOCKS
+CONFIRMED_2 := $(DERIVED_DIR)/auxiliary/confirmed_2.csv
+REMAINING_2 := $(DERIVED_DIR)/auxiliary/remaining_2.csv
+
+$(CONFIRMED_2) $(REMAINING_2): $(HIMSS_ENTITIES_CONTACTS_NEW) $(CONFIRMED_1) $(REMAINING_1) $(UPDATED_GENDER) $(HIMSS_1)
+	python3 generate_blocks.py $(HIMSS_ENTITIES_CONTACTS_NEW) $(CONFIRMED_1) $(REMAINING_1) $(UPDATED_GENDER) $(HIMSS_1) $(CONFIRMED_2) $(REMAINING_2) $(SUPP_DIR)
+
+# /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/
+
+.PHONY: run_test
+
+run_test: $(SUPP_DIR)
+	python3 test.py $(SUPP_DIR)
+
+# to run to generate blocks: 
+#make /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/auxiliary/confirmed_2.csv /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/auxiliary/remaining_2.csv

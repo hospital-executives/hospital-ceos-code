@@ -1,5 +1,6 @@
 import csv
 import pandas as pd
+import pyarrow
 import numpy as np
 import re
 import os
@@ -556,7 +557,7 @@ def generate_female_blocks(merged_df, himss_nicknames, user_path):
     test_df = merged_df[(merged_df['gender'] == "F") | 
                         (pd.isna(merged_df['gender']))]
 
-    fem_path = os.path.join(user_path, "nicknames dictionaries/female_diminutives.csv")
+    fem_path = os.path.join(user_path, "supplemental/female_diminutives.csv")
     fem_df = load_data(fem_path, to_lower = True)
 
     def to_lower(x):
@@ -651,12 +652,12 @@ def generate_male_blocks(merged_df, merged_himss, himss_nicknames, user_path):
 
     # GET DATA FOR LINKING
     # female names dictionary
-    male_path = os.path.join(user_path, "nicknames dictionaries/male_diminutives.csv")
+    male_path = os.path.join(user_path, "supplemental/male_diminutives.csv")
     male_df = load_data(male_path, to_lower = True)
 
 
     carlton_path = os.path.join(user_path, 
-                                "nicknames dictionaries/carltonnorthernnames.csv")
+                                "supplemental/carltonnorthernnames.csv")
     carlton = load_data(carlton_path)
 
     test_graph = generate_name_graph(himss_male_names, 
@@ -768,7 +769,8 @@ def generate_male_blocks(merged_df, merged_himss, himss_nicknames, user_path):
 
     return G, test_df
 
-def generate_last_blocks(merged_df, himss, threshold = 0.9, gender = "M"):
+def generate_last_blocks(merged_df, himss, data_dir, 
+                         threshold = 0.9, gender = "M"):
     if gender == "M":
         test_df = merged_df[(merged_df['gender'] == "M") | (pd.isna(merged_df['gender']))]
     else: 
@@ -812,7 +814,8 @@ def generate_last_blocks(merged_df, himss, threshold = 0.9, gender = "M"):
 
     ## test 3 - incorporating jaro + frequencies
     last_frequencies = test_df.groupby('last_metaphone')['contact_uniqueid'].nunique().reset_index()
-    edges = pd.read_csv('temp files/jaro_output.csv')
+    edges_path = os.path.join(data_dir, "derived/auxiliary/jaro_output.csv")
+    edges = pd.read_csv(edges_path)
     edges['name'] = edges['name'].fillna('')
     edges['similar_name'] = edges['similar_name'].fillna('')
     edges['metaphone1'] = edges['name'].apply(lambda name: doublemetaphone(name)[0])

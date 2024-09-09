@@ -14,8 +14,8 @@ himss_1 = sys.argv[6]
 
 #code_path = sys.argv[1]
 #data_path = sys.argv[2]
-code_path = '/Users/loaner/hospital-ceos-code/'
-user_path = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/"
+#code_path = '/Users/loaner/hospital-ceos-code/'
+#user_path = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/"
 
 cleaned_r_path = str(confirmed_r)
 remaining_r_path = str(remaining_r)
@@ -89,6 +89,7 @@ cleaned_remainder['old_lastname'] = cleaned_remainder['lastname']
 cleaned_remainder['lastname'] = cleaned_remainder.apply(replace_lastname, axis=1)
 cleaned_himss['lastname'] = cleaned_himss.apply(replace_lastname, axis=1)
 cleaned_confirmed['lastname'] = cleaned_confirmed.apply(replace_lastname, axis=1)
+
 
 cleaned_confirmed.to_csv(str(confirmed_1))
 cleaned_remainder.to_csv(str(remaining_1))
