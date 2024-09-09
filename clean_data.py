@@ -4,21 +4,22 @@ import os
 import sys
 
 # TAKE ARGS FROM MAKEFILE
-#if len(sys.argv) != 3:
-    #print("Usage: python3 my_script.py <code_path> <data_path>")
-    #sys.exit(1)
+# Get arguments from the command line
+confirmed_r = sys.argv[1]
+remaining_r = sys.argv[2]
+himss_entities_contacts = sys.argv[3]
+confirmed_1 = sys.argv[4]
+remaining_1 = sys.argv[5]
+himss_1 = sys.argv[6]
 
 #code_path = sys.argv[1]
 #data_path = sys.argv[2]
 code_path = '/Users/loaner/hospital-ceos-code/'
 user_path = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/"
 
-cleaned_r_path = os.path.join(user_path, # need to go back and pass from makefile
-                              "derived/himss_entity_contacts_0517_confirmed.feather")
-remaining_r_path = os.path.join(user_path, 
-                                "derived/himss_entity_contacts_0517_remaining.feather")
-himss_path = os.path.join(user_path, "derived/himss_entities_contacts_0517.feather")
-
+cleaned_r_path = str(confirmed_r)
+remaining_r_path = str(remaining_r)
+himss_path = str(himss_entities_contacts)
 
 sys.path.append(os.path.join(os.path.dirname(__file__), 'helper-scripts'))
 
@@ -89,3 +90,6 @@ cleaned_remainder['lastname'] = cleaned_remainder.apply(replace_lastname, axis=1
 cleaned_himss['lastname'] = cleaned_himss.apply(replace_lastname, axis=1)
 cleaned_confirmed['lastname'] = cleaned_confirmed.apply(replace_lastname, axis=1)
 
+cleaned_confirmed.to_csv(str(confirmed_1))
+cleaned_remainder.to_csv(str(remaining_1))
+cleaned_himss.to_csv(str(himss_1))

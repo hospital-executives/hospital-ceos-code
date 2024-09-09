@@ -1,6 +1,6 @@
 # This Makefile should run the following, in order:
 # 1. compile_himss.Rmd
-# 2. manual_assignment.Rmd
+# 2. manual_assignment.Rmd - done
 # 3. clean_data.py
 # 4. update_gender.py - aux
 # 5. generate_blocks.py
@@ -46,9 +46,7 @@ REMAINING_R := $(DERIVED_DIR)/r_remaining.feather
 #HIMSS_ENTITIES_CONTACTS: compile_himss.Rmd
     #Rscript -e "rmarkdown::render('compile_himss.Rmd', output_file = 'HIMSS_ENTITIES_CONTACTS')"
 
-# pt 2
-#TARGETS := "OUTLIERS, CONFIRMED_R, REMAINING_R"
-
+# RUN R SCRIPT
 .PHONY: OUTLIERS CONFIRMED_R REMAINING_R
 
 OUTLIERS CONFIRMED_R REMAINING_R: $(HIMSS_ENTITIES_CONTACTS)
@@ -58,6 +56,17 @@ OUTLIERS CONFIRMED_R REMAINING_R: $(HIMSS_ENTITIES_CONTACTS)
     data_path='$(DATA_DIR)', \
     himss_entity_contacts='$(HIMSS_ENTITIES_CONTACTS)'))"
 
-# pt 3 - theoretical
-#run_script:
-    #python3 my_script.py $(CODE_PATH) $(DATA_PATH)
+# CLEAN DATA
+# Define directory and file paths
+CONFIRMED_1 := $(DERIVED_DIR)/auxiliary/confirmed_1.csv
+REMAINING_1 := $(DERIVED_DIR)/auxiliary/remaining_1.csv
+HIMSS_1 := $(DERIVED_DIR)/auxiliary/himss_1.csv
+HIMSS_ENTITIES_CONTACTS_NEW := $(DERIVED_DIR)/himss_entities_contacts_0517.feather
+
+# Define the cleaned targets
+cleaned_targets := $(CONFIRMED_1) $(REMAINING_1) $(HIMSS_1)
+
+# Target to clean data (generate CONFIRMED_1, REMAINING_1, and HIMSS_1)
+$(cleaned_targets): $(CONFIRMED_R) $(REMAINING_R) $(HIMSS_ENTITIES_CONTACTS_NEW)
+	python3 clean_data.py $(CONFIRMED_R) $(REMAINING_R) $(HIMSS_ENTITIES_CONTACTS_NEW) $(CONFIRMED_1) $(REMAINING_1) $(HIMSS_1)
+
