@@ -70,3 +70,7 @@ cleaned_targets := $(CONFIRMED_1) $(REMAINING_1) $(HIMSS_1)
 $(cleaned_targets): $(CONFIRMED_R) $(REMAINING_R) $(HIMSS_ENTITIES_CONTACTS_NEW)
 	python3 clean_data.py $(CONFIRMED_R) $(REMAINING_R) $(HIMSS_ENTITIES_CONTACTS_NEW) $(CONFIRMED_1) $(REMAINING_1) $(HIMSS_1)
 
+# UPDATE GENDER
+UPDATED_GENDER := $(DERIVED_DIR)/auxiliary/updated_gender.csv
+$(UPDATED_GENDER): $(CONFIRMED_1)
+	python3 helper-scripts/update_gender.py $(CONFIRMED_1) $(UPDATED_GENDER) $(DATA_DIR)
