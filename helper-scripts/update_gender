@@ -1,0 +1,68 @@
+import pandas as pd
+import os
+import sys
+
+# TAKE ARGS FROM MAKEFILE
+#if len(sys.argv) != 3:
+    #print("Usage: python3 my_script.py <code_path> <data_path>")
+    #sys.exit(1)
+
+#code_path = sys.argv[1]
+#data_path = sys.argv[2]
+code_path = '/Users/loaner/hospital-ceos-code/'
+user_path = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/"
+
+cleaned_r_path = os.path.join(user_path, # need to go back and pass from makefile
+                              "derived/himss_entity_contacts_0517_confirmed.feather")
+remaining_r_path = os.path.join(user_path, 
+                                "derived/himss_entity_contacts_0517_remaining.feather")
+himss_path = os.path.join(user_path, "derived/himss_entities_contacts_0517.feather")
+
+
+sys.path.append(os.path.join(os.path.dirname(__file__), 'helper-scripts'))
+
+# LOAD HELPER FILES
+import blocking_helper
+
+cleaned_confirmed = 'a' # (????)
+
+contact_dict = {}
+for _, row in cleaned_confirmed.iterrows():
+    contact_id = row['contact_uniqueid']
+    firstname = row['firstname']
+    if contact_id in contact_dict:
+        if firstname not in contact_dict[contact_id]:
+            contact_dict[contact_id].append(firstname)
+    else:
+        contact_dict[contact_id] = [firstname]
+
+# Convert the dictionary to a DataFrame
+contact_list = [{'contact_uniqueid': key, 
+                **{f'name_{i+1}': name for i, name in enumerate(value)}} 
+                for key, value in contact_dict.items()]
+confirmed_names = pd.DataFrame(contact_list)
+
+gender_file = os.path.join(user_path, "nicknames dictionaries/gender.csv") # TO DO
+updated_genders = pd.read_csv(gender_file)
+
+# using metaphone to reassign gender
+cleaned_df = blocking_helper.clean_for_metaphone(confirmed_names[['name_1', 
+                                                                    'name_2',
+                                                                    'name_3',
+                                                                    'name_4']])
+metaphone_dict, name_to_metaphone = blocking_helper.generate_metaphone(cleaned_df)
+updated_genders = blocking_helper.impute_gender_by_metaphone(updated_genders, 
+                                                                    metaphone_dict, 
+                                                                    name_to_metaphone)
+updated_genders.loc[updated_genders['firstname'] == 'sandra', 'gender'] = 'F'
+updated_genders.loc[updated_genders['firstname'] == 'sondra', 'gender'] = 'F'
+updated_genders.loc[updated_genders['firstname'] == 'pam', 'gender'] = 'F'
+updated_genders.loc[updated_genders['firstname'] == 'val', 'gender'] = 'F'
+updated_genders.loc[updated_genders['firstname'] == 'patty', 'gender'] = 'F'
+updated_genders.loc[updated_genders['firstname'] == 'patti', 'gender'] = 'F'
+updated_genders.loc[updated_genders['firstname'] == 'pat', 'gender'] = 'F'
+updated_genders.loc[updated_genders['firstname'] == 'sondra', 'gender'] = 'F'
+
+# TO DO 
+new_gender_path =  os.path.join(user_path, "nicknames dictionaries/updated_gender_by_metaphone.csv")
+updated_genders.to_csv(new_gender_path, index=False)

@@ -2,8 +2,6 @@
 import pandas as pd
 import os
 import sys
-from itertools import chain
-from metaphone import doublemetaphone
 
 # TAKE ARGS FROM MAKEFILE
 #if len(sys.argv) != 3:
@@ -26,7 +24,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'helper-scripts'))
 
 # LOAD HELPER FILES
 import blocking_helper
-import cleaned_confirmed_helper as cc
 
 confirmed_df = pd.read_feather(cleaned_r_path)
 confirmed_df = confirmed_df.dropna(subset = ['entity_zip', 'entity_state', 
