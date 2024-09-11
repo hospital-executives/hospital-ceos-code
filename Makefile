@@ -48,20 +48,20 @@ REMAINING_R := $(DERIVED_DIR)/r_remaining.feather
 
 # RUN R SCRIPT
 .PHONY: OUTLIERS CONFIRMED_R REMAINING_R
+HIMSS_ENTITIES_CONTACTS_NEW := $(DERIVED_DIR)/himss_entities_contacts_0517.feather
 
-OUTLIERS CONFIRMED_R REMAINING_R: $(HIMSS_ENTITIES_CONTACTS)
+OUTLIERS CONFIRMED_R REMAINING_R: $(HIMSS_ENTITIES_CONTACTS_NEW)
 	export RSTUDIO_PANDOC=$(PANDOC_PATH); \
 	Rscript -e "rmarkdown::render('manual_assignment.Rmd', \
     params = list(code_path='$(CODE_DIR)', \
     data_path='$(DATA_DIR)', \
-    himss_entity_contacts='$(HIMSS_ENTITIES_CONTACTS)'))"
+    himss_entity_contacts='$(HIMSS_ENTITIES_CONTACTS_NEW)'))"
 
 # CLEAN DATA
 # Define directory and file paths
 CONFIRMED_1 := $(DERIVED_DIR)/auxiliary/confirmed_1.csv
 REMAINING_1 := $(DERIVED_DIR)/auxiliary/remaining_1.csv
 HIMSS_1 := $(DERIVED_DIR)/auxiliary/himss_1.csv
-HIMSS_ENTITIES_CONTACTS_NEW := $(DERIVED_DIR)/himss_entities_contacts_0517.feather
 
 # Define the cleaned targets
 cleaned_targets := $(CONFIRMED_1) $(REMAINING_1) $(HIMSS_1)
@@ -74,6 +74,12 @@ $(cleaned_targets): $(CONFIRMED_R) $(REMAINING_R) $(HIMSS_ENTITIES_CONTACTS_NEW)
 UPDATED_GENDER := $(DERIVED_DIR)/auxiliary/updated_gender.csv
 $(UPDATED_GENDER): $(CONFIRMED_1)
 	python3 helper-scripts/update_gender.py $(CONFIRMED_1) $(UPDATED_GENDER) $(DATA_DIR)
+
+# GENERATE JARO
+JARO := $(DERIVED_DIR)/auxiliary/jaro_output.csv
+$(JARO): CONFIRMED_R UPDATED_GENDER
+	python3 helper-scripts/jaro_algo.py $(CODE_DIR) $(CONFIRMED_R) $(UPDATED_GENDER) $(JARO)
+
 
 # GENERATE BLOCKS
 CONFIRMED_2 := $(DERIVED_DIR)/auxiliary/confirmed_2.csv
@@ -91,3 +97,7 @@ run_test: $(SUPP_DIR)
 
 # to run to generate blocks: 
 #make /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/auxiliary/confirmed_2.csv /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/auxiliary/remaining_2.csv
+# confirmed r: 
+# /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/r_confirmed.feather
+# updated gender:
+# /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/auxiliary/updated_gender.csv
