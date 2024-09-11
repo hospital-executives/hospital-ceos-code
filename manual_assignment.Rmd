@@ -37,26 +37,23 @@ himss_feather <- if (is.null(params$himss_entity_contacts)) {
 targets <- params$targets
 
 # load main df
-df <- read_feather(himss_feather) #%>%
-  #filter(year > 2008) %>%
-  #mutate(full_name = str_to_lower(str_replace_all(paste0(firstname, lastname), 
-             #                                     "[[:punct:]\\s]", ""))) %>%
- # filter(!grepl("[A-Za-z]", entity_zip) & 
-           #!str_detect(entity_state, "AB|BC|PE|NB|NL|NS|MB|SK|PR")) 
+df <- read_feather(himss_feather) %>%
+  filter(year > 2008) %>%
+  mutate(full_name = str_to_lower(str_replace_all(paste0(firstname, lastname), 
+                                                  "[[:punct:]\\s]", ""))) %>%
+  filter(!grepl("[A-Za-z]", entity_zip) & 
+           !str_detect(entity_state, "AB|BC|PE|NB|NL|NS|MB|SK|PR")) 
 
 # set up one id m names
 normalized_levenshtein_cutoff <- 0.3 # default is 0.3
-#source(paste0(code_path, "one_id_m_names_final.R"))
+source(paste0(code_path, "helper-scripts/one_id_m_names_final.R"))
 # set up one name m ids
-#source(paste0(code_path, "one_name_m_ids_final.R"))
+source(paste0(code_path, "helper-scripts/one_name_m_ids_final.R"))
 
-first_five <- head(df, 5)
-write.csv(first_five, targets$outliers)
-write.csv(first_five, targets$confirmed_r)
-write.csv(first_five, targets$remaining_r)
+
 ```
 
-```{r multiple_names, eval = FALSE}
+```{r multiple_names}
 ########## algorithm(s) to consolidate "multiple" names ########## 
 
 ## runs basic algorithm to identify when multiple "names" 
@@ -93,18 +90,16 @@ outliers <- remaining_pt1
 
 outliers <- outliers %>%
   select(-c(add_list, entity_name_list, entityid_list))
-#write.csv(outliers, paste0(data_path, "derived/auxiliary/outliers.csv"), row.names = FALSE)
-write.csv(outliers, targets$outliers)
-write.csv(outliers, targets$confirmed_r)
-write.csv(outliers, targets$remaining_r)
+write.csv(outliers, paste0(data_path, "derived/auxiliary/outliers.csv"), row.names = FALSE)
+#write.csv(outliers, targets$outliers)
 ```
 
-```{r multiple_ids, eval = FALSE}
+```{r multiple_ids}
 all_objects <- ls()
 objects_to_keep <- c("df", "outliers", "code_path", "data_path")
 objects_to_remove <- setdiff(all_objects, objects_to_keep)
 rm(list = objects_to_remove)
-source(paste0(code_path, "one_name_m_ids_final.R"))
+source(paste0(code_path, "helper-scripts/one_name_m_ids_final.R"))
 
 ########## algorithm(s) to consolidate "multiple" ids ########## 
 

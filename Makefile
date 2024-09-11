@@ -39,23 +39,14 @@ OUTLIERS := $(DERIVED_DIR)/auxiliary/outliers.csv
 CONFIRMED_R := $(DERIVED_DIR)/r_confirmed.feather
 REMAINING_R := $(DERIVED_DIR)/r_remaining.feather
 
-# List of actual target file paths
-
-# pt 1 - go back and confirm
-#.PHONY: HIMSS_ENTITIES_CONTACTS
-#HIMSS_ENTITIES_CONTACTS: compile_himss.Rmd
-    #Rscript -e "rmarkdown::render('compile_himss.Rmd', output_file = 'HIMSS_ENTITIES_CONTACTS')"
-
 # RUN R SCRIPT
 .PHONY: OUTLIERS CONFIRMED_R REMAINING_R
-HIMSS_ENTITIES_CONTACTS_NEW := $(DERIVED_DIR)/himss_entities_contacts_0517.feather
-
-OUTLIERS CONFIRMED_R REMAINING_R: $(HIMSS_ENTITIES_CONTACTS_NEW)
+OUTLIERS CONFIRMED_R REMAINING_R: $(HIMSS_ENTITIES_CONTACTS)
 	export RSTUDIO_PANDOC=$(PANDOC_PATH); \
 	Rscript -e "rmarkdown::render('manual_assignment.Rmd', \
     params = list(code_path='$(CODE_DIR)', \
     data_path='$(DATA_DIR)', \
-    himss_entity_contacts='$(HIMSS_ENTITIES_CONTACTS_NEW)'))"
+    himss_entity_contacts='$(HIMSS_ENTITIES_CONTACTS)'))"
 
 # CLEAN DATA
 # Define directory and file paths
