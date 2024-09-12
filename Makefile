@@ -40,7 +40,6 @@ CONFIRMED_R := $(DERIVED_DIR)/r_confirmed.feather
 REMAINING_R := $(DERIVED_DIR)/r_remaining.feather
 
 # RUN R SCRIPT
-.PHONY: OUTLIERS CONFIRMED_R REMAINING_R
 OUTLIERS CONFIRMED_R REMAINING_R: $(HIMSS_ENTITIES_CONTACTS)
 	export RSTUDIO_PANDOC=$(PANDOC_PATH); \
 	Rscript -e "rmarkdown::render('manual_assignment.Rmd', \
@@ -53,13 +52,16 @@ OUTLIERS CONFIRMED_R REMAINING_R: $(HIMSS_ENTITIES_CONTACTS)
 CONFIRMED_1 := $(DERIVED_DIR)/auxiliary/confirmed_1.csv
 REMAINING_1 := $(DERIVED_DIR)/auxiliary/remaining_1.csv
 HIMSS_1 := $(DERIVED_DIR)/auxiliary/himss_1.csv
+HIMSS_NICKNAMES := $(DERIVED_DIR)/auxiliary/himss_nicknames.csv
 
 # Define the cleaned targets
-cleaned_targets := $(CONFIRMED_1) $(REMAINING_1) $(HIMSS_1)
+cleaned_targets := $(CONFIRMED_1) $(REMAINING_1) $(HIMSS_1) $(HIMSS_NICKNAMES)
+
+HIMSS_ENTITIES_CONTACTS_NEW := $(DERIVED_DIR)/himss_entities_contacts_0517.feather
 
 # Target to clean data (generate CONFIRMED_1, REMAINING_1, and HIMSS_1)
-$(cleaned_targets): $(CONFIRMED_R) $(REMAINING_R) $(HIMSS_ENTITIES_CONTACTS_NEW)
-	python3 clean_data.py $(CONFIRMED_R) $(REMAINING_R) $(HIMSS_ENTITIES_CONTACTS_NEW) $(CONFIRMED_1) $(REMAINING_1) $(HIMSS_1)
+$(cleaned_targets): $(CONFIRMED_R) $(REMAINING_R) $(HIMSS_ENTITIES_CONTACTS_NEW) $(HIMSS_NICKNAMES)
+	python3 clean_data.py $(CONFIRMED_R) $(REMAINING_R) $(HIMSS_ENTITIES_CONTACTS_NEW) $(CONFIRMED_1) $(REMAINING_1) $(HIMSS_1) $(HIMSS_NICKNAMES)
 
 # UPDATE GENDER
 UPDATED_GENDER := $(DERIVED_DIR)/auxiliary/updated_gender.csv
@@ -68,7 +70,7 @@ $(UPDATED_GENDER): $(CONFIRMED_1)
 
 # GENERATE JARO
 JARO := $(DERIVED_DIR)/auxiliary/jaro_output.csv
-$(JARO): CONFIRMED_R UPDATED_GENDER
+$(JARO): $(CONFIRMED_R) $(UPDATED_GENDER)
 	python3 helper-scripts/jaro_algo.py $(CODE_DIR) $(CONFIRMED_R) $(UPDATED_GENDER) $(JARO)
 
 

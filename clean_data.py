@@ -11,6 +11,7 @@ himss_entities_contacts = sys.argv[3]
 confirmed_1 = sys.argv[4]
 remaining_1 = sys.argv[5]
 himss_1 = sys.argv[6]
+nicknames_path = sys.argv[7]
 
 #code_path = sys.argv[1]
 #data_path = sys.argv[2]
@@ -90,7 +91,14 @@ cleaned_remainder['lastname'] = cleaned_remainder.apply(replace_lastname, axis=1
 cleaned_himss['lastname'] = cleaned_himss.apply(replace_lastname, axis=1)
 cleaned_confirmed['lastname'] = cleaned_confirmed.apply(replace_lastname, axis=1)
 
-
 cleaned_confirmed.to_csv(str(confirmed_1))
 cleaned_remainder.to_csv(str(remaining_1))
 cleaned_himss.to_csv(str(himss_1))
+
+# also clean nicknames
+himss_by_nickname = blocking_helper.clean_for_metaphone(himss[['firstname']])
+himss_nicknames = himss_by_nickname[himss_by_nickname['Inside'].notna()]
+himss_nicknames['Before'] = himss_nicknames['Before'].str.lower()
+himss_nicknames['Inside'] = himss_nicknames['Inside'].str.lower()
+
+himss_nicknames.to_csv(str(nicknames_path))
