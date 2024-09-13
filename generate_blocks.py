@@ -45,16 +45,19 @@ for df in list_of_dfs:
     df['lastname'] = df['lastname'].fillna("null")
     
 # ADD GENDER
-himss_path = '/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/derived/himss_entities_contacts_0517.feather'
+# himss_path = '/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/derived/himss_entities_contacts_0517.feather'
 himss = blocking_helper.load_himss(himss_path)
 himss_by_nickname = blocking_helper.clean_for_metaphone(himss[['firstname']])
 himss_nicknames = himss_by_nickname[himss_by_nickname['Inside'].notna()]
 himss_nicknames['Before'] = himss_nicknames['Before'].str.lower()
 himss_nicknames['Inside'] = himss_nicknames['Inside'].str.lower()
 
-himss_gender = pd.merge(cleaned_himss, gender_df_unique, on="firstname", how="left")
-confirmed_gender = pd.merge(cleaned_confirmed, gender_df_unique, on="firstname", how="left")
-remainder_gender = pd.merge(cleaned_remainder, gender_df_unique, on="firstname", how="left")
+himss_gender = pd.merge(cleaned_himss, gender_df_unique, on="firstname", 
+                        how="left")
+confirmed_gender = pd.merge(cleaned_confirmed, gender_df_unique, on="firstname", 
+                            how="left")
+remainder_gender = pd.merge(cleaned_remainder, gender_df_unique, on="firstname", 
+                            how="left")
 
 cleaned_himss = himss_gender
 cleaned_confirmed = confirmed_gender
@@ -72,7 +75,7 @@ cleaned_remained['last_meta'] = cleaned_remained['lastname'].apply(blocking_help
 cleaned_remained['old_last_meta'] = cleaned_remained['old_lastname'].apply(blocking_helper.get_metaphone)
 
 # generate blocks
-data_dir = '/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data'
+#data_dir = '/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data'
 f_graph, f_df = blocking_helper.generate_female_blocks(cleaned_himss, 
                                                             himss_nicknames,
                                                             data_dir) 

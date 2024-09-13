@@ -83,8 +83,13 @@ $(DIGRAPHNAME) $(DIGRAPHMETA): $(HIMSS_1) $(HIMSS_NICKNAMES)
 CONFIRMED_2 := $(DERIVED_DIR)/auxiliary/confirmed_2.csv
 REMAINING_2 := $(DERIVED_DIR)/auxiliary/remaining_2.csv
 
-$(CONFIRMED_2) $(REMAINING_2): $(HIMSS_ENTITIES_CONTACTS_NEW) $(CONFIRMED_1) $(REMAINING_1) $(UPDATED_GENDER) $(HIMSS_1)
-	python3 generate_blocks.py $(HIMSS_ENTITIES_CONTACTS_NEW) $(CONFIRMED_1) $(REMAINING_1) $(UPDATED_GENDER) $(HIMSS_1) $(CONFIRMED_2) $(REMAINING_2) $(SUPP_DIR)
+# Rule to generate CONFIRMED_2 and REMAINING_2 with proper line continuation
+$(CONFIRMED_2) $(REMAINING_2): $(HIMSS_ENTITIES_CONTACTS_NEW) $(CONFIRMED_1) $(REMAINING_1) \
+    $(UPDATED_GENDER) $(HIMSS_1) $(DIGRAPHNAME) $(DIGRAPHMETA)
+	python3 generate_blocks.py $(HIMSS_ENTITIES_CONTACTS_NEW) $(CONFIRMED_1) \
+    $(REMAINING_1) $(UPDATED_GENDER) $(HIMSS_1) $(CONFIRMED_2) $(REMAINING_2) $(DATA_DIR)
+
+# REPLACE himss-entities-contacts-new and adjust generate
 
 # /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/
 
