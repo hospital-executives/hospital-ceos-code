@@ -41,7 +41,7 @@ def main():
 
     # get male cases only 
     merged_df = pd.merge(test_no_na, gender_df, on="firstname", how="left")
-    test_df = merged_df #merged_df[(merged_df['Gender'] == "M") | (pd.isna(merged_df['Gender']))]
+    test_df = merged_df[(merged_df['gender'] == "M") | (pd.isna(merged_df['gender']))]
 
     test_cleaned = test_df.dropna(subset=['contact_uniqueid', 'lastname'])
     suffixes = r'\b(Jr|II|III|Sr)\b'
@@ -69,7 +69,7 @@ def main():
         return metaphone_dict, name_to_metaphone
 
     _, name_to_metaphone = generate_metaphone(frequency_df[['lastname']])
-    infrequent_names = frequency_df[frequency_df['contact_uniqueid'] <= 10 ]['lastname']
+    infrequent_names = frequency_df[frequency_df['contact_uniqueid'] <= 5 ]['lastname']
     unique_lastnames = frequency_df[frequency_df['contact_uniqueid'] == 1 ]['lastname']
 
     # Optimize similar name finding function
@@ -87,12 +87,12 @@ def main():
     start_time = time.time()
 
     # Create a list of unique lastnames for faster access
-    unique_lastnames_list = unique_lastnames['lastname'].unique()
+    unique_lastnames_list = unique_lastnames.unique().tolist()
 
     # Find all names that are within a Jaro-Winkler similarity threshold from the infrequent names
     similar_names_dict = {
         name: find_similar_names(name, unique_lastnames_list, name_to_metaphone)
-        for name in infrequent_names['lastname']
+        for name in infrequent_names
     }
 
     # Convert the dictionary to a DataFrame for better visualization

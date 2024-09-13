@@ -60,7 +60,7 @@ cleaned_targets := $(CONFIRMED_1) $(REMAINING_1) $(HIMSS_1) $(HIMSS_NICKNAMES)
 HIMSS_ENTITIES_CONTACTS_NEW := $(DERIVED_DIR)/himss_entities_contacts_0517.feather
 
 # Target to clean data (generate CONFIRMED_1, REMAINING_1, and HIMSS_1)
-$(cleaned_targets): $(CONFIRMED_R) $(REMAINING_R) $(HIMSS_ENTITIES_CONTACTS_NEW) $(HIMSS_NICKNAMES)
+$(cleaned_targets): $(CONFIRMED_R) $(REMAINING_R) $(HIMSS_ENTITIES_CONTACTS_NEW)
 	python3 clean_data.py $(CONFIRMED_R) $(REMAINING_R) $(HIMSS_ENTITIES_CONTACTS_NEW) $(CONFIRMED_1) $(REMAINING_1) $(HIMSS_1) $(HIMSS_NICKNAMES)
 
 # UPDATE GENDER
@@ -73,6 +73,11 @@ JARO := $(DERIVED_DIR)/auxiliary/jaro_output.csv
 $(JARO): $(CONFIRMED_R) $(UPDATED_GENDER)
 	python3 helper-scripts/jaro_algo.py $(CODE_DIR) $(CONFIRMED_R) $(UPDATED_GENDER) $(JARO)
 
+# DIGRAPHS
+DIGRAPHNAME := $(DERIVED_DIR)/auxiliary/digraphname.csv
+DIGRAPHMETA := $(DERIVED_DIR)/auxiliary/digraphmeta.csv
+$(DIGRAPHNAME) $(DIGRAPHMETA): $(HIMSS_1) $(HIMSS_NICKNAMES)
+	python3 helper-scripts/generate_digraphs.py $(HIMSS_1) $(HIMSS_NICKNAMES) $(DIGRAPHNAME) $(DIGRAPHMETA) $(SUPP_DIR)
 
 # GENERATE BLOCKS
 CONFIRMED_2 := $(DERIVED_DIR)/auxiliary/confirmed_2.csv

@@ -13,8 +13,8 @@ from collections import defaultdict
 
 # HELPER FUNCTIONS TO CLEAN DATA
 def generate_metaphone(df):
-    df['metaphone'] = df['firstname'].apply(lambda x: doublemetaphone(x)[0])
-    name_to_metaphone = pd.Series(df.metaphone.values, index=df.firstname).to_dict()
+    df['metaphone'] = df['firstname'].apply(lambda x: doublemetaphone(x)[0] if pd.notnull(x) else None)
+    name_to_metaphone = pd.Series(df['metaphone'].values, index=df['firstname']).to_dict()
     return df, name_to_metaphone
 
 def add_edges_from_df(df, G):
