@@ -17,19 +17,35 @@ def generate_metaphone(df):
     name_to_metaphone = pd.Series(df['metaphone'].values, index=df['firstname']).to_dict()
     return df, name_to_metaphone
 
+def is_number(s):
+    try:
+        float(s)  # Try to convert to a float
+        return True
+    except ValueError:
+        return False
+
+# Function to add edges from DataFrame to graph
 def add_edges_from_df(df, G):
     for _, row in df.iterrows():
-        source = row.iloc[0]  # First column as source
-        targets = row.iloc[1:]  # Subsequent columns as targets
+        # Check if the first column can be considered numeric
+        if is_number(row.iloc[0]):
+            source = row.iloc[1]  # Treat second column as source if the first is numeric
+            targets = row.iloc[2:]  # Remaining columns as targets
+        else:
+            source = row.iloc[0]  # First column as source if not numeric
+            targets = row.iloc[1:]  # Subsequent columns as targets
+
+        # Add edges to the graph, ignoring NaN and empty strings
         for target in targets.dropna():
             if target != '':
                 G.add_edge(source, target)
+    
     return G
 
 def gen_name_meta_pairs(user_path):
-    name_path = os.path.join(user_path, "derived/digraphnames.csv")
+    name_path = os.path.join(user_path, "derived/auxiliary/digraphname.csv")
     name_pairs = pd.read_csv(name_path)[['source', 'target']]
-    meta_path = os.path.join(user_path, "derived/digraphmeta.csv")
+    meta_path = os.path.join(user_path, "derived/auxiliary/digraphmeta.csv")
     meta_pairs = pd.read_csv(meta_path)[['source', 'target']]
 
     name_pairs_dict = {}
@@ -514,7 +530,7 @@ def reconcile_ids_in_both_dfs(intersection_list, final_confirmed, name_pairs_set
             idk.add(id)
 
 
-    return approved_ids, idk
+    return approved_ids
 
 
 # SUPPORT FUNCTIONS TO IDENTIFY PAIRS/MISMATCHES
@@ -561,7 +577,7 @@ def check_ids_in_graph(df, G, id1_col='contact_id1', id2_col='contact_id2'):
 
 # clean results pt 3
 def generate_state_df(user_path):
-    state_path = os.path.join(user_path, "temp files/states.csv")
+    state_path = os.path.join(user_path, "supplemental/states.csv")
     statesDF = pd.read_csv(state_path)
     states = statesDF['state']  # Assuming the CSV has a column named 'State' for state names
     distance_matrix = pd.DataFrame(index=states, columns=states)

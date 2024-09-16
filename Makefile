@@ -19,25 +19,49 @@ DATA_DIR := $(USER_DIR)/_data
 DERIVED_DIR := $(DATA_DIR)/derived
 SUPP_DIR := $(DATA_DIR)/supplemental
 
-# Other
-PANDOC_PATH = /Applications/RStudio.app/Contents/Resources/app/quarto/bin/tools/x86_64
-
-
-# MANUAL ASSIGNMENT DEPENDENCIES
-# - HIMSS FEATHER FILE 
-# - 3X NICKNAMES FILES - now in supplemental data
-# MANUAL ASSIGNMENT TARGETS
-# - OUTLIERS.CSV (WRITE NEW)
-# - CONFIRMED_R FEATHER
-# - REMAINING_R FEATHER
-
-# MANUAL ASSIGNMENT PATHS
-# Define file paths
+# DEFINE FILE PATHS 
+# manual paths
 MANUAL_PATH := $(CODE_DIR)/manual_assignment.Rmd
 HIMSS_ENTITIES_CONTACTS := $(DERIVED_DIR)/himss_entities_contacts_0517_v1.feather
 OUTLIERS := $(DERIVED_DIR)/auxiliary/outliers.csv
 CONFIRMED_R := $(DERIVED_DIR)/r_confirmed.feather
 REMAINING_R := $(DERIVED_DIR)/r_remaining.feather
+
+# clean data paths
+CONFIRMED_1 := $(DERIVED_DIR)/auxiliary/confirmed_1.csv
+REMAINING_1 := $(DERIVED_DIR)/auxiliary/remaining_1.csv
+HIMSS_1 := $(DERIVED_DIR)/auxiliary/himss_1.csv
+HIMSS_NICKNAMES := $(DERIVED_DIR)/auxiliary/himss_nicknames.csv
+HIMSS_ENTITIES_CONTACTS_NEW := $(DERIVED_DIR)/himss_entities_contacts_0517.feather
+
+# updated gender path
+UPDATED_GENDER := $(DERIVED_DIR)/auxiliary/updated_gender.csv
+
+# jaro path
+JARO := $(DERIVED_DIR)/auxiliary/jaro_output.csv
+
+# digraph paths
+DIGRAPHNAME := $(DERIVED_DIR)/auxiliary/digraphname.csv
+DIGRAPHMETA := $(DERIVED_DIR)/auxiliary/digraphmeta.csv
+
+# block paths
+CONFIRMED_2 := $(DERIVED_DIR)/auxiliary/confirmed_2.csv
+REMAINING_2 := $(DERIVED_DIR)/auxiliary/remaining_2.csv
+
+# cleaned paths
+FINAL_CLEANED := $(DERIVED_DIR)/py_confirmed.csv
+FINAL_REMAINING := $(DERIVED_DIR)/py_remaining.csv
+GRAPH_COMPS := $(DERIVED_DIR)/py_graph_components.json 
+
+# Other
+PANDOC_PATH = /Applications/RStudio.app/Contents/Resources/app/quarto/bin/tools/x86_64
+
+# HIMSS SCRIPT - FAKE/INCOMPLETE
+FAKE := $(DERIVED_DIR)/auxiliary/fake.csv
+$(FAKE): compile_himss.Rmd
+	export RSTUDIO_PANDOC=$(PANDOC_PATH); \
+	Rscript -e "rmarkdown::render('compile_himss.Rmd', output_file='$(FAKE)', \
+	params = list(code_dir = '$(CODE_DIR)'))"
 
 # RUN R SCRIPT
 OUTLIERS CONFIRMED_R REMAINING_R: $(HIMSS_ENTITIES_CONTACTS)
@@ -49,54 +73,40 @@ OUTLIERS CONFIRMED_R REMAINING_R: $(HIMSS_ENTITIES_CONTACTS)
 
 # CLEAN DATA
 # Define directory and file paths
-CONFIRMED_1 := $(DERIVED_DIR)/auxiliary/confirmed_1.csv
-REMAINING_1 := $(DERIVED_DIR)/auxiliary/remaining_1.csv
-HIMSS_1 := $(DERIVED_DIR)/auxiliary/himss_1.csv
-HIMSS_NICKNAMES := $(DERIVED_DIR)/auxiliary/himss_nicknames.csv
-
-# Define the cleaned targets
 cleaned_targets := $(CONFIRMED_1) $(REMAINING_1) $(HIMSS_1) $(HIMSS_NICKNAMES)
 
-HIMSS_ENTITIES_CONTACTS_NEW := $(DERIVED_DIR)/himss_entities_contacts_0517.feather
-
-# Target to clean data (generate CONFIRMED_1, REMAINING_1, and HIMSS_1)
 $(cleaned_targets): $(CONFIRMED_R) $(REMAINING_R) $(HIMSS_ENTITIES_CONTACTS_NEW)
 	python3 clean_data.py $(CONFIRMED_R) $(REMAINING_R) $(HIMSS_ENTITIES_CONTACTS_NEW) $(CONFIRMED_1) $(REMAINING_1) $(HIMSS_1) $(HIMSS_NICKNAMES)
 
 # UPDATE GENDER
-UPDATED_GENDER := $(DERIVED_DIR)/auxiliary/updated_gender.csv
 $(UPDATED_GENDER): $(CONFIRMED_1)
 	python3 helper-scripts/update_gender.py $(CONFIRMED_1) $(UPDATED_GENDER) $(DATA_DIR)
 
 # GENERATE JARO
-JARO := $(DERIVED_DIR)/auxiliary/jaro_output.csv
 $(JARO): $(CONFIRMED_R) $(UPDATED_GENDER)
 	python3 helper-scripts/jaro_algo.py $(CODE_DIR) $(CONFIRMED_R) $(UPDATED_GENDER) $(JARO)
 
 # DIGRAPHS
-DIGRAPHNAME := $(DERIVED_DIR)/auxiliary/digraphname.csv
-DIGRAPHMETA := $(DERIVED_DIR)/auxiliary/digraphmeta.csv
 $(DIGRAPHNAME) $(DIGRAPHMETA): $(HIMSS_1) $(HIMSS_NICKNAMES)
 	python3 helper-scripts/generate_digraphs.py $(HIMSS_1) $(HIMSS_NICKNAMES) $(DIGRAPHNAME) $(DIGRAPHMETA) $(SUPP_DIR)
 
 # GENERATE BLOCKS
-CONFIRMED_2 := $(DERIVED_DIR)/auxiliary/confirmed_2.csv
-REMAINING_2 := $(DERIVED_DIR)/auxiliary/remaining_2.csv
-
-# Rule to generate CONFIRMED_2 and REMAINING_2 with proper line continuation
 $(CONFIRMED_2) $(REMAINING_2): $(HIMSS_ENTITIES_CONTACTS_NEW) $(CONFIRMED_1) $(REMAINING_1) \
     $(UPDATED_GENDER) $(HIMSS_1) $(DIGRAPHNAME) $(DIGRAPHMETA)
 	python3 generate_blocks.py $(HIMSS_ENTITIES_CONTACTS_NEW) $(CONFIRMED_1) \
     $(REMAINING_1) $(UPDATED_GENDER) $(HIMSS_1) $(CONFIRMED_2) $(REMAINING_2) $(DATA_DIR)
 
-# REPLACE himss-entities-contacts-new and adjust generate
+
+# GENERATE FINAL CLEANED DF
+$(FINAL_CLEANED) $(FINAL_REMAINING) $(GRAPH_COMPS): $(CONFIRMED_2) \
+	$(REMAINING_2) $(DIGRAPHNAMES) $(DIGRAPHMETA) $(JARO)
+	python3 -u generate_clean_df.py $(CONFIRMED_2) $(REMAINING_2) \
+	$(FINAL_CLEANED) $(FINAL_REMAINING) $(GRAPH_COMPS) \
+    $(DATA_DIR) $(CODE_DIR)
+
 
 # /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/
 
-.PHONY: run_test
-
-run_test: $(SUPP_DIR)
-	python3 test.py $(SUPP_DIR)
 
 # to run to generate blocks: 
 #make /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/auxiliary/confirmed_2.csv /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/auxiliary/remaining_2.csv
@@ -104,3 +114,4 @@ run_test: $(SUPP_DIR)
 # /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/r_confirmed.feather
 # updated gender:
 # /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/auxiliary/updated_gender.csv
+

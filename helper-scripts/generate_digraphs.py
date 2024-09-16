@@ -39,7 +39,8 @@ cleaned_array = unique_cells[non_nan_mask]
 unique_cells = [cell for cell in cleaned_array if cell and cell.strip()]
 
  # Add nodes from the first DataFrame
-for name in cleaned_himss['firstname'].unique():
+cleaned_unique_firstnames = cleaned_himss['firstname'].dropna().unique()
+for name in cleaned_unique_firstnames:
     G.add_node(name)
 
 for edge_df in [male_df, female_df, himss_nicknames, carlton]:
@@ -70,10 +71,10 @@ for edge in G.edges():
 # write to csv
 edges = G.edges(data=True)
 edge_list = [(u, v, d.get('weight', 1)) for u, v, d in edges]
-df = pd.DataFrame(edge_list, columns=['source', 'target', 'Weight'])
+df = pd.DataFrame(edge_list, columns=['source', 'target', 'weight'])
 df.to_csv(digraphname_path, index=False)
 
 edges = G_metaphone.edges(data=True)
 edge_list = [(u, v, d.get('weight', 1)) for u, v, d in edges]
-df = pd.DataFrame(edge_list, columns=['source', 'target', 'Weight'])
+df = pd.DataFrame(edge_list, columns=['source', 'target', 'weight'])
 df.to_csv(digraphmeta_path, index=False)
