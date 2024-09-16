@@ -69,7 +69,7 @@ def main():
         return metaphone_dict, name_to_metaphone
 
     _, name_to_metaphone = generate_metaphone(frequency_df[['lastname']])
-    infrequent_names = frequency_df[frequency_df['contact_uniqueid'] <= 5 ]['lastname']
+    infrequent_names = frequency_df[frequency_df['contact_uniqueid'] <= 10 ]['lastname']
     unique_lastnames = frequency_df[frequency_df['contact_uniqueid'] == 1 ]['lastname']
 
     # Optimize similar name finding function

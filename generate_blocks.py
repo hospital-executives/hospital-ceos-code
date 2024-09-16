@@ -31,12 +31,12 @@ cleaned_confirmed = pd.read_csv(confirmed_1_path)
 cleaned_remainder = pd.read_csv(remaining_1_path)
 
 ## DEBUG FROM HERE - ALSO DELETE WHEN RUNNING FROM MAKEFILE
-#gender_df = pd.read_csv('/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/derived/auxiliary/updated_gender.csv')
-#gender_df_unique = gender_df.drop_duplicates(subset='firstname')
+gender_df = pd.read_csv('/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/derived/auxiliary/updated_gender.csv')
+gender_df_unique = gender_df.drop_duplicates(subset='firstname')
 
-#cleaned_himss = pd.read_csv('/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/derived/auxiliary/himss_1.csv')
-#cleaned_confirmed = pd.read_csv('/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/derived/auxiliary/confirmed_1.csv')
-#cleaned_remainder = pd.read_csv('/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/derived/auxiliary/remaining_1.csv')
+cleaned_himss = pd.read_csv('/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/derived/auxiliary/himss_1.csv')
+cleaned_confirmed = pd.read_csv('/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/derived/auxiliary/confirmed_1.csv')
+cleaned_remainder = pd.read_csv('/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/derived/auxiliary/remaining_1.csv')
 
 # backfill the John Null case which accidentally got dropped
 list_of_dfs = [cleaned_confirmed, cleaned_remainder, cleaned_himss]  # Replace with your actual list of DataFrames
@@ -45,7 +45,7 @@ for df in list_of_dfs:
     df['lastname'] = df['lastname'].fillna("null")
     
 # ADD GENDER
-# himss_path = '/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/derived/himss_entities_contacts_0517.feather'
+himss_path = '/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/derived/himss_entities_contacts_0517.feather'
 himss = blocking_helper.load_himss(himss_path)
 himss_by_nickname = blocking_helper.clean_for_metaphone(himss[['firstname']])
 himss_nicknames = himss_by_nickname[himss_by_nickname['Inside'].notna()]
@@ -78,14 +78,14 @@ cleaned_remained['old_last_meta'] = cleaned_remained['old_lastname'].apply(block
 #data_dir = '/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data'
 f_graph, f_df = blocking_helper.generate_female_blocks(cleaned_himss, 
                                                             himss_nicknames,
-                                                            data_dir) 
+                                                            data_dir) #3760 comps
 last_graph, last_df = blocking_helper.generate_last_blocks(cleaned_himss, himss, 
                                                            data_dir, 0.9, 
-                                                           gender = "all")
+                                                           gender = "all") # 2961 comps
 
 
-m_graph, m_df = blocking_helper.generate_male_blocks(cleaned_himss, # still need to fix jaro
-                                                        cleaned_himss, himss_nicknames, data_dir)
+m_graph, m_df = blocking_helper.generate_male_blocks(cleaned_himss, 
+                                                        cleaned_himss, himss_nicknames, data_dir) # 3125 comps
 
 
 female_components = list(nx.connected_components(f_graph))

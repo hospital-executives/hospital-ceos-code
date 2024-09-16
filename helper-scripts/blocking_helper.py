@@ -240,7 +240,8 @@ def impute_gender_by_metaphone(gender, metaphone_dict, name_to_metaphone):
         A DataFrame with columns ['Name', 'Gender'] where the gender is 
         imputed based on metaphone statistics.
     """
-    name_to_gender = gender.set_index("firstname")["gender"].to_dict()
+    name_to_gender = gender.set_index(gender['firstname'].str.lower())["gender"].to_dict()
+
 
     metaphone_stats = {}
     for code, names in metaphone_dict.items():

@@ -6,6 +6,7 @@ import sys
 confirmed_1_path = sys.argv[1]
 updated_gender_path = sys.argv[2]
 data_dir = sys.argv[3]
+gender_path = sys.argv[4]
 
 sys.path.append(os.path.join(os.path.dirname(__file__), 'helper-scripts'))
 
@@ -33,16 +34,14 @@ contact_list = [{'contact_uniqueid': key,
                 for key, value in contact_dict.items()]
 confirmed_names = pd.DataFrame(contact_list)
 
-gender_file = os.path.join(data_dir, "supplemental/gender.csv") # TO DO
-#gender_file = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/supplemental/gender.csv"
-updated_genders = pd.read_csv(gender_file)
+gender_df = pd.read_csv(gender_path)
 
 # using metaphone to reassign gender
 cleaned_df = blocking_helper.clean_for_metaphone(confirmed_names[['name_1', 
                                                                     'name_2',
                                                                     'name_3']])
 metaphone_dict, name_to_metaphone = blocking_helper.generate_metaphone(cleaned_df)
-updated_genders = blocking_helper.impute_gender_by_metaphone(updated_genders, 
+updated_genders = blocking_helper.impute_gender_by_metaphone(gender_df, 
                                                                     metaphone_dict, 
                                                                     name_to_metaphone)
 updated_genders.loc[updated_genders['firstname'] == 'sandra', 'gender'] = 'F'
