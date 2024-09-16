@@ -35,6 +35,7 @@ HIMSS_NICKNAMES := $(DERIVED_DIR)/auxiliary/himss_nicknames.csv
 HIMSS_ENTITIES_CONTACTS_NEW := $(DERIVED_DIR)/himss_entities_contacts_0517.feather
 
 # updated gender path
+R_GENDER = $(SUPP_DIR)/gender.csv
 UPDATED_GENDER := $(DERIVED_DIR)/auxiliary/updated_gender.csv
 
 # jaro path
@@ -58,10 +59,10 @@ PANDOC_PATH = /Applications/RStudio.app/Contents/Resources/app/quarto/bin/tools/
 
 # HIMSS SCRIPT - FAKE/INCOMPLETE
 FAKE := $(DERIVED_DIR)/auxiliary/fake.csv
-$(FAKE): compile_himss.Rmd
-	export RSTUDIO_PANDOC=$(PANDOC_PATH); \
+# $(FAKE) $(R_GENDER): compile_himss.Rmd
+# export RSTUDIO_PANDOC=$(PANDOC_PATH); \
 	Rscript -e "rmarkdown::render('compile_himss.Rmd', output_file='$(FAKE)', \
-	params = list(code_dir = '$(CODE_DIR)'))"
+	params = list(code_dir = '$(CODE_DIR)', r_gender = '$(R_GENDER)'))"
 
 # RUN R SCRIPT
 OUTLIERS CONFIRMED_R REMAINING_R: $(HIMSS_ENTITIES_CONTACTS)
@@ -79,10 +80,10 @@ $(cleaned_targets): $(CONFIRMED_R) $(REMAINING_R) $(HIMSS_ENTITIES_CONTACTS_NEW)
 	python3 clean_data.py $(CONFIRMED_R) $(REMAINING_R) $(HIMSS_ENTITIES_CONTACTS_NEW) $(CONFIRMED_1) $(REMAINING_1) $(HIMSS_1) $(HIMSS_NICKNAMES)
 
 # UPDATE GENDER
-$(UPDATED_GENDER): $(CONFIRMED_1)
-	python3 helper-scripts/update_gender.py $(CONFIRMED_1) $(UPDATED_GENDER) $(DATA_DIR)
+$(UPDATED_GENDER): $(CONFIRMED_1) $(R_GENDER)
+	python3 helper-scripts/update_gender.py $(CONFIRMED_1) $(UPDATED_GENDER) $(DATA_DIR) $(R_GENDER)
 
-# GENERATE JARO
+# GENERATE JARO - takes ~21 min
 $(JARO): $(CONFIRMED_R) $(UPDATED_GENDER)
 	python3 helper-scripts/jaro_algo.py $(CODE_DIR) $(CONFIRMED_R) $(UPDATED_GENDER) $(JARO)
 
