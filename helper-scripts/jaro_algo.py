@@ -36,7 +36,7 @@ def main():
     # load confirmed df
     confirmed = pd.read_feather(confirmed_r)
     test_data = confirmed[['firstname', 'lastname', 'contact_uniqueid']]
-    test_data['firstname'] = test_data['firstname'].str.lower()
+    test_data.loc[:, 'firstname'] = test_data['firstname'].str.lower()
     test_no_na = test_data.dropna(subset=['contact_uniqueid'])
 
     # get male cases only 
@@ -54,7 +54,7 @@ def main():
 
     ## get frequencies
     frequency_df = confirmed.groupby('lastname')['contact_uniqueid'].nunique().reset_index()
-    frequency_df['lastname'] = frequency_df['lastname'].str.lower()
+    frequency_df.loc[:, 'lastname'] = frequency_df['lastname'].str.lower()
 
     # Assume blocking_helper.generate_metaphone generates a dictionary and a map for metaphones
     # Here we create a simple placeholder for demonstration purposes
@@ -99,7 +99,8 @@ def main():
     similar_names_records = [
         (k, v[0], v[1]) for k, vals in similar_names_dict.items() for v in vals
     ]
-    similar_names_df = pd.DataFrame(similar_names_records, columns=['name', 'similar_name', 'distance'])
+    similar_names_df = pd.DataFrame(similar_names_records, columns=['name', 
+    'similar_name', 'distance'])
 
     end_time = time.time()
     print(f"Execution time: {end_time - start_time} seconds")
