@@ -57,8 +57,8 @@ cleaned_himss, cleaned_confirmed, cleaned_remainder = cleaned_dataframes
 # create nickname pairings from HIMSS
 himss_by_nickname = blocking_helper.clean_for_metaphone(himss[['firstname']])
 himss_nicknames = himss_by_nickname[himss_by_nickname['Inside'].notna()]
-himss_nicknames['Before'] = himss_nicknames['Before'].str.lower()
-himss_nicknames['Inside'] = himss_nicknames['Inside'].str.lower()
+himss_nicknames.loc[:, 'Before'] = himss_nicknames['Before'].str.lower()
+himss_nicknames.loc[:, 'Inside'] = himss_nicknames['Inside'].str.lower()
 
 # clean typos 
 firstname_to_lastnames, lastname_to_firstnames = blocking_helper.generate_name_mappings(cleaned_himss)
@@ -77,19 +77,6 @@ cleaned_remainder['old_firstname'] = cleaned_remainder['firstname']
 cleaned_remainder['firstname'] = cleaned_remainder.apply(replace_firstname, axis=1)
 cleaned_himss['firstname'] = cleaned_himss.apply(replace_firstname, axis=1)
 cleaned_confirmed['firstname'] = cleaned_confirmed.apply(replace_firstname, axis=1)
-
-lastname_replacements = blocking_helper.generate_lastname_mapping(
-    cleaned_confirmed, lastname_to_contact_count, firstname_to_lastnames, 
-    lastname_to_firstnames)
-def replace_lastname(row):
-    return lastname_replacements.get((row['lastname'], row['firstname']), row['lastname'])
-
-cleaned_himss['old_lastname'] = cleaned_himss['lastname']
-cleaned_confirmed['old_lastname'] = cleaned_confirmed['lastname']
-cleaned_remainder['old_lastname'] = cleaned_remainder['lastname']
-cleaned_remainder['lastname'] = cleaned_remainder.apply(replace_lastname, axis=1)
-cleaned_himss['lastname'] = cleaned_himss.apply(replace_lastname, axis=1)
-cleaned_confirmed['lastname'] = cleaned_confirmed.apply(replace_lastname, axis=1)
 
 cleaned_confirmed.to_csv(str(confirmed_1))
 cleaned_remainder.to_csv(str(remaining_1))
