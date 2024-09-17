@@ -327,10 +327,19 @@ def clean_results_pt1(pair_results, confirmed_ids=None):
 
     # Filter remaining for differences and collect dropped pairs
     dropped_conditions = [
-        (remaining['total_shared_attributes'] == 0) & (remaining['distinct_state_count'] > 1),
-        (remaining['lastname_lev_distance'] >= 3) & (~remaining['name_in_same_row_firstname']) & (remaining['distinct_state_count'] > 1),
-        (~remaining['name_in_same_row_firstname']) & (remaining['distinct_state_count'] > 1) & (remaining['lastname_lev_distance'] >= 1) & (remaining['shared_titles_flag'] == 0),
-        (~remaining['name_in_same_row_firstname']) & (~remaining['meta_in_same_row'].fillna(False)) & ((remaining['lastname_jw_distance'] < 0.5) | (remaining['lastname_lev_distance'] >= 3))
+        (remaining['total_shared_attributes'] == 0) & 
+        (remaining['distinct_state_count'] > 1),
+        (remaining['lastname_lev_distance'] >= 3) & 
+        (~remaining['name_in_same_row_firstname']) & 
+        (remaining['distinct_state_count'] > 1),
+        (~remaining['name_in_same_row_firstname']) & 
+        (remaining['distinct_state_count'] > 1) & 
+        (remaining['lastname_lev_distance'] >= 1) & 
+        (remaining['shared_titles_flag'] == 0),
+        (~remaining['name_in_same_row_firstname']) & 
+        (~remaining['meta_in_same_row'].fillna(False).infer_objects(copy=False)) 
+        & ((remaining['lastname_jw_distance'] < 0.5) | 
+        (remaining['lastname_lev_distance'] >= 3))
     ]
 
     dropped = [remaining[cond] for cond in dropped_conditions]
@@ -391,8 +400,8 @@ def clean_results_pt2(remaining, G, dropped_sets, new_himss):
 
     # Combine conditions for remaining rows
     remaining = remaining_updated[~(condition1 | condition2 | condition3)]
-    remaining['contact_id1'] = remaining['contact_id1'].astype(str)
-    remaining['contact_id2'] = remaining['contact_id2'].astype(str)
+    remaining.loc[:, 'contact_id1'] = remaining['contact_id1'].astype(str)
+    remaining.loc[:, 'contact_id2'] = remaining['contact_id2'].astype(str)
 
     # Update dropped_sets with dropped pairs
     for df in [dropped1, dropped2, dropped3]:

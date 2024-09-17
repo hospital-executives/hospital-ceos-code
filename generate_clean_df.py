@@ -179,7 +179,6 @@ test_graph, cleaned_dropped1, cleaned_remaining1 = cc.clean_results_pt1(test)
 cc.update_confirmed_from_dropped(test_graph, cleaned_dropped1,
                                                  contact_count_dict)
 
-
 cleaned_dropped2, cleaned_remaining2 = cc.clean_results_pt2(
     cleaned_remaining1, test_graph, cleaned_dropped1, new_himss)
 
@@ -195,7 +194,6 @@ cc.update_confirmed_from_dropped(test_graph, cleaned_dropped3,
 
 remaining_ids = set(final_confirmed['contact_uniqueid'].unique()) - \
                 confirmed_ids - set(test_graph.nodes())
-
 
 common_nodes =  set(final_confirmed['contact_uniqueid'].unique()
                     ).union(confirmed_ids) - remaining_ids
