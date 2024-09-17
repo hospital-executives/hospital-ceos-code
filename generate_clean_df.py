@@ -22,7 +22,7 @@ print(f"Components Path: {components_path}")
 print(f"Data Directory (User Path): {user_path}")
 print(f"Code Directory: {code_path}")
 
-raise ValueError
+#raise ValueError
 
 sys.path.append(os.path.join(os.path.dirname(__file__), 'helper-scripts'))
 import blocking_helper
