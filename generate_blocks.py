@@ -49,8 +49,8 @@ himss_path = '/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/deri
 himss = blocking_helper.load_himss(himss_path)
 himss_by_nickname = blocking_helper.clean_for_metaphone(himss[['firstname']])
 himss_nicknames = himss_by_nickname[himss_by_nickname['Inside'].notna()]
-himss_nicknames['Before'] = himss_nicknames['Before'].str.lower()
-himss_nicknames['Inside'] = himss_nicknames['Inside'].str.lower()
+himss_nicknames.loc[:, 'Before'] = himss_nicknames['Before'].str.lower()
+himss_nicknames.loc[:, 'Inside'] = himss_nicknames['Inside'].str.lower()
 
 himss_gender = pd.merge(cleaned_himss, gender_df_unique, on="firstname", 
                         how="left")

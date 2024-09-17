@@ -632,7 +632,7 @@ def generate_female_blocks(merged_df, himss_nicknames, user_path):
         G_metaphone.add_edges_from(group_edges)
 
     # Apply the function to the 'firstname' column and create a new column 'metaphone_code'
-    test_df['metaphone_code'] = test_df['firstname'].apply(get_metaphone)
+    test_df.loc[:, 'metaphone_code'] = test_df['firstname'].apply(get_metaphone)
 
     connected_components = list(nx.connected_components(G_metaphone))
     metaphone_to_component = {}
@@ -641,7 +641,7 @@ def generate_female_blocks(merged_df, himss_nicknames, user_path):
             metaphone_to_component[metaphone_code] = component_id
 
     # Map the component ID to the DataFrame
-    test_df['component_id'] = test_df['metaphone_code'].map(metaphone_to_component)
+    test_df.loc[:,'component_id'] = test_df['metaphone_code'].map(metaphone_to_component)
     return(G_metaphone, test_df)
 
 def generate_male_blocks(merged_df, merged_himss, himss_nicknames, user_path):
@@ -730,7 +730,8 @@ def generate_male_blocks(merged_df, merged_himss, himss_nicknames, user_path):
     remainder_list = list(remainder)
 
     # Apply the function to the 'firstname' column and create a new column 'metaphone_code'
-    test_df['metaphone_code'] = test_df['firstname'].apply(get_metaphone)
+    test_df.loc[:, 'metaphone_code'] = test_df['firstname'].apply(get_metaphone)
+
 
     G = G_metaphone
 
@@ -795,7 +796,7 @@ def generate_last_blocks(merged_df, himss, data_dir,
 
     unique_lastnames['last_metaphone2'] = \
         test_df['lastname'].apply(lambda name: doublemetaphone(name)[1])
-    unique_lastnames['last_metaphone2'].replace('', np.nan, inplace=True)
+    unique_lastnames.replace({'last_metaphone2': {'': np.nan}}, inplace=True)
 
     unique_codes = set(test_df['base_code'].unique())
 
