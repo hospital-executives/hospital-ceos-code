@@ -98,12 +98,21 @@ $(CONFIRMED_2) $(REMAINING_2): $(HIMSS_ENTITIES_CONTACTS_NEW) $(CONFIRMED_1) $(R
     $(REMAINING_1) $(UPDATED_GENDER) $(HIMSS_1) $(CONFIRMED_2) $(REMAINING_2) $(DATA_DIR)
 
 
-# GENERATE FINAL CLEANED DF
+# FIX NON-UNIQUE IDS
 $(FINAL_CLEANED) $(FINAL_REMAINING) $(GRAPH_COMPS): $(CONFIRMED_2) \
 	$(REMAINING_2) $(DIGRAPHNAMES) $(DIGRAPHMETA) $(JARO)
 	python3 -u generate_clean_df.py $(CONFIRMED_2) $(REMAINING_2) \
 	$(FINAL_CLEANED) $(FINAL_REMAINING) $(GRAPH_COMPS) \
     $(DATA_DIR) $(CODE_DIR)
+
+# GENERATE FINAL DF
+FINAL_HIMSS :=  $(DERIVED_DIR)/final_himss.feather 
+
+# Rule to create final_himss
+$(FINAL_HIMSS): $(FINAL_CLEANED) $(FINAL_REMAINING) $(GRAPH_COMPS)
+	@echo "Generating final_himss..."
+	python3 generate_final.py $(FINAL_CLEANED) $(FINAL_REMAINING) $(GRAPH_COMPS) $(FINAL_HIMSS)
+	@echo "final_himss created!"
 
 
 # /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/
@@ -115,4 +124,4 @@ $(FINAL_CLEANED) $(FINAL_REMAINING) $(GRAPH_COMPS): $(CONFIRMED_2) \
 # /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/r_confirmed.feather
 # updated gender:
 # /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/auxiliary/updated_gender.csv
-
+# make final cleand df
