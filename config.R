@@ -4,15 +4,25 @@
 library(tidyverse)
 library(readr)
 library(readxl)
-library(dplyr)
 library(tools)
-library(stringr)
 library(haven) # to read new .dta files
 library(foreign) #to read old .dta files
 library(wordcloud)
 library(feather)
 library(tibble)
 library(jsonlite) # to find the dropbox directory
+library(stringi) # to fix encoding for AHA data
+library(fuzzyjoin) # for AHA data fuzzy join
+library(arrow) # for gender assignment code
+library(stringdist) # for gender assignment code
+library(data.table) # for gender assignment code
+library(phonics) # for gender assignment code
+
+# library(dplyr) in tidyverse
+# library(ggplot2) in tidyverse
+# library(stringr) in tidyverse
+# library(tibble) in tidyverse
+# library(purrr) in tidyverse
 
 #######  Manual Inputs - if we change the folder structure, this needs to be updated
 # Define the project folder name
@@ -23,6 +33,7 @@ code <- "/_code"
 raw_files <- "/raw"
 derived_files <-  "/derived"
 supplemental_files <- "/supplemental"
+nicknames_dictionaries <- "/nicknames dictionaries"
 
 ####### Now, automatically set-up all file paths for the project.
 
@@ -93,6 +104,7 @@ if (is.null(project_directory)) {
 raw_data <- paste0(project_directory,data,raw_files)
 derived_data <- paste0(project_directory,data,derived_files)
 supplemental_data <- paste0(project_directory,data,supplemental_files)
+nicknames_dictionaries <- paste0(project_directory,data,nicknames_dictionaries)
 
 # Export only necessary variables for use in other scripts
 # Clean up the environment by removing functions that are no longer needed
