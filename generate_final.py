@@ -88,5 +88,44 @@ new_himss['new_contact_uniqueid'] = new_himss['new_contact_uniqueid'].astype(str
 
 
 # testing / debugging
+new_cleaned = new_himss[new_himss['confirmed']]
+
+himss_path = os.path.join(user_path, "derived/himss_entities_contacts_0517.feather")
+himss = pd.read_feather(himss_path)
+
+himss['id'] == himss['id'].astype(float)
+id_to_contact_uniqueid = himss.set_index('id')['contact_uniqueid'].to_dict()
+int_key_dict = {float(k): v for k, v in id_to_contact_uniqueid.items()}
+
+new_cleaned['old_contact_uniqueid'] = new_cleaned['id'].map(int_key_dict)
+new_cleaned['old_contact_uniqueid'] = new_cleaned['old_contact_uniqueid'].astype(float)
+
+new_cleaned['mult_id'] = new_cleaned.apply(
+    lambda row: 1 if row['contact_uniqueid'] != id_to_contact_uniqueid.get(row['id'], None) else 0, axis=1
+)
+new_cleaned['new_contact_uniqueid']= new_cleaned['new_contact_uniqueid'].astype(float)
+new_cleaned['multname_multid'] = new_cleaned.apply(
+    lambda row: 1 if row['contact_uniqueid'] != row['old_contact_uniqueid'] else 0, axis=1
+)
+
+import re
+
+# add mult name
+def clean_fullname(name):
+    # Remove punctuation using regex and convert to lowercase
+    return re.sub(r'[^\w\s]', '', name).lower()
+
+# Concatenate 'firstname' and 'lastname', add a space between them
+himss['firstname'] = himss['firstname'].fillna('').astype(str)
+himss['lastname'] = himss['lastname'].fillna('').astype(str)
+himss['fullname'] = (himss['firstname'] + himss['lastname']).apply(clean_fullname)
+
+name_counts = himss.groupby('contact_uniqueid')['fullname'].nunique()
+
+mult_name_dict = {contact_id: 1 if count > 1 else 0 for contact_id, count in name_counts.items()}
+int_key_dict = {float(k): v for k, v in mult_name_dict.items()}
+
+new_cleaned['mult_name'] = new_cleaned['contact_uniqueid'].map(int_key_dict)
+
 
 #new_himss.to_feather(final_path)
