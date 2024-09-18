@@ -76,5 +76,6 @@ new_himss['first_component'] = pd.to_numeric(new_himss['first_component'],
  errors='coerce')
 new_himss['old_first_component'] = pd.to_numeric(new_himss['old_first_component'],
  errors='coerce')
+new_himss['new_contact_uniqueid'] = new_himss['new_contact_uniqueid'].astype(str)
 
 new_himss.to_feather(final_path)

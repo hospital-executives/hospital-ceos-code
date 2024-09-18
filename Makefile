@@ -59,8 +59,8 @@ PANDOC_PATH = /Applications/RStudio.app/Contents/Resources/app/quarto/bin/tools/
 
 # HIMSS SCRIPT - FAKE/INCOMPLETE
 FAKE := $(DERIVED_DIR)/auxiliary/fake.csv
-# $(FAKE) $(R_GENDER): compile_himss.Rmd
-# export RSTUDIO_PANDOC=$(PANDOC_PATH); \
+$(FAKE) $(R_GENDER): compile_himss.Rmd
+export RSTUDIO_PANDOC=$(PANDOC_PATH); \
 	Rscript -e "rmarkdown::render('compile_himss.Rmd', output_file='$(FAKE)', \
 	params = list(code_dir = '$(CODE_DIR)', r_gender = '$(R_GENDER)'))"
 
