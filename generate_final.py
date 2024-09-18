@@ -5,11 +5,19 @@ import pandas as pd
 import numpy as np
 from itertools import combinations
 
+user_path = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data"
+
 #### SET VARIABLES ####
-confirmed_path = sys.argv[1]
-remainder_path = sys.argv[2]
-json_path = sys.argv[3]
-final_path = sys.argv[4]
+if len(sys.argv) == 5:
+    confirmed_path = sys.argv[1]
+    remainder_path = sys.argv[2]
+    json_path = sys.argv[3]
+    final_path = sys.argv[4]
+else: 
+    confirmed_path =  os.path.join(user_path, "derived/py_confirmed.csv")
+    remainder_path =  os.path.join(user_path, "derived/py_remaining.csv")
+    json_path =  os.path.join(user_path, "derived/py_graph_components.json")
+    final_path = os.path.join(user_path, "derived/final_himss.feather")
 
 #### LOAD DATA ####
 cleaned = pd.read_csv(confirmed_path)
@@ -78,4 +86,7 @@ new_himss['old_first_component'] = pd.to_numeric(new_himss['old_first_component'
  errors='coerce')
 new_himss['new_contact_uniqueid'] = new_himss['new_contact_uniqueid'].astype(str)
 
-new_himss.to_feather(final_path)
+
+# testing / debugging
+
+#new_himss.to_feather(final_path)

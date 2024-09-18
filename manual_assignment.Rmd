@@ -25,8 +25,8 @@ library(tibble)
 
 
 ```{r load_data_and_scripts}
-code_path <- paste0(params$code_path, "/")
-data_path <- paste0(params$data_path, "/")
+code_path <- paste0(params$code_path, "/") # change if not KP
+data_path <- paste0(params$data_path, "/") # change if not KP
 cat("Data Path: ", data_path, "\n")
 
 himss_feather <- if (is.null(params$himss_entity_contacts)) {

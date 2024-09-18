@@ -2,11 +2,20 @@ import pandas as pd
 import os
 import sys
 
+data_dir = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data"
 # Get command-line arguments
-confirmed_1_path = sys.argv[1]
-updated_gender_path = sys.argv[2]
-data_dir = sys.argv[3]
-gender_path = sys.argv[4]
+if len(sys.argv) == 5:
+    confirmed_1_path = sys.argv[1]
+    updated_gender_path = sys.argv[2]
+    data_dir = sys.argv[3]
+    gender_path = sys.argv[4]
+else:
+    print('WARNING: Not using Makefile Input')
+    confirmed_1_path = os.path.join(data_dir, 
+    "derived/auxiliary/confirmed_1.csv")
+    updated_gender_path = os.path.join(data_dir, 
+    "derived/auxiliary/updated_gender.csv")
+    gender_path = os.path.join(data_dir, "supplemental/gender.csv")
 
 sys.path.append(os.path.join(os.path.dirname(__file__), 'helper-scripts'))
 

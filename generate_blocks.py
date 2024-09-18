@@ -1,14 +1,28 @@
 import os 
 import sys
 
-himss_path = sys.argv[1]
-confirmed_1_path = sys.argv[2]
-remaining_1_path = sys.argv[3]
-updated_gender_path = sys.argv[4]
-himss_1_path = sys.argv[5] 
-confirmed_2_path = sys.argv[6]
-remaining_2_path = sys.argv[7]
-data_dir = sys.argv[8]
+data_dir = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data"
+# Get command-line arguments
+if len(sys.argv) == 9:
+    himss_path = sys.argv[1]
+    confirmed_1_path = sys.argv[2]
+    remaining_1_path = sys.argv[3]
+    updated_gender_path = sys.argv[4]
+    himss_1_path = sys.argv[5] 
+    confirmed_2_path = sys.argv[6]
+    remaining_2_path = sys.argv[7]
+    data_dir = sys.argv[8]
+else: 
+    himss_path = os.path.join(data_dir, 
+    "derived/himss_entities_contacts_0517_v1.feather")
+    confirmed_1_path = os.path.join(data_path, "derived/auxiliary/confirmed_1.csv")
+    remaining_1_path = os.path.join(data_path, "derived/auxiliary/remaining_1.csv")
+    updated_gender_path = os.path.join(data_dir, 
+    "derived/auxiliary/updated_gender.csv")
+    himss_1_path = os.path.join(data_dir, "derived/auxiliary/himss_1.csv")
+    confirmed_2_path = os.path.join(data_path, "derived/auxiliary/confirmed_2.csv")
+    remaining_2_path = os.path.join(data_path, "derived/auxiliary/remaining_2.csv")
+
 
 import pandas as pd
 import networkx as nx

@@ -3,15 +3,30 @@ import pandas as pd
 import os
 import sys
 
+# specify data path 
+data_path = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data"
 # TAKE ARGS FROM MAKEFILE
 # Get arguments from the command line
-confirmed_r = sys.argv[1]
-remaining_r = sys.argv[2]
-himss_entities_contacts = sys.argv[3]
-confirmed_1 = sys.argv[4]
-remaining_1 = sys.argv[5]
-himss_1 = sys.argv[6]
-nicknames_path = sys.argv[7]
+if len(sys.argv) == 8:
+    # If arguments are provided, get them from the command line
+    confirmed_r = sys.argv[1]
+    remaining_r = sys.argv[2]
+    himss_entities_contacts = sys.argv[3]
+    confirmed_1 = sys.argv[4]
+    remaining_1 = sys.argv[5]
+    himss_1 = sys.argv[6]
+    nicknames_path = sys.argv[7]
+else:
+    print('WARNING: Not using Makefile Input')
+    # Otherwise, use default file paths
+    confirmed_r = os.path.join(data_path, "derived/r_confirmed.csv")
+    remaining_r =  os.path.join(data_path, "derived/r_remaining.csv")
+    himss_entities_contacts = os.path.join(data_path, 
+    "derived/himss_entities_contacts_0517_v1.feather")
+    confirmed_1 = os.path.join(data_path, "derived/auxiliary/confirmed_1.csv")
+    remaining_1 = os.path.join(data_path, "derived/auxiliary/remaining_1.csv")
+    himss_1 = os.path.join(data_path, "derived/auxiliary/himss_1.csv")
+    nicknames_path = os.path.join(data_path, "derived/auxiliary/himss_nicknames.csv")
 
 #code_path = sys.argv[1]
 #data_path = sys.argv[2]

@@ -7,12 +7,20 @@ import pandas as pd
 import networkx as nx
 from metaphone import doublemetaphone
 
+data_dir = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data"
 # define the following
-cleaned_himss_path = sys.argv[1]
-himss_nicknames_path = sys.argv[2] 
-digraphname_path = sys.argv[3]
-digraphmeta_path = sys.argv[4]
-user_path = sys.argv[5]
+if len(sys.argv) == 6:
+    cleaned_himss_path = sys.argv[1]
+    himss_nicknames_path = sys.argv[2] 
+    digraphname_path = sys.argv[3]
+    digraphmeta_path = sys.argv[4]
+    user_path = sys.argv[5]
+else: 
+    cleaned_himss_path = os.path.join(data_dir, "derived/auxiliary/himss_1.csv")
+    himss_nicknames_path = os.path.join(data_dir, "derived/auxiliary/himss_nicknames.csv")
+    digraphname_path = os.path.join(data_dir, "derived/auxiliary/digraphname.csv")
+    digraphmeta_path = os.path.join(data_dir, "derived/auxiliary/digraphmeta.csv")
+    user_path = os.getcwd()
 
 sys.path.append(os.path.join(os.path.dirname(__file__), 'helper-scripts'))
 # LOAD HELPER FILES

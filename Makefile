@@ -58,14 +58,17 @@ GRAPH_COMPS := $(DERIVED_DIR)/py_graph_components.json
 PANDOC_PATH = /Applications/RStudio.app/Contents/Resources/app/quarto/bin/tools/x86_64
 
 # HIMSS SCRIPT - FAKE/INCOMPLETE
-FAKE := $(DERIVED_DIR)/auxiliary/fake.csv
-$(FAKE) $(R_GENDER): compile_himss.Rmd
-export RSTUDIO_PANDOC=$(PANDOC_PATH); \
-	Rscript -e "rmarkdown::render('compile_himss.Rmd', output_file='$(FAKE)', \
+#FAKE := $(DERIVED_DIR)/auxiliary/fake.csv
+#.PHONY: $(FAKE)
+
+
+$(HIMSS_ENTITIES_CONTACTS) $(R_GENDER): compile_himss.Rmd
+	export RSTUDIO_PANDOC=$(PANDOC_PATH); \
+	Rscript -e "rmarkdown::render('compile_himss.Rmd', output_file='$(HIMSS_ENTITIES_CONTACTS)', \
 	params = list(code_dir = '$(CODE_DIR)', r_gender = '$(R_GENDER)'))"
 
 # RUN R SCRIPT
-OUTLIERS CONFIRMED_R REMAINING_R: $(HIMSS_ENTITIES_CONTACTS)
+$(OUTLIERS) $(CONFIRMED_R) $(REMAINING_R): $(HIMSS_ENTITIES_CONTACTS)
 	export RSTUDIO_PANDOC=$(PANDOC_PATH); \
 	Rscript -e "rmarkdown::render('manual_assignment.Rmd', \
     params = list(code_path='$(CODE_DIR)', \
@@ -76,25 +79,31 @@ OUTLIERS CONFIRMED_R REMAINING_R: $(HIMSS_ENTITIES_CONTACTS)
 # Define directory and file paths
 cleaned_targets := $(CONFIRMED_1) $(REMAINING_1) $(HIMSS_1) $(HIMSS_NICKNAMES)
 
-$(cleaned_targets): $(CONFIRMED_R) $(REMAINING_R) $(HIMSS_ENTITIES_CONTACTS_NEW)
-	python3 clean_data.py $(CONFIRMED_R) $(REMAINING_R) $(HIMSS_ENTITIES_CONTACTS_NEW) $(CONFIRMED_1) $(REMAINING_1) $(HIMSS_1) $(HIMSS_NICKNAMES)
+# was himss_new before
+$(cleaned_targets): $(CONFIRMED_R) $(REMAINING_R) $(HIMSS_ENTITIES_CONTACTS)
+	python3 clean_data.py $(CONFIRMED_R) $(REMAINING_R) \
+	$(HIMSS_ENTITIES_CONTACTS) $(CONFIRMED_1) $(REMAINING_1) \
+	$(HIMSS_1) $(HIMSS_NICKNAMES)
 
 # UPDATE GENDER
 $(UPDATED_GENDER): $(CONFIRMED_1) $(R_GENDER)
-	python3 helper-scripts/update_gender.py $(CONFIRMED_1) $(UPDATED_GENDER) $(DATA_DIR) $(R_GENDER)
+	python3 helper-scripts/update_gender.py $(CONFIRMED_1) $(UPDATED_GENDER) \
+	$(DATA_DIR) $(R_GENDER)
 
 # GENERATE JARO - takes ~21 min
 $(JARO): $(CONFIRMED_R) $(UPDATED_GENDER)
-	python3 helper-scripts/jaro_algo.py $(CODE_DIR) $(CONFIRMED_R) $(UPDATED_GENDER) $(JARO)
+	python3 helper-scripts/jaro_algo.py $(CODE_DIR) $(CONFIRMED_R) \
+	$(UPDATED_GENDER) $(JARO)
 
 # DIGRAPHS
 $(DIGRAPHNAME) $(DIGRAPHMETA): $(HIMSS_1) $(HIMSS_NICKNAMES)
-	python3 helper-scripts/generate_digraphs.py $(HIMSS_1) $(HIMSS_NICKNAMES) $(DIGRAPHNAME) $(DIGRAPHMETA) $(SUPP_DIR)
+	python3 helper-scripts/generate_digraphs.py $(HIMSS_1) $(HIMSS_NICKNAMES) \
+	$(DIGRAPHNAME) $(DIGRAPHMETA) $(SUPP_DIR)
 
-# GENERATE BLOCKS
-$(CONFIRMED_2) $(REMAINING_2): $(HIMSS_ENTITIES_CONTACTS_NEW) $(CONFIRMED_1) $(REMAINING_1) \
+# GENERATE BLOCKS - was new
+$(CONFIRMED_2) $(REMAINING_2): $(HIMSS_ENTITIES_CONTACTS) $(CONFIRMED_1) $(REMAINING_1) \
     $(UPDATED_GENDER) $(HIMSS_1) $(DIGRAPHNAME) $(DIGRAPHMETA)
-	python3 generate_blocks.py $(HIMSS_ENTITIES_CONTACTS_NEW) $(CONFIRMED_1) \
+	python3 generate_blocks.py $(HIMSS_ENTITIES_CONTACTS) $(CONFIRMED_1) \
     $(REMAINING_1) $(UPDATED_GENDER) $(HIMSS_1) $(CONFIRMED_2) $(REMAINING_2) $(DATA_DIR)
 
 
@@ -111,7 +120,8 @@ FINAL_HIMSS :=  $(DERIVED_DIR)/final_himss.feather
 # Rule to create final_himss
 $(FINAL_HIMSS): $(FINAL_CLEANED) $(FINAL_REMAINING) $(GRAPH_COMPS)
 	@echo "Generating final_himss..."
-	python3 generate_final.py $(FINAL_CLEANED) $(FINAL_REMAINING) $(GRAPH_COMPS) $(FINAL_HIMSS)
+	python3 generate_final.py $(FINAL_CLEANED) $(FINAL_REMAINING) \
+	$(GRAPH_COMPS) $(FINAL_HIMSS)
 	@echo "final_himss created!"
 
 
@@ -125,3 +135,5 @@ $(FINAL_HIMSS): $(FINAL_CLEANED) $(FINAL_REMAINING) $(GRAPH_COMPS)
 # updated gender:
 # /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/auxiliary/updated_gender.csv
 # make final cleand df
+
+# make -B /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/himss_entities_contacts_0517_v1.feather /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/supplemental/gender.csv

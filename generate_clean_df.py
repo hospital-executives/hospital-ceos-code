@@ -5,22 +5,25 @@ import pandas as pd
 import networkx as nx
 from itertools import chain
 
-confirmed_path = sys.argv[1]
-remaining_path = sys.argv[2]
+user_path = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data"
+# TAKE ARGS FROM MAKEFILE
+# Get arguments from the command line
+if len(sys.argv) == 8:
+    confirmed_path = sys.argv[1]
+    remaining_path = sys.argv[2]
 
-final_cleaned_path = sys.argv[3]
-final_remaining_path = sys.argv[4]
-components_path = sys.argv[5]
-user_path = sys.argv[6] # data dir
-code_path = sys.argv[7]
-
-print(f"Confirmed Path: {confirmed_path}")
-print(f"Remaining Path: {remaining_path}")
-print(f"Final Cleaned Path: {final_cleaned_path}")
-print(f"Final Remaining Path: {final_remaining_path}")
-print(f"Components Path: {components_path}")
-print(f"Data Directory (User Path): {user_path}")
-print(f"Code Directory: {code_path}")
+    final_cleaned_path = sys.argv[3]
+    final_remaining_path = sys.argv[4]
+    components_path = sys.argv[5]
+    user_path = sys.argv[6] # data dir
+    code_path = sys.argv[7]
+else: 
+    confirmed_path = os.path.join(user_path, "derived/auxiliary/confirmed_2.csv")
+    remaining_path =  os.path.join(data_path, "derived/auxiliary/remaining_2.csv")
+    final_cleaned_path =  os.path.join(user_path, "derived/py_confirmed.csv")
+    final_remaining_path =  os.path.join(user_path, "derived/py_remaining.csv")
+    components_path =  os.path.join(user_path, "derived/py_graph_components.json")
+    code_path = os.getcwd()
 
 #raise ValueError
 
