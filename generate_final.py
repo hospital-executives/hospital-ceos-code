@@ -87,7 +87,7 @@ new_himss['old_first_component'] = pd.to_numeric(new_himss['old_first_component'
 new_himss['new_contact_uniqueid'] = new_himss['new_contact_uniqueid'].astype(str)
 
 
-# testing / debugging
+# GENERATE FINAL CLEANED DF WITH FLAGS
 new_cleaned = new_himss[new_himss['confirmed']]
 
 himss_path = os.path.join(user_path, "derived/himss_entities_contacts_0517.feather")
@@ -100,12 +100,14 @@ int_key_dict = {float(k): v for k, v in id_to_contact_uniqueid.items()}
 new_cleaned['old_contact_uniqueid'] = new_cleaned['id'].map(int_key_dict)
 new_cleaned['old_contact_uniqueid'] = new_cleaned['old_contact_uniqueid'].astype(float)
 
-new_cleaned['mult_id'] = new_cleaned.apply(
-    lambda row: 1 if row['contact_uniqueid'] != id_to_contact_uniqueid.get(row['id'], None) else 0, axis=1
+new_cleaned['mult_id_obs'] = new_cleaned.apply(
+    lambda row: 1 if row['contact_uniqueid'] != 
+    id_to_contact_uniqueid.get(row['id'], None) else 0, axis=1
 )
 new_cleaned['new_contact_uniqueid']= new_cleaned['new_contact_uniqueid'].astype(float)
-new_cleaned['multname_multid'] = new_cleaned.apply(
-    lambda row: 1 if row['contact_uniqueid'] != row['old_contact_uniqueid'] else 0, axis=1
+new_cleaned['multname_multid_obs'] = new_cleaned.apply(
+    lambda row: 1 if row['contact_uniqueid'] != 
+    row['old_contact_uniqueid'] else 0, axis=1
 )
 
 import re
@@ -126,6 +128,16 @@ mult_name_dict = {contact_id: 1 if count > 1 else 0 for contact_id, count in nam
 int_key_dict = {float(k): v for k, v in mult_name_dict.items()}
 
 new_cleaned['mult_name'] = new_cleaned['contact_uniqueid'].map(int_key_dict)
+
+new_cleaned['mult_id_id'] = new_cleaned.groupby('contact_uniqueid')\
+['mult_id_obs'].transform(lambda x: 1 if (x == 1).any() else 0)
+
+new_cleaned['multname_multid_id'] = new_cleaned.groupby('contact_uniqueid')\
+['multname_multid_obs'].transform(lambda x: 1 if (x == 1).any() else 0)
+
+
+
+# new_cleaned['anomalies'] = new_cleaned[['mult_name', 'mult_id', 'multname_multid']].sum(axis=1)
 
 
 #new_himss.to_feather(final_path)

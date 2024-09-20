@@ -19,8 +19,8 @@ if len(sys.argv) == 8:
 else:
     print('WARNING: Not using Makefile Input')
     # Otherwise, use default file paths
-    confirmed_r = os.path.join(data_path, "derived/r_confirmed.csv")
-    remaining_r =  os.path.join(data_path, "derived/r_remaining.csv")
+    confirmed_r = os.path.join(data_path, "derived/r_confirmed.feather")
+    remaining_r =  os.path.join(data_path, "derived/r_remaining.feather")
     himss_entities_contacts = os.path.join(data_path, 
     "derived/himss_entities_contacts_0517_v1.feather")
     confirmed_1 = os.path.join(data_path, "derived/auxiliary/confirmed_1.csv")

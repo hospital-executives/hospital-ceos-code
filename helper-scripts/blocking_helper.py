@@ -65,6 +65,7 @@ def load_himss(file_path:str):
         A pandas DataFrame containing the processed HIMSS data.
     """
     himss = pd.read_feather(file_path)
+    himss['year'] = himss['year'].astype(int)
     himss = himss[himss['year'] > 2008]
     himss['full_name'] = himss['firstname'].str.cat(himss['lastname'], 
                                                     sep='').str.lower()
