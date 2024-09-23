@@ -765,6 +765,7 @@ remaining_1 <- combined_contacts_corrected_gender %>%
   filter(!is.na(firstname)) %>% 
   filter(!firstname %in% confirmed_names) # leaving 5787 genders
 
+
 ###############################  PART 2 - WGND ###############################
 # Use World Gender-Name Dictionary (WGND) to determine gender
 # Source: https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/YPRQH8
@@ -992,7 +993,7 @@ final_confirmed <- confirmed_6 %>%
   select(firstname, gender)
 
 write.csv(final_confirmed, 
-          file = paste0(nicknames_dictionaries, "gender_test.csv"), 
+          file = paste0(nicknames_dictionaries, "/gender_test.csv"), 
           row.names = FALSE)
 
 # Now use this compiled set of name to gender mappings to map the unknown genders in our dataset (ie those remaining after we infer gender based on salutation)
