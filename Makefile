@@ -35,7 +35,7 @@ HIMSS_NICKNAMES := $(DERIVED_DIR)/auxiliary/himss_nicknames.csv
 HIMSS_ENTITIES_CONTACTS_NEW := $(DERIVED_DIR)/himss_entities_contacts_0517.feather
 
 # updated gender path
-R_GENDER = $(SUPP_DIR)/gender.csv
+R_GENDER = $(DATA_DIR)/nicknames\ dictionaries/gender_test.csv
 UPDATED_GENDER := $(DERIVED_DIR)/auxiliary/updated_gender.csv
 
 # jaro path

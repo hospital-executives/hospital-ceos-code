@@ -35,7 +35,7 @@ columns_to_keep <- c(
   "MNAME", 
   "HOSPN", 
   "MCRNUM",
-  "CBSANAME", 
+  # "CBSANAME", 
   "HRRNAME", 
   "HSANAME", 
   "MADMIN", 
@@ -325,19 +325,22 @@ haentity <- haentity %>%
   mutate(
     # Convert to UTF-8
     entity_zip = stri_trans_general(entity_zip, "latin-ascii"),
+    cbsa = stri_trans_general(cbsa, "latin-ascii"),
     entity_address = stri_trans_general(entity_address, "latin-ascii") %>%
       str_replace_all("-", " ") %>%  # Replace hyphens with a space
-      str_remove_all("[[:punct:]]") %>%  # Remove all punctuation
+      str_remove_all("[^[:alnum:],.\\s]") %>%  # Remove other punctuation except commas, periods, and spaces
       str_to_lower() %>%
       str_squish(),  # Remove extra spaces
     entity_name = stri_trans_general(entity_name, "latin-ascii") %>%
       str_replace_all("-", " ") %>%  # Replace hyphens with a space
-      str_remove_all("[[:punct:]]") %>%  # Remove all punctuation
+      str_remove_all("[^[:alnum:],.\\s]") %>%  # Remove other punctuation except commas, periods, and spaces
       str_to_lower() %>%
       str_squish(),  # Remove extra spaces
     # Extract first five digits of the zip code
     entity_zip_five = str_extract(entity_zip, "^\\d{5}")
   )
+
+#feather file has corruption issues, due to presence of ~ tilde. identified cbsa and website as the problem fields
 
 #Random Qa
 haentity %>% filter(system_id ==39438)
@@ -358,7 +361,7 @@ combined_contacts <- haentitycontact %>%
   left_join(contact,by = c("contactid","year")) %>% 
   left_join(contacttype, by = c("typeid", "year")) %>% 
   mutate(surveyid = coalesce(surveyid.y, surveyid.x)) %>% 
-  select(-surveyid.y, surveyid.x)
+  select(-surveyid.y, -surveyid.x)
 ```
 
 ## Targeted fixes and enhancements
@@ -400,13 +403,16 @@ if (nrow(parsing_issues) > 0) {
   print("No parsing problems detected.")
 }
 
-aha_data <- aha_data %>% 
+aha_data <- aha_data %>%
   select(all_of(columns_to_keep)) %>% 
   rename_all(tolower) %>% 
-  rename(ahanumber = id) %>% 
+  rename(ahanumber = id,
+         latitude_aha = lat,
+         longitude_aha = long) %>% 
   mutate(
     # Convert to UTF-8
     mloczip = stri_trans_general(mloczip, "latin-ascii"),
+    # cbsaname = stri_trans_general(cbsaname, "latin-ascii"),
     mlocaddr = stri_trans_general(mlocaddr, "latin-ascii") %>% 
       str_replace_all("-", " ") %>%  # Replace hyphens with a space
       str_remove_all("[^[:alnum:],.\\s]") %>%  # Remove other punctuation except commas, periods, and spaces
@@ -420,6 +426,7 @@ aha_data <- aha_data %>%
     # Extract first five digits of the zip code
     mloczip_five = str_extract(mloczip, "^\\d{5}")
   )
+
 
 ```
 
@@ -579,73 +586,7 @@ combined_contacts_corrected <- combined_contacts %>%
   select(-fix_firstname, -fix_lastname, -firstname_l, -lastname_l,-is_swapped)
 
 ```
-# Imputing Latitude and Longitude
-Combine the lat and long reported in both the original HIMSS and in the AHA data
-Fill in for entity-years which it's missing (but have it reported later in the dataset)
 
-```{r lat long}
-geo <- haentity %>% 
-  select(year,entity_uniqueid,himss_entityid,system_id,medicarenumber, entity_name, entity_type, entity_address, address2, entity_city,entity_state,entity_zip,latitude,longitude, lat,long)
-
-aha_data %>%
-  group_by(year) %>%
-  summarise(across(c(lat, long),
-                   ~mean(!is.na(.)) * 100,
-                   .names = "{col}_filled_pct"))
-
-geo %>%
-  filter(entity_type %in% c("Hospital")) %>%
-  group_by(year) %>%
-  summarise(across(c(entity_address, latitude, longitude, lat,long),
-                   ~mean(!is.na(.)) * 100,
-                   .names = "{col}_filled_pct"))
-
-#AHA data not pulling in correctly. until that join fixed, use the latitude / longitude reported in HIMSS. Create a separate table that is just addresses and lat/long, and use that to join back to main HAEentity table to backfill for prior year's addresses. 
-
-geo <- haentity %>% 
-  filter(!is.na(latitude)) %>% 
-  select(entity_address, address2, entity_city, entity_state, entity_zip, latitude, longitude) %>% 
-  unique()
-
-geo_avg <- haentity %>%
-  #don't include entries where lat/long was not filled in
-  filter(!is.na(latitude)) %>% 
-  select(entity_address, entity_city, entity_state, entity_zip, latitude, longitude) %>% 
-  unique() %>% 
-  group_by(entity_address, entity_city, entity_state, entity_zip) %>%
-  #this field is stored as character, convert to numeric so we can take the mean
-  mutate(
-    latitude = as.numeric(latitude),
-    longitude = as.numeric(longitude)
-  ) %>% 
-  #over the years, the precision of the lat/long changed. take the average
-  summarise(
-    latitude = mean(latitude, na.rm = TRUE),
-    longitude = mean(longitude, na.rm = TRUE)
-    ) 
-
-haentity_filled <- haentity %>%
-  mutate(
-    latitude = as.numeric(latitude),
-    longitude = as.numeric(longitude)
-  ) %>% 
-  left_join(geo_avg, by = c("entity_address", "entity_city", "entity_state", "entity_zip")) %>%
-  mutate(
-    latitude = coalesce(latitude.x, latitude.y),
-    longitude = coalesce(longitude.x, longitude.y)
-  ) %>%
-  select(-latitude.x, -latitude.y, -longitude.x, -longitude.y)
-
-haentity_filled %>% 
-  group_by(year) %>%
-  summarise(across(c(entity_address, latitude, longitude),
-                   ~mean(!is.na(.)) * 100,
-                   .names = "{col}_filled_pct"))
-
-check <- haentity_filled %>% 
-  select(entity_address, entity_city, entity_state, entity_zip, latitude, longitude) 
-
-```
 # Imputing Gender
 First, use the HIMSS reported salutations to infer gender for contacts. 
 Second, for contacts without salutations (or salutations that don't signal gender, like Dr.) use published name dictionaries to create a set of name to gender mappings, and infer gender from the first name of the contact.
@@ -1009,9 +950,21 @@ combined_contacts_corrected_gender <- combined_contacts_corrected_gender %>%
 ## Compile final complete entity+contact table
 
 ```{r final join to create table}
+
+# This outputs a fully compiled HIMSS + AHA dataset, with an obs for each entity + year + role + contact
 entity_contacts <- combined_contacts_corrected_gender %>% 
   mutate(year = as.character(year)) %>% 
   left_join(haentity, by = c("himss_entityid", "year"))
+#This next feeds into Katherine's scripts, which drop non-Active role types, and filter out contacts with low quality unique ids
+
+# This outputs a fully compiled HIMSS + AHA dataset, with an obs for each entity + year + role, ONLY for non-ACTIVE jobs. This is the complement to the dataset that Katherine ultimately creates. 
+
+entity_roles <- entity_contacts %>% 
+    mutate(status = str_trim(status)) %>%  # Remove leading/trailing spaces
+  filter(!status %in% c("ACTIVE","Active","Contact Corporate","Ontario Contact","RHA Level","***VALIDATION NEEDED***")) %>% 
+  filter(is.na(firstname)) %>%  #There's 16 contacts who seem to be incorrectly labelled "Not Reported"
+  select(-contactid, -salutation,-firstname, -middleinitial,-lastname, -title, -phone, -ext,-email,-credentials, -contact_uniqueid,-full_name, -gender) #remove contact fields
+
 ```
 
 ```{r export to dropbox}
@@ -1024,5 +977,115 @@ write_feather(entity_contacts, file_path_feather)
 # file_name <- "himss_entities_only_0517"
 # file_path_feather <- paste0(user_directory,project_directory,"/derived/",file_name,".feather")
 # write_feather(haentity, file_path_feather)
+
+```
+
+```{r figure out file corruption issue}
+#haentity: cbsa and website
+# 
+# 
+# # Assuming your data frame is named 'entity_contacts'
+# # df <- entity_contacts
+# df <- aha_data
+# 
+# # df <- df %>%
+# #   mutate(cbsaname = str_replace_all(cbsaname, "ñ", "n"))
+# 
+# 
+# # Step 1: Convert factor columns to character
+# factor_cols <- sapply(df, is.factor)
+# df[factor_cols] <- lapply(df[factor_cols], as.character)
+# 
+# # Step 2: Identify character columns with non-ASCII characters
+# char_cols <- names(df)[sapply(df, is.character)]
+# 
+# non_ascii_cols <- char_cols[sapply(df[char_cols], function(x) {
+#   any(grepl("[^\x01-\x7F]", x, useBytes = TRUE), na.rm = TRUE)
+# })]
+# 
+# # Display the columns with non-ASCII characters
+# cat("Columns containing non-ASCII characters:\n")
+# print(non_ascii_cols)
+# 
+# # Step 3: Transliterate non-ASCII characters in identified columns
+# for (col in non_ascii_cols) {
+#   df[[col]] <- stri_trans_general(df[[col]], "Latin-ASCII")
+# }
+# 
+# # Step 4: Verify that non-ASCII characters have been handled
+# verification <- sapply(df[non_ascii_cols], function(x) {
+#   any(grepl("[^\x01-\x7F]", x, useBytes = TRUE), na.rm = TRUE)
+# })
+# 
+# cat("Verification that non-ASCII characters are removed (should be FALSE):\n")
+# print(verification)
+
+```
+
+# Imputing Latitude and Longitude
+Combine the lat and long reported in both the original HIMSS and in the AHA data
+Fill in for entity-years which it's missing (but have it reported later in the dataset)
+
+```{r lat long}
+# geo <- haentity %>% 
+#   select(year,entity_uniqueid,himss_entityid,system_id,medicarenumber, entity_name, entity_type, entity_address, address2, entity_city,entity_state,entity_zip,latitude,longitude, lat,long)
+# 
+# aha_data %>%
+#   group_by(year) %>%
+#   summarise(across(c(lat, long),
+#                    ~mean(!is.na(.)) * 100,
+#                    .names = "{col}_filled_pct"))
+# 
+# geo %>%
+#   filter(entity_type %in% c("Hospital")) %>%
+#   group_by(year) %>%
+#   summarise(across(c(entity_address, latitude, longitude, lat,long),
+#                    ~mean(!is.na(.)) * 100,
+#                    .names = "{col}_filled_pct"))
+# 
+# #AHA data not pulling in correctly. until that join fixed, use the latitude / longitude reported in HIMSS. Create a separate table that is just addresses and lat/long, and use that to join back to main HAEentity table to backfill for prior year's addresses. 
+# 
+# geo <- haentity %>% 
+#   filter(!is.na(latitude)) %>% 
+#   select(entity_address, address2, entity_city, entity_state, entity_zip, latitude, longitude) %>% 
+#   unique()
+# 
+# geo_avg <- haentity %>%
+#   #don't include entries where lat/long was not filled in
+#   filter(!is.na(latitude)) %>% 
+#   select(entity_address, entity_city, entity_state, entity_zip, latitude, longitude) %>% 
+#   unique() %>% 
+#   group_by(entity_address, entity_city, entity_state, entity_zip) %>%
+#   #this field is stored as character, convert to numeric so we can take the mean
+#   mutate(
+#     latitude = as.numeric(latitude),
+#     longitude = as.numeric(longitude)
+#   ) %>% 
+#   #over the years, the precision of the lat/long changed. take the average
+#   summarise(
+#     latitude = mean(latitude, na.rm = TRUE),
+#     longitude = mean(longitude, na.rm = TRUE)
+#     ) 
+# 
+# haentity_filled <- haentity %>%
+#   mutate(
+#     latitude = as.numeric(latitude),
+#     longitude = as.numeric(longitude)
+#   ) %>% 
+#   left_join(geo_avg, by = c("entity_address", "entity_city", "entity_state", "entity_zip")) %>%
+#   mutate(
+#     latitude = coalesce(latitude.x, latitude.y),
+#     longitude = coalesce(longitude.x, longitude.y)
+#   ) %>%
+#   select(-latitude.x, -latitude.y, -longitude.x, -longitude.y)
+# 
+# haentity_filled %>% 
+#   group_by(year) %>%
+#   summarise(across(c(entity_address, latitude, longitude),
+#                    ~mean(!is.na(.)) * 100,
+#                    .names = "{col}_filled_pct"))
+# 
+# check <- haentity_filled %>% 
+#   select(entity_address, entity_city, entity_state, entity_zip, latitude, longitude) 
 
 ```
