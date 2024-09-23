@@ -38,9 +38,8 @@ converted_dict = {key: [int(item) for item in value]
                   if len(value) > 0}
 
 precomputed_max = {
-    key: max(value_list) 
-    for key, value_list in converted_dict.items() 
-    if any(val > int(key) for val in value_list)
+    key: key if int(key) > max(value_list) else max(value_list)
+    for key, value_list in converted_dict.items()
 }
 
 def map_to_max(id_value):
@@ -94,20 +93,23 @@ himss_path = os.path.join(user_path, "derived/himss_entities_contacts_0517.feath
 himss = pd.read_feather(himss_path)
 
 himss['id'] == himss['id'].astype(float)
-id_to_contact_uniqueid = himss.set_index('id')['contact_uniqueid'].to_dict()
-int_key_dict = {float(k): v for k, v in id_to_contact_uniqueid.items()}
+himss['contact_uniqueid'] == himss['contact_uniqueid'].astype(float)
 
-new_cleaned['old_contact_uniqueid'] = new_cleaned['id'].map(int_key_dict)
+id_to_contact_uniqueid = himss.set_index('id')['contact_uniqueid'].to_dict()
+float_dict = {float(k): float(v) for k, v in id_to_contact_uniqueid.items() if 
+k is not None and v is not None}
+
+new_cleaned['old_contact_uniqueid'] = new_cleaned['id'].map(float_dict)
 new_cleaned['old_contact_uniqueid'] = new_cleaned['old_contact_uniqueid'].astype(float)
 
 new_cleaned['mult_id_obs'] = new_cleaned.apply(
     lambda row: 1 if row['contact_uniqueid'] != 
-    id_to_contact_uniqueid.get(row['id'], None) else 0, axis=1
+    float_dict.get(row['id'], None) else 0, axis=1
 )
 new_cleaned['new_contact_uniqueid']= new_cleaned['new_contact_uniqueid'].astype(float)
 new_cleaned['multname_multid_obs'] = new_cleaned.apply(
     lambda row: 1 if row['contact_uniqueid'] != 
-    row['old_contact_uniqueid'] else 0, axis=1
+    row['new_contact_uniqueid'] else 0, axis=1
 )
 
 import re
@@ -132,9 +134,15 @@ new_cleaned['mult_name'] = new_cleaned['contact_uniqueid'].map(int_key_dict)
 new_cleaned['mult_id_id'] = new_cleaned.groupby('contact_uniqueid')\
 ['mult_id_obs'].transform(lambda x: 1 if (x == 1).any() else 0)
 
-new_cleaned['multname_multid_id'] = new_cleaned.groupby('contact_uniqueid')\
+new_cleaned['multname_multid_id'] = new_cleaned.groupby('new_contact_uniqueid')\
 ['multname_multid_obs'].transform(lambda x: 1 if (x == 1).any() else 0)
 
+final_df = new_cleaned.copy()
+final_df['contact_uniqueid'] = final_df['new_contact_uniqueid']
+final_df = final_df.drop('old_contact_uniqueid', axis=1)
+final_df = final_df.drop('new_contact_uniqueid', axis=1)
+
+final_df.to_stata('final_confirmed.dta', write_index=False)
 
 
 # new_cleaned['anomalies'] = new_cleaned[['mult_name', 'mult_id', 'multname_multid']].sum(axis=1)
