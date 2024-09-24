@@ -865,3 +865,21 @@ def find_matches(df1, df2, merge_columns):
     
     return all_matches
 
+def update_gender(df, name_gender_map):
+    # Normalize 'firstname' to ensure consistency (optional but recommended)
+    df['firstname_normalized'] = df['firstname'].str.strip().str.title()
+    
+    if 'gender' not in df.columns:
+        # Create 'gender' column by mapping 'firstname_normalized'
+        df['gender'] = df['firstname_normalized'].map(name_gender_map)
+    else:
+        # Identify rows where 'gender' is missing
+        missing_gender = df['gender'].isna()
+        # Fill missing 'gender' values by mapping 'firstname_normalized'
+        df.loc[missing_gender, 'gender'] = df.loc[missing_gender, 'firstname_normalized'].map(name_gender_map)
+    
+    # Drop the temporary 'firstname_normalized' column
+    df.drop('firstname_normalized', axis=1, inplace=True)
+    
+    return df
+

@@ -85,6 +85,7 @@ new_himss['old_first_component'] = pd.to_numeric(new_himss['old_first_component'
  errors='coerce')
 new_himss['new_contact_uniqueid'] = new_himss['new_contact_uniqueid'].astype(str)
 
+new_himss.to_feather(final_path)
 
 # GENERATE FINAL CLEANED DF WITH FLAGS
 new_cleaned = new_himss[new_himss['confirmed']]
@@ -142,7 +143,21 @@ final_df['contact_uniqueid'] = final_df['new_contact_uniqueid']
 final_df = final_df.drop('old_contact_uniqueid', axis=1)
 final_df = final_df.drop('new_contact_uniqueid', axis=1)
 
-final_df.to_stata('final_confirmed.dta', write_index=False)
+def convert_to_str_or_none(value):
+    if isinstance(value, str):
+        return value
+    elif pd.isnull(value):
+        return None
+    else:
+        # Convert other types to string
+        return str(value)
+
+# Apply the function to all object columns
+object_columns = final_df.select_dtypes(include=['object']).columns.tolist()
+for col in object_columns:
+    final_df[col] = final_df[col].apply(convert_to_str_or_none)
+
+final_df.to_stata('final_confirmed.dta', write_index=False, version=118)
 
 
 # new_cleaned['anomalies'] = new_cleaned[['mult_name', 'mult_id', 'multname_multid']].sum(axis=1)

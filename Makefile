@@ -64,7 +64,7 @@ PANDOC_PATH = /Applications/RStudio.app/Contents/Resources/app/quarto/bin/tools/
 
 $(HIMSS_ENTITIES_CONTACTS) $(R_GENDER): compile_himss.Rmd
 	export RSTUDIO_PANDOC=$(PANDOC_PATH); \
-	Rscript -e "rmarkdown::render('compile_himss.Rmd', output_file='$(HIMSS_ENTITIES_CONTACTS)', \
+	Rscript -e "rmarkdown::render('compile_himss.Rmd', \
 	params = list(code_dir = '$(CODE_DIR)', r_gender = '$(R_GENDER)'))"
 
 # RUN R SCRIPT
@@ -129,7 +129,7 @@ $(FINAL_HIMSS): $(FINAL_CLEANED) $(FINAL_REMAINING) $(GRAPH_COMPS)
 
 
 # to run to generate blocks: 
-#make /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/auxiliary/confirmed_2.csv /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/auxiliary/remaining_2.csv
+# make /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/auxiliary/confirmed_2.csv /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/auxiliary/remaining_2.csv
 # confirmed r: 
 # /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/r_confirmed.feather
 # updated gender:

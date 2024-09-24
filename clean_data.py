@@ -93,6 +93,19 @@ cleaned_remainder['firstname'] = cleaned_remainder.apply(replace_firstname, axis
 cleaned_himss['firstname'] = cleaned_himss.apply(replace_firstname, axis=1)
 cleaned_confirmed['firstname'] = cleaned_confirmed.apply(replace_firstname, axis=1)
 
+lastname_replacements = blocking_helper.generate_lastname_mapping(
+        cleaned_confirmed, lastname_to_contact_count, firstname_to_lastnames, 
+        lastname_to_firstnames)
+def replace_lastname(row):
+    return lastname_replacements.get((row['lastname'], row['firstname']), row['lastname'])
+
+cleaned_himss['old_lastname'] = cleaned_himss['lastname']
+cleaned_confirmed['old_lastname'] = cleaned_confirmed['lastname']
+cleaned_remainder['old_lastname'] = cleaned_remainder['lastname']
+cleaned_remainder['lastname'] = cleaned_remainder.apply(replace_lastname, axis=1)
+cleaned_himss['lastname'] = cleaned_himss.apply(replace_lastname, axis=1)
+cleaned_confirmed['lastname'] = cleaned_confirmed.apply(replace_lastname, axis=1)
+
 cleaned_confirmed.to_csv(str(confirmed_1))
 cleaned_remainder.to_csv(str(remaining_1))
 cleaned_himss.to_csv(str(himss_1))

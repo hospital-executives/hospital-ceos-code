@@ -1,7 +1,8 @@
 import os 
 import sys
 
-data_dir = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data"
+data_path = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data"
+data_dir = data_path
 # Get command-line arguments
 if len(sys.argv) == 9:
     himss_path = sys.argv[1]
@@ -28,6 +29,7 @@ import pandas as pd
 import networkx as nx
 sys.path.append(os.path.join(os.path.dirname(__file__), 'helper-scripts'))
 import blocking_helper
+import cleaned_confirmed_helper as cc
 
 # LOAD DFS
 #print(himss_path)
@@ -66,16 +68,16 @@ himss_nicknames = himss_by_nickname[himss_by_nickname['Inside'].notna()]
 himss_nicknames.loc[:, 'Before'] = himss_nicknames['Before'].str.lower()
 himss_nicknames.loc[:, 'Inside'] = himss_nicknames['Inside'].str.lower()
 
-himss_gender = pd.merge(cleaned_himss, gender_df_unique, on="firstname", 
-                        how="left")
-confirmed_gender = pd.merge(cleaned_confirmed, gender_df_unique, on="firstname", 
-                            how="left")
-remainder_gender = pd.merge(cleaned_remainder, gender_df_unique, on="firstname", 
-                            how="left")
+name_gender_map = pd.Series(gender_df_unique.gender.values, 
+index=gender_df_unique.firstname).to_dict()
 
-cleaned_himss = himss_gender
-cleaned_confirmed = confirmed_gender
-cleaned_remained = remainder_gender
+dataframes = [cleaned_himss, cleaned_confirmed, cleaned_remainder]
+
+# Update each DataFrame
+for i, df in enumerate(dataframes):
+    dataframes[i] = cc.update_gender(df, name_gender_map)
+
+cleaned_remained = cleaned_remainder.copy()
 
 # add metaphone codes
 cleaned_confirmed['first_meta'] = cleaned_confirmed['firstname'].apply(blocking_helper.get_metaphone)
