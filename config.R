@@ -17,6 +17,7 @@ library(arrow) # for gender assignment code
 library(stringdist) # for gender assignment code
 library(data.table) # for gender assignment code
 library(phonics) # for gender assignment code
+library(scales) # improved plotting
 
 # library(dplyr) in tidyverse
 # library(ggplot2) in tidyverse
