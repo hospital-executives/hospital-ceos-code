@@ -100,7 +100,7 @@ compile_himss:
 # Step 2: Manual assignment
 manual_assignment:
 	export RSTUDIO_PANDOC=$(PANDOC_PATH); \
-	Rscript -e "rmarkdown::render(\"manual_assignment.Rmd\", \
+	Rscript -e "rmarkdown::render(\"clean_data.Rmd\", \
 	params = list(code_path = \"$(CODE_DIR)\", \
 	data_path = \"$(DATA_DIR)\", \
 	himss_entity_contacts = \"$(HIMSS_ENTITIES_CONTACTS)\"))"
@@ -134,7 +134,7 @@ generate_blocks:
 
 # Step 8: Generate final cleaned data
 generate_final:
-	python3 -u generate_clean_df.py "$(CONFIRMED_2)" "$(REMAINING_2)" \
+	python3 -u fuzzy_matching.py "$(CONFIRMED_2)" "$(REMAINING_2)" \
 	"$(PY_CLEANED)" "$(PY_REMAINING)" "$(GRAPH_COMPS)" \
 	"$(DATA_DIR)" "$(CODE_DIR)"
 
