@@ -4,6 +4,7 @@ import json
 import pandas as pd
 import numpy as np
 from itertools import combinations
+import re
 
 user_path = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data"
 
@@ -12,12 +13,19 @@ if len(sys.argv) == 5:
     confirmed_path = sys.argv[1]
     remainder_path = sys.argv[2]
     json_path = sys.argv[3]
-    final_path = sys.argv[4]
+    final_himss_path = sys.argv[4]
+    final_confirmed_path = sys.argv[5]
+    himss_path = sys.argv[6]
+
 else: 
+    print('WARNING: not using Makefile inputs')
     confirmed_path =  os.path.join(user_path, "derived/py_confirmed.csv")
     remainder_path =  os.path.join(user_path, "derived/py_remaining.csv")
     json_path =  os.path.join(user_path, "derived/py_graph_components.json")
-    final_path = os.path.join(user_path, "derived/final_himss.feather")
+    final_himss_path = os.path.join(user_path, "derived/final_himss.feather")
+    final_confirmed_path = os.path.join(user_path, "derived/final_confirmed.dta")
+    himss_path = os.path.join(user_path, 
+    "derived/himss_entities_contacts_0517_v1.feather")
 
 #### LOAD DATA ####
 cleaned = pd.read_csv(confirmed_path)
@@ -32,7 +40,7 @@ new_himss = new_himss[new_himss['first_component'] != 'Unknown']
 with open(json_path, 'r') as json_file:
     components_dict = json.load(json_file)  
 
-# Reassign IDs
+#### REASSIGN IDS ####
 converted_dict = {key: [int(item) for item in value] 
                   for key, value in components_dict.items() 
                   if len(value) > 0}
@@ -47,7 +55,7 @@ def map_to_max(id_value):
 
 new_himss['new_contact_uniqueid'] = new_himss['contact_uniqueid'].astype(str).map(map_to_max)
 
-# assign final blocks
+#### ASSIGN FINAL BLOCKS ####
 new_himss['first_component'] = new_himss['first_component'].astype(int)
 max_first =  new_himss['first_component'].max()
 new_himss['last_component'] = new_himss['last_component'] + max_first
@@ -57,7 +65,6 @@ new_himss['final_block'] = new_himss.apply(
 
 name_to_meta_dict = new_himss.groupby('first_meta')['firstname'].apply(set).to_dict()
 
-# alternatively can just reassign all of these to the male/na block
 max_confirmed =  new_himss['final_block'].max()
 specific_names = ["terry", "theresa", "terrance", "terrence", "teresa", "terri",
                   "tereza", "terrie", "therese", "teressa", "terese", "teri",
@@ -76,6 +83,7 @@ specific_names = ["KRS", "KRSTN", "KRST", "KRSTFR"]
 new_himss.loc[new_himss['first_meta'].isin(specific_names), 
                     'final_block'] = max_confirmed + 3
 
+#### CLEAN AND EXPORT FINAL CLEANED HIMSS FILE ####
 new_himss['medicarenumber'] = pd.to_numeric(new_himss['medicarenumber'], 
 errors='coerce')
 new_himss['ahanumber'] = new_himss['ahanumber'].astype(str)
@@ -85,12 +93,10 @@ new_himss['old_first_component'] = pd.to_numeric(new_himss['old_first_component'
  errors='coerce')
 new_himss['new_contact_uniqueid'] = new_himss['new_contact_uniqueid'].astype(str)
 
-new_himss.to_feather(final_path)
+new_himss.to_feather(final_himss_path)
 
-# GENERATE FINAL CLEANED DF WITH FLAGS
+#### GENERATE FINAL CLEAN DF WITH FLAGS ####
 new_cleaned = new_himss[new_himss['confirmed']]
-
-himss_path = os.path.join(user_path, "derived/himss_entities_contacts_0517.feather")
 himss = pd.read_feather(himss_path)
 
 himss['id'] == himss['id'].astype(float)
@@ -113,7 +119,6 @@ new_cleaned['multname_multid_obs'] = new_cleaned.apply(
     row['new_contact_uniqueid'] else 0, axis=1
 )
 
-import re
 
 # add mult name
 def clean_fullname(name):
@@ -157,10 +162,4 @@ object_columns = final_df.select_dtypes(include=['object']).columns.tolist()
 for col in object_columns:
     final_df[col] = final_df[col].apply(convert_to_str_or_none)
 
-final_df.to_stata('final_confirmed.dta', write_index=False, version=118)
-
-
-# new_cleaned['anomalies'] = new_cleaned[['mult_name', 'mult_id', 'multname_multid']].sum(axis=1)
-
-
-#new_himss.to_feather(final_path)
+final_df.to_stata(final_confirmed_path, write_index=False, version=118)

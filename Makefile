@@ -61,12 +61,14 @@ GRAPH_COMPS := $(DERIVED_DIR)/py_graph_components.json
 
 # Final output
 FINAL_HIMSS := $(DERIVED_DIR)/final_himss.feather
+FINAL_CONFIRMED := $(DERIVED_DIR)/final_confirmed.dta
 
 # Other
 PANDOC_PATH := /Applications/RStudio.app/Contents/Resources/app/quarto/bin/tools/x86_64
 
 # Define phony targets
-.PHONY: all compile_himss manual_assignment clean_data update_gender generate_jaro generate_digraphs generate_blocks generate_final final_himss
+.PHONY: all compile_himss manual_assignment clean_data update_gender \
+generate_jaro generate_digraphs generate_blocks generate_final
 
 # Default target
 all: final_himss
@@ -126,7 +128,8 @@ generate_digraphs:
 # Step 7: Generate blocks
 generate_blocks:
 	python3 generate_blocks.py "$(HIMSS_ENTITIES_CONTACTS)" "$(CONFIRMED_1)" \
-	"$(REMAINING_1)" "$(UPDATED_GENDER)" "$(HIMSS_1)" "$(CONFIRMED_2)" "$(REMAINING_2)" "$(DATA_DIR)"
+	"$(REMAINING_1)" "$(UPDATED_GENDER)" "$(HIMSS_1)" "$(CONFIRMED_2)" \
+	"$(REMAINING_2)" "$(DATA_DIR)"
 
 # Step 8: Generate final cleaned data
 generate_final:
@@ -134,13 +137,17 @@ generate_final:
 	"$(FINAL_CLEANED)" "$(FINAL_REMAINING)" "$(GRAPH_COMPS)" \
 	"$(DATA_DIR)" "$(CODE_DIR)"
 
-# Step 9: Generate final HIMSS dataset
+# Step 9: Generate final HIMSS dataset and cleaned dta with flags
 final_himss:
-	@echo "Generating final_himss..."
 	python3 generate_final.py "$(FINAL_CLEANED)" "$(FINAL_REMAINING)" \
-	"$(GRAPH_COMPS)" "$(FINAL_HIMSS)"
-	@echo "final_himss created!"
+	"$(GRAPH_COMPS)" "$(FINAL_HIMSS)" "$(FINAL_CONFIRMED)" \
+	"$(HIMSS_ENTITIES_CONTACTS)"
 
+# debugging code
+debug:
+	python3 generate_final.py "$(FINAL_CLEANED)" "$(FINAL_REMAINING)" \
+	"$(GRAPH_COMPS)" "$(FINAL_HIMSS)" "$(FINAL_CONFIRMED)" \
+	"$(HIMSS_ENTITIES_CONTACTS)"
 
 # /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/
 
