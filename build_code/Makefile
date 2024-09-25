@@ -23,41 +23,42 @@ CODE_DIR := $(CURDIR)
 # Define Data Directories using USER_DIR
 DATA_DIR := $(USER_DIR)/_data
 DERIVED_DIR := $(DATA_DIR)/derived
+AUX_DIR := $(DERIVED_DIR)/auxiliary
 SUPP_DIR := $(DATA_DIR)/supplemental
 
 # Define File Paths
 # Manual paths
 MANUAL_PATH := $(CODE_DIR)/manual_assignment.Rmd
 HIMSS_ENTITIES_CONTACTS := $(DERIVED_DIR)/himss_entities_contacts_0517_v1.feather
-OUTLIERS := $(DERIVED_DIR)/auxiliary/outliers.csv
-CONFIRMED_R := $(DERIVED_DIR)/r_confirmed.feather
-REMAINING_R := $(DERIVED_DIR)/r_remaining.feather
+OUTLIERS := $(AUX_DIR)/auxiliary/outliers.csv
+CONFIRMED_R := $(AUX_DIR)/r_confirmed.feather
+REMAINING_R := $(AUX_DIR)/r_remaining.feather
 
 # Clean data paths
-CONFIRMED_1 := $(DERIVED_DIR)/auxiliary/confirmed_1.csv
-REMAINING_1 := $(DERIVED_DIR)/auxiliary/remaining_1.csv
-HIMSS_1 := $(DERIVED_DIR)/auxiliary/himss_1.csv
-HIMSS_NICKNAMES := $(DERIVED_DIR)/auxiliary/himss_nicknames.csv
+CONFIRMED_1 := $(AUX_DIR)/confirmed_1.csv
+REMAINING_1 := $(AUX_DIR)/remaining_1.csv
+HIMSS_1 := $(AUX_DIR)/himss_1.csv
+HIMSS_NICKNAMES := $(AUX_DIR)/himss_nicknames.csv
 
 # Updated gender path
 R_GENDER := $(DATA_DIR)/nicknames dictionaries/gender_test.csv
-UPDATED_GENDER := $(DERIVED_DIR)/auxiliary/updated_gender.csv
+UPDATED_GENDER := $(AUX_DIR)/updated_gender.csv
 
 # Jaro path
-JARO := $(DERIVED_DIR)/auxiliary/jaro_output.csv
+JARO := $(AUX_DIR)/jaro_output.csv
 
 # Digraph paths
-DIGRAPHNAME := $(DERIVED_DIR)/auxiliary/digraphname.csv
-DIGRAPHMETA := $(DERIVED_DIR)/auxiliary/digraphmeta.csv
+DIGRAPHNAME := $(AUX_DIR)/digraphname.csv
+DIGRAPHMETA := $(AUX_DIR)/digraphmeta.csv
 
 # Block paths
-CONFIRMED_2 := $(DERIVED_DIR)/auxiliary/confirmed_2.csv
-REMAINING_2 := $(DERIVED_DIR)/auxiliary/remaining_2.csv
+CONFIRMED_2 := $(AUX_DIR)/confirmed_2.csv
+REMAINING_2 := $(AUX_DIR)/remaining_2.csv
 
 # Cleaned paths
-FINAL_CLEANED := $(DERIVED_DIR)/py_confirmed.csv
-FINAL_REMAINING := $(DERIVED_DIR)/py_remaining.csv
-GRAPH_COMPS := $(DERIVED_DIR)/py_graph_components.json
+PY_CLEANED := $(AUX_DIR)/py_confirmed.csv
+PY_REMAINING := $(AUX_DIR)/py_remaining.csv
+GRAPH_COMPS := $(AUX_DIR)/py_graph_components.json
 
 # Final output
 FINAL_HIMSS := $(DERIVED_DIR)/final_himss.feather
@@ -99,7 +100,7 @@ compile_himss:
 # Step 2: Manual assignment
 manual_assignment:
 	export RSTUDIO_PANDOC=$(PANDOC_PATH); \
-	Rscript -e "rmarkdown::render(\"manual_assignment.Rmd\", \
+	Rscript -e "rmarkdown::render(\"clean_data.Rmd\", \
 	params = list(code_path = \"$(CODE_DIR)\", \
 	data_path = \"$(DATA_DIR)\", \
 	himss_entity_contacts = \"$(HIMSS_ENTITIES_CONTACTS)\"))"
@@ -133,19 +134,19 @@ generate_blocks:
 
 # Step 8: Generate final cleaned data
 generate_final:
-	python3 -u generate_clean_df.py "$(CONFIRMED_2)" "$(REMAINING_2)" \
-	"$(FINAL_CLEANED)" "$(FINAL_REMAINING)" "$(GRAPH_COMPS)" \
+	python3 -u fuzzy_matching.py "$(CONFIRMED_2)" "$(REMAINING_2)" \
+	"$(PY_CLEANED)" "$(PY_REMAINING)" "$(GRAPH_COMPS)" \
 	"$(DATA_DIR)" "$(CODE_DIR)"
 
 # Step 9: Generate final HIMSS dataset and cleaned dta with flags
 final_himss:
-	python3 generate_final.py "$(FINAL_CLEANED)" "$(FINAL_REMAINING)" \
+	python3 generate_final.py "$(PY_CLEANED)" "$(PY_REMAINING)" \
 	"$(GRAPH_COMPS)" "$(FINAL_HIMSS)" "$(FINAL_CONFIRMED)" \
 	"$(HIMSS_ENTITIES_CONTACTS)"
 
 # debugging code
 debug:
-	python3 generate_final.py "$(FINAL_CLEANED)" "$(FINAL_REMAINING)" \
+	python3 generate_final.py "$(PY_CLEANED)" "$(PY_REMAINING)" \
 	"$(GRAPH_COMPS)" "$(FINAL_HIMSS)" "$(FINAL_CONFIRMED)" \
 	"$(HIMSS_ENTITIES_CONTACTS)"
 
