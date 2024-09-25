@@ -189,11 +189,11 @@ one_name_m_ids_remaining <- final_remaining %>% #18,979 remaining
 
 final_confirmed <- final_confirmed %>%
   select(-c(add_list, entity_name_list, entityid_list))
-write_feather(final_confirmed, paste0(data_path, "derived/r_confirmed.feather"))
+write_feather(final_confirmed, paste0(data_path, "derived/auxiliary/r_confirmed.feather"))
 
 final_remaining <- final_remaining %>%
   select(-c(add_list, entity_name_list, entityid_list))
-write_feather(final_remaining, paste0(data_path, "derived/r_remaining.feather"))
+write_feather(final_remaining, paste0(data_path, "derived/auxiliary/r_remaining.feather"))
 
 
 ```
