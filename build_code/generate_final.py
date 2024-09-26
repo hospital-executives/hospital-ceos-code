@@ -9,7 +9,7 @@ import re
 user_path = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data"
 
 #### SET VARIABLES ####
-if len(sys.argv) == 5:
+if len(sys.argv) == 7:
     confirmed_path = sys.argv[1]
     remainder_path = sys.argv[2]
     json_path = sys.argv[3]

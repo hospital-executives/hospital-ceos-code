@@ -150,6 +150,12 @@ debug:
 	"$(GRAPH_COMPS)" "$(FINAL_HIMSS)" "$(FINAL_CONFIRMED)" \
 	"$(HIMSS_ENTITIES_CONTACTS)"
 
+
+final_himss_manual:
+	python3 generate_final.py "$(PY_CLEANED)" "$(PY_REMAINING)" \
+	"$(GRAPH_COMPS)" "$(FINAL_HIMSS)" "$(FINAL_CONFIRMED)" \
+	"$(HIMSS_ENTITIES_CONTACTS)"
+
 # /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/
 
 
