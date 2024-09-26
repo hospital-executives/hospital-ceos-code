@@ -37,7 +37,7 @@ cleaned_r_path = str(confirmed_r)
 remaining_r_path = str(remaining_r)
 himss_path = str(himss_entities_contacts)
 
-sys.path.append(os.path.join(os.path.dirname(__file__), 'helper-scripts'))
+sys.path.append(os.path.join(os.path.dirname(__file__), 'helper_scripts'))
 
 # LOAD HELPER FILES
 import blocking_helper

@@ -27,7 +27,7 @@ else:
 
 #raise ValueError
 
-sys.path.append(os.path.join(os.path.dirname(__file__), 'helper-scripts'))
+sys.path.append(os.path.join(os.path.dirname(__file__), 'helper_scripts'))
 import blocking_helper
 import cleaned_confirmed_helper as cc
 
