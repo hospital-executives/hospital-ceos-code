@@ -348,6 +348,7 @@ merged_df = pd.merge(pair_results_first
 test = merged_df[merged_df['_merge'] == 'left_only'].drop(columns=['_merge'])
 test = test.loc[:, ~test.columns.str.endswith('_y')]
 test.columns = test.columns.str.replace('_x$', '', regex=True)
+test = cc.update_results(test) 
 
 ## need to determine which cases are clear
 final_confirmed_ids = set(cleaned_df['contact_uniqueid'])
@@ -400,8 +401,28 @@ cleaned_remaining6 = cleaned_remaining5[~(
     (cleaned_remaining5['shared_entity_ids_flag']) |
      (cleaned_remaining5['shared_names_flag'])))]
 
-test_graph, cleaned_remaining7 = cc.clean_results_pt4(test_graph, cleaned_remaining6,
+cleaned_remaining7 = cleaned_remaining6[
+    ~(((cleaned_remaining6['lastname_lev_distance'] > 2) 
+    | (cleaned_remaining6['lastname_jw_distance'] <.8)) & 
+    (cleaned_remaining6['both_F_and_M_present']))]
+
+## tentative rules - might need more edge cases
+#cleaned_remaining7[
+    #(cleaned_remaining7['both_F_and_M_present']) &
+    #(cleaned_remaining7['shared_states'].apply(len) == 0) &
+    #~(cleaned_remaining7['shared_system_ids_flag'])]
+
+
+test_graph, cleaned_remaining8 = cc.clean_results_pt4(test_graph, cleaned_remaining7,
 new_himss)
+
+# remaining are in cleaned_remaining8 or in remaining_a or in outliers
+remaining_a_ids = set(pd.concat([remaining_a['contact_id1'],
+                                remaining_a['contact_id2']]))
+remaining_b_ids = set(pd.concat([cleaned_remaining7['contact_id1'],
+                                cleaned_remaining7['contact_id2']]))
+
+all_remaining_ids = outlier_ids.union(remaining_a_ids).union(remaining_b_ids)
 
 remaining_ids = set(cleaned_df['contact_uniqueid'].unique()) - \
                 confirmed_ids - set(test_graph.nodes())
@@ -413,7 +434,7 @@ G1_subgraph = confirmed_graph.subgraph(common_nodes).copy()
 G_combined = nx.compose(G1_subgraph, test_graph)
 # 163k IDs
 # with 162k "people"
-final_confirmed_2 = cleaned_df[~cleaned_df['contact_uniqueid'].isin(remaining_ids)]
+final_confirmed_2 = cleaned_df[~cleaned_df['contact_uniqueid'].isin(all_remaining_ids)]
 final_confirmed_ids_2 = set(final_confirmed_2['contact_uniqueid'])
 
 # 134025 and 1309084 should be the same at the end

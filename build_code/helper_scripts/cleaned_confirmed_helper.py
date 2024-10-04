@@ -414,10 +414,12 @@ def clean_results_pt3(remaining, dropped_sets, user_path, new_himss, cleaned_con
     statewise_distances_long = generate_state_df(user_path)
 
     # CREATE DICTS
-    new_himss['contact_uniqueid'] = new_himss['contact_uniqueid'].astype(str)
+    new_himss['contact_uniqueid'] = new_himss['contact_uniqueid'].astype(int)
     id_years_dict = new_himss.groupby('contact_uniqueid')['year'].apply(set).to_dict()
     id_streaks_dict = {id_: longest_consecutive_streak(years) for id_, years in id_years_dict.items()}
 
+    remaining['contact_id1'] = remaining['contact_id1'].astype(int)
+    remaining['contact_id2'] = remaining['contact_id2'].astype(int)
     # Calculate longest streaks in a vectorized manner
     remaining[['longest_consecutive_either', 'longest_consecutive_union']] = remaining.apply(
         lambda row: pd.Series(calculate_longest_streaks(row['contact_id1'], 
