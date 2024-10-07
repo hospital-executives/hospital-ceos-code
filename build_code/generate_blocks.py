@@ -16,7 +16,7 @@ def install(package):
             print(f"Failed to install {package} using both pip and pip3. Please check your Python and pip installation.")
 
 # list packages
-required_packages = ['pandas', 'networkx']  
+required_packages = ['pandas', 'networkx', 'jellyfish', 'geopy']  
 
 # import packages
 for package in required_packages:

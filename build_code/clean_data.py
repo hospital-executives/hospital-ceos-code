@@ -17,7 +17,7 @@ def install(package):
             print(f"Failed to install {package} using both pip and pip3. Please check your Python and pip installation.")
 
 # list packages
-required_packages = ['pandas']  
+required_packages = ['pandas', 'numpy', 'Levenshtein', 'matplotlib','metaphone']  
 
 # import packages
 for package in required_packages:
