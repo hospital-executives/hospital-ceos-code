@@ -1,7 +1,31 @@
 
-import pandas as pd
-import os
+import subprocess
 import sys
+import os
+
+# Automate package installation
+def install(package):
+    try:
+        # Try installing using pip
+        subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to install {package} using pip. Trying with pip3...")
+        try:
+            # If pip is not found, try with pip3
+            subprocess.check_call([sys.executable, "-m", "pip3", "install", package])
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to install {package} using both pip and pip3. Please check your Python and pip installation.")
+
+# list packages
+required_packages = ['pandas']  
+
+# import packages
+for package in required_packages:
+    try:
+        __import__(package)  # Try to import the package
+    except ImportError:
+        install(package)
+
 
 # specify data path 
 data_path = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data"
