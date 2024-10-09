@@ -18,6 +18,7 @@ library(stringdist) # for gender assignment code
 library(data.table) # for gender assignment code
 library(phonics) # for gender assignment code
 library(scales) # improved plotting
+library(knitr)
 
 #######  Manual Inputs - if we change the folder structure, this needs to be updated
 # Define the project folder name
@@ -107,7 +108,49 @@ nicknames_dictionaries <- paste0(project_directory,data,nicknames_dictionaries)
 # Step 5: Create .do file so that Stata users can configure their scripts
 # Since config.R is in the GitHub code directory, we can get its directory
 # Function to get the script directory
+# get_script_directory <- function() {
+#   # Try to get the script path when running via Rscript
+#   args <- commandArgs(trailingOnly = FALSE)
+#   file_arg_index <- grep("--file=", args)
+#   if (length(file_arg_index) > 0) {
+#     # Running via Rscript
+#     file_arg <- args[file_arg_index]
+#     script_path <- normalizePath(sub("--file=", "", file_arg))
+#     return(dirname(script_path))
+#   } else if (interactive()) {
+#     # Running interactively in RStudio
+#     if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
+#       script_path <- rstudioapi::getActiveDocumentContext()$path
+#       if (nzchar(script_path)) {
+#         return(dirname(normalizePath(script_path)))
+#       } else {
+#         stop("Cannot determine script directory: No active document found in RStudio.")
+#       }
+#     } else {
+#       stop("Cannot determine script directory: Not running in RStudio or rstudioapi not available.")
+#     }
+#   } else {
+#     # Cannot determine script directory
+#     stop("Cannot determine script directory: Unknown execution environment.")
+#   }
+# }
+
+
+###TESTING NEW
+# Load knitr package (if not already loaded)
+if (!requireNamespace("knitr", quietly = TRUE)) {
+  install.packages("knitr")
+}
+library(knitr)
+
+# Updated get_script_directory function
 get_script_directory <- function() {
+  # Try to get the path of the current Rmd file during rendering
+  if (!is.null(current_input())) {
+    script_directory <- dirname(normalizePath(current_input()))
+    return(script_directory)
+  }
+  
   # Try to get the script path when running via Rscript
   args <- commandArgs(trailingOnly = FALSE)
   file_arg_index <- grep("--file=", args)
@@ -129,11 +172,13 @@ get_script_directory <- function() {
       stop("Cannot determine script directory: Not running in RStudio or rstudioapi not available.")
     }
   } else {
-    # Cannot determine script directory
-    stop("Cannot determine script directory: Unknown execution environment.")
+    # Fallback to current working directory
+    script_directory <- getwd()
+    return(script_directory)
   }
 }
 
+####END TEST
 # Use the function to get the code directory
 code_directory <- get_script_directory()
 
