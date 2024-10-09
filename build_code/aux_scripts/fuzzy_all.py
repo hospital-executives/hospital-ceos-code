@@ -10,7 +10,7 @@ from networkx.readwrite import json_graph
 user_path = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data"
 # TAKE ARGS FROM MAKEFILE
 # Get arguments from the command line
-if len(sys.argv) == 8:
+if len(sys.argv) == 9:
     confirmed_path = sys.argv[1]
     remaining_path = sys.argv[2]
 
@@ -21,7 +21,13 @@ if len(sys.argv) == 8:
     code_path = sys.argv[7]
 
     # add
-    regenerate_initial_blocks = True
+    boolean_str = sys.argv[8]
+
+    # Convert the string to a proper boolean
+    if boolean_str == "True":
+        regenerate_initial_blocks = True
+    elif boolean_str == "False":
+        regenerate_initial_blocks = False
 
     # write
     json_file =  os.path.join(user_path, "derived/auxiliary/graph_all.json")
@@ -33,6 +39,7 @@ if len(sys.argv) == 8:
     "derived/auxiliary/dropped.json")
 
 else: 
+    print('fail 1!!!!')
     confirmed_path = os.path.join(user_path, "derived/auxiliary/confirmed_2.csv")
     remaining_path =  os.path.join(user_path, "derived/auxiliary/remaining_2.csv")
     final_cleaned_path =  os.path.join(user_path, "derived/py_confirmed.csv")
@@ -155,9 +162,7 @@ else:
         loaded_dropped = list(reader)
 
     loaded_cleaned_remaining3 = pd.read_csv(remaining_file)
-    loaded_pair_results = pd.read_csv(pair_file)
-
-    print('loaded')
+    loaded_pair_results = pd.read_feather(pair_file)
 
 
 new_graph, cleaned_remaining4 = cc.clean_results_pt4(G_loaded, 

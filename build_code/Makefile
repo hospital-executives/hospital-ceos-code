@@ -159,7 +159,7 @@ final_himss_manual:
 generate_new_cleaned:
 	python3 aux_scripts/fuzzy_all.py "$(CONFIRMED_2)" "$(REMAINING_2)" \
 	"$(PY_CLEANED)" "$(PY_REMAINING)" "$(GRAPH_COMPS)" \
-	"$(DATA_DIR)" "$(CODE_DIR)" 
+	"$(DATA_DIR)" "$(CODE_DIR)" "False"
 
 #clean_new_cleaned:
 #python3 generate_final.py "$(PY_CLEANED)" "$(PY_REMAINING)" \
