@@ -72,6 +72,9 @@ def gen_name_meta_pairs(user_path):
     return name_pairs_set, meta_pairs_set
 
 # GENERATE BLOCKS DF
+def parallel_blocks(group):
+    return find_common_blocks(group)
+
 def find_common_blocks(sub_df, first_meta=None):
     # Grouping by 'contact_uniqueid' and collecting sets in a single pass
     grouped = sub_df.groupby('contact_uniqueid').agg({
@@ -80,7 +83,7 @@ def find_common_blocks(sub_df, first_meta=None):
         'entity_uniqueid': set,
         'system_id': set,
         'entity_address': set,
-        'entity_zip': lambda x: set(z[:5] for z in x)
+        'entity_zip_five': set
     })
     
     # Finding common elements in the sets
@@ -89,7 +92,7 @@ def find_common_blocks(sub_df, first_meta=None):
     common_entity_ids = set.intersection(*grouped['entity_uniqueid']) if len(grouped) > 1 else set()
     common_system_ids = set.intersection(*grouped['system_id']) if len(grouped) > 1 else set()
     common_adds = set.intersection(*grouped['entity_address']) if len(grouped) > 1 else set()
-    common_zips = set.intersection(*grouped['entity_zip']) if len(grouped) > 1 else set()
+    common_zips = set.intersection(*grouped['entity_zip_five']) if len(grouped) > 1 else set()
 
     # Common data to return in both cases
     common_data = {
@@ -99,7 +102,7 @@ def find_common_blocks(sub_df, first_meta=None):
         'entity_uniqueid': list(sub_df['entity_uniqueid'].unique()),
         'entity_address': list(sub_df['entity_address'].unique()),
         'system_id': list(sub_df['system_id'].unique()),
-        'entity_zip': list(sub_df['entity_zip'].str[:5].unique()),
+        'entity_zip': list(sub_df['entity_zip_five'].unique()),
         'common_titles': list(common_titles),
         'common_names': list(common_names),
         'common_entity_ids': list(common_entity_ids),
@@ -142,7 +145,7 @@ def find_pairwise_shared_attributes(sub_df, name_pairs_set, meta_pairs_set):
         'entity_id': sub_df.groupby('contact_uniqueid')['entity_uniqueid'].apply(set).to_dict(),
         'system_id': sub_df.groupby('contact_uniqueid')['system_id'].apply(set).to_dict(),
         'address': sub_df.groupby('contact_uniqueid')['entity_address'].apply(set).to_dict(),
-        'zip': sub_df.groupby('contact_uniqueid')['entity_zip'].apply(lambda x: set(z[:5] for z in x)).to_dict(),
+        'zip': sub_df.groupby('contact_uniqueid')['entity_zip_five'].apply(set).to_dict(),
         'state': sub_df.groupby('contact_uniqueid')['entity_state'].apply(set).to_dict(),
         'firstname': sub_df.groupby('contact_uniqueid')['firstname'].first().fillna('').to_dict(),
         'lastname': sub_df.groupby('contact_uniqueid')['lastname'].first().fillna('').to_dict(),
@@ -317,33 +320,8 @@ def clean_results_pt1(pair_results, confirmed_ids=None):
            lastname_similarity_condition) |
           ((pair_results['lastname_lev_distance'] == 0) &
            (pair_results['name_in_same_row_firstname']) &
-           state_or_system_condition & lastname_count_condition) |
-           (((pair_results['lastname_lev_distance'] == 0) |
-            (pair_results['lastname_jw_distance'] > 0.925)) & 
-            title_similarity_condition & 
-            (pair_results['max_lastname_count_id1'] <= 2) &
-            (pair_results['max_lastname_count_id2'] <= 2)))
+           state_or_system_condition & lastname_count_condition))
     ]
-
-    # Filter remaining for differences and collect dropped pairs
-    dropped_conditions = [
-        (remaining['total_shared_attributes'] == 0) & 
-        (remaining['distinct_state_count'] > 1),
-        (remaining['lastname_lev_distance'] >= 3) & 
-        (~remaining['name_in_same_row_firstname']) & 
-        (remaining['distinct_state_count'] > 1),
-        (~remaining['name_in_same_row_firstname']) & 
-        (remaining['distinct_state_count'] > 1) & 
-        (remaining['lastname_lev_distance'] >= 1) & 
-        (remaining['shared_titles_flag'] == 0),
-        (~remaining['name_in_same_row_firstname']) & 
-        (~remaining['meta_in_same_row'].fillna(False).infer_objects(copy=False)) 
-        & ((remaining['lastname_jw_distance'] < 0.5) | 
-        (remaining['lastname_lev_distance'] >= 3))
-    ]
-
-    dropped = [remaining[cond] for cond in dropped_conditions]
-    remaining = remaining[~dropped_conditions[-1]]
 
     # Add pairs that match the cleaned criteria to the graph
     cleaned =  pair_results[
@@ -357,22 +335,32 @@ def clean_results_pt1(pair_results, confirmed_ids=None):
            lastname_similarity_condition) |
           ((pair_results['lastname_lev_distance'] == 0) &
            (pair_results['name_in_same_row_firstname']) &
-           state_or_system_condition & lastname_count_condition) |
-           (((pair_results['lastname_lev_distance'] == 0) |
-            (pair_results['lastname_jw_distance'] > 0.925)) & 
-            title_similarity_condition & 
-            (pair_results['max_lastname_count_id1'] <= 2) &
-            (pair_results['max_lastname_count_id2'] <= 2)))
+           state_or_system_condition & lastname_count_condition))
     ]
 
     add_to_graph_from_df(G, cleaned)
 
-    # Collect dropped pairs into a set
+    dropped = remaining[
+        (((remaining['firstname_lev_distance'] >=3) |
+          (remaining['firstname_jw_distance'] <= .5)) &
+          ~(remaining['name_in_same_row_firstname'])) &
+          ((remaining['lastname_lev_distance'] >= 3) | 
+         (remaining['lastname_jw_distance'] <= .5) | 
+         (remaining['shared_states'].apply(len) == 0))]
+    
     pairs_set = set()
-    for df in dropped:
-        pairs_set.update(zip(df['contact_id1'], df['contact_id2']))
+    pairs_set.update(zip(dropped['contact_id1'], dropped['contact_id2']))
 
-    return G, pairs_set, remaining
+    new_remaining = remaining[
+        ~((((remaining['firstname_lev_distance'] >=3) |
+          (remaining['firstname_jw_distance'] <= .5)) &
+          ~(remaining['name_in_same_row_firstname'])) &
+          ((remaining['lastname_lev_distance'] >= 3) | 
+         (remaining['lastname_jw_distance'] <= .5) | 
+         (remaining['shared_states'].apply(len) == 0)))]
+
+
+    return G, new_remaining, pairs_set
 
 def clean_results_pt2(remaining, G, dropped_sets, new_himss):
     contact_id_counts = new_himss['contact_uniqueid'].value_counts()
@@ -380,9 +368,12 @@ def clean_results_pt2(remaining, G, dropped_sets, new_himss):
     remaining_updated = check_ids_in_graph(remaining, G)
     
     # Convert contact IDs to strings (if necessary) and map counts
-    remaining_updated[['contact_id1', 'contact_id2']] = remaining_updated[['contact_id1', 'contact_id2']].astype(str)
-    remaining_updated['contact_id1_count'] = remaining_updated['contact_id1'].map(contact_id_counts).fillna(0).astype(int)
-    remaining_updated['contact_id2_count'] = remaining_updated['contact_id2'].map(contact_id_counts).fillna(0).astype(int)
+    remaining_updated[['contact_id1', 'contact_id2']] = \
+        remaining_updated[['contact_id1', 'contact_id2']].astype(str)
+    remaining_updated['contact_id1_count'] = \
+        remaining_updated['contact_id1'].map(contact_id_counts).fillna(0).astype(int)
+    remaining_updated['contact_id2_count'] = \
+        remaining_updated['contact_id2'].map(contact_id_counts).fillna(0).astype(int)
 
     # Conditions to drop rows
     condition1 = (remaining_updated['contact_id1_count'] <= 2) & (~remaining_updated['contact_id1_in_graph']) & \

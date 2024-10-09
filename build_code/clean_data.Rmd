@@ -10,6 +10,24 @@ params:
 ---
 This RMD handles the non-ML portion of cleaning the contact_uniqueid code.
 
+```{r}
+install_if_missing <- function(packages) {
+  new_packages <- packages[!(packages %in% installed.packages()[, "Package"])]
+  if (length(new_packages)) {
+    install.packages(new_packages)
+  }
+  invisible(lapply(packages, library, character.only = TRUE))
+}
+
+# List of required packages
+required_packages <- c("haven", "dplyr", "tidyverse", "ggplot2", "arrow",
+                       "stringr", "stringdist", "data.table", "phonics", "tibble")
+
+# Install missing packages and load them
+install_if_missing(required_packages)
+```
+
+
 ```{r setup}
 library(haven)
 library(dplyr)

@@ -1,0 +1,819 @@
+---
+title: "compile_himss"
+output: html_document
+date: "2024-04-02"
+---
+
+### Script Overview
+Re-build Maggie's Stata code to clean and compile each year's HIMSS survey. Focus on 2005 - 2017. Recreate healthcare_execs_0517, but in R.
+
+## Set-up
+
+```{r manual setup user entry req, include=FALSE}
+#User entry required!
+
+#clear environment
+rm(list = ls())
+
+# *** IMPORTING RAW HIMS ***
+# Define the range of years to import
+year_range <- 2005:2017 
+
+# Specify the prefixes of files you want to import. Only HAEntity for this AHA crosswalk exploration file. 
+file_prefixes <- c("HAEntity_")
+
+# *** IMPORTING AHA DATA ***
+file_name_aha_dta <- c("aha-raw-2000-20.dta")
+file_name_aha_csv <- c("AHA_2004_2017.csv")
+
+columns_to_keep_dta <- c( 
+  "ID", 
+  "YEAR", 
+  "MNAME", 
+  "HOSPN", 
+  "mcrnum",
+  # "MCRNUM",
+  "CBSANAME", 
+  "HRRNAME", 
+  "HSANAME", 
+  "MADMIN", 
+  "SYSID", 
+  "SYSNAME", 
+  "CNTRL", 
+  "SERV", 
+  "HOSPBD", 
+  "BDTOT", 
+  "ADMTOT", 
+  "IPDTOT", 
+  "MCRDC", 
+  "MCRIPD", 
+  "MCDDC", 
+  "MCDIPD", 
+  "BIRTHS", 
+  "FTEMD", 
+  "FTERN", 
+  "FTE",
+  "LAT",
+  "LONG",
+  "MLOCADDR", #street address
+  "MLOCCITY", #city
+  "MLOCZIP" #zip code
+   ) # Replace with your desired column names
+
+
+columns_to_keep_csv <- c( 
+  "ID", 
+  "YEAR", 
+  "MNAME", 
+  "HOSPN", 
+  # "mcrnum",
+  "MCRNUM",
+  "CBSANAME", 
+  "HRRNAME", 
+  "HSANAME", 
+  "MADMIN", 
+  "SYSID", 
+  "SYSNAME", 
+  "CNTRL", 
+  "SERV", 
+  "HOSPBD", 
+  "BDTOT", 
+  "ADMTOT", 
+  "IPDTOT", 
+  "MCRDC", 
+  "MCRIPD", 
+  "MCDDC", 
+  "MCDIPD", 
+  "BIRTHS", 
+  "FTEMD", 
+  "FTERN", 
+  "FTE",
+  "LAT",
+  "LONG",
+  "MLOCADDR", #street address
+  "MLOCCITY", #city
+  "MLOCZIP" #zip code
+   ) # Replace with your desired column names
+
+# *** IMPORTING AHA<>MCR CROSSWALK ***
+file_name_aha_mcr_xwalk1 <- c("aha-id-medicare-id-crosswalk.dta")
+file_name_aha_mcr_xwalk2 <- c("hospital_ownership.dta")
+
+```
+
+
+```{r auto setup, include=FALSE}
+# NO manual entry required. This automatically loads necessary libraries and detects file paths. 
+knitr::opts_chunk$set(echo = TRUE)
+
+# Source the configuration script
+# Check if rstudioapi is installed and install if necessary
+if (!requireNamespace("rstudioapi", quietly = TRUE)) {
+  install.packages("rstudioapi")
+}
+
+library(rstudioapi)
+
+# Detect the path to the current script's directory dynamically
+script_directory <- dirname(rstudioapi::getActiveDocumentContext()$path)
+
+# Construct the path to the config.R file
+config_path <- file.path(script_directory, "config.R")
+
+# Source the config file dynamically
+source(config_path)
+
+#Now all necessary libraries are loaded, and file paths are set
+
+#clean up
+rm(script_directory, config_path)
+```
+
+## Pull in raw, HIMSS files
+
+```{r import all original himss}
+#a separate bash script extracted the original Access DB tables as CSVs
+#these are loaded to DropBox, we only want a subset (defined in file_prefixes)
+
+folders <- list.dirs(path = raw_data, full.names = TRUE, recursive = FALSE)
+
+# Loop through each file prefix
+for (prefix in file_prefixes) {
+  temp_dfs <- list()  # Temporary list to store dataframes for this prefix
+  
+  # Loop through each year
+  for (year in year_range) {
+    file_path <- paste0(prefix, year, ".csv")  # Construct the file name
+    full_path <- file.path(raw_data, as.character(year), file_path)  # Full file path
+    
+  #Check if the file exists, import
+    if (file.exists(full_path)) {
+       #Importing all as character. 
+       #There are some differences within year 
+       #(e.g. most phone numbers will be ##########, but some will be ###-###-####. 
+       #Without converting to character, we see data loss when the mismatched value is not imported 
+       #e.g. ###-###-#### would be NA
+      df <- read_csv(full_path, show_col_types = FALSE, col_types = cols(.default = col_character())) %>%
+        # Add a year value and and make all vars lowercase
+        mutate(year = year) %>%  # Add the year as a new column
+        rename_with(tolower)
+
+      # In some years the same fields data storage type changed. Dynamically adjust data types for combination: Convert numeric and logical columns to character.
+      # df <- df %>%
+      #   mutate(across(where(is.numeric), ~if_else(is.na(.), as.character(.), as.character(.)))) %>%
+      #   mutate(across(where(is.logical), as.character))
+
+      temp_dfs[[length(temp_dfs) + 1]] <- df
+    }
+  }
+  
+  # Combine all dataframes, now with consistent data types
+  combined_df <- bind_rows(temp_dfs)
+  
+  # Dynamically assign the combined dataframe to a variable in the global environment
+  var_name <- tolower(str_remove(prefix, "_$"))
+  assign(var_name, combined_df, envir = .GlobalEnv)
+}
+
+# Clean up temporary variables
+rm(list = c("combined_df", "df", "temp_dfs","var_name","year", "year_range"))
+```
+
+```{r clean haentity}
+
+haentity <- haentity %>% 
+  rename_with(tolower) %>% 
+  rename(himss_entityid = haentityid,
+         entity_type = haentitytype,
+         entity_name = name,
+         entity_address = address1,
+         entity_city = city,
+         entity_state = state,
+         entity_zip = zip,
+         entity_profitstatus = profitstatus,
+         entity_parentid = parentid,
+         entity_uniqueid = uniqueid,
+         entity_bedsize = nofbeds,
+         entity_phone = phone,
+         entity_email = email
+      ) %>% 
+  mutate(entity_type = case_when(
+                        entity_type == "IDS" ~ "IDS/RHA",
+                        entity_type == "Independent Hospital" ~ "Single Hospital Health System", 
+                        TRUE ~ entity_type  # Keep all other values as they are
+                        )
+  )
+
+haentity <- haentity %>%
+  mutate(system_id = case_when(
+                      himss_entityid %in% entity_parentid ~ entity_uniqueid,
+                      entity_parentid %in% himss_entityid ~ 
+                        entity_uniqueid[match(entity_parentid, himss_entityid)],
+                      .default = NA
+                      ),
+        year = as.numeric(year),
+        entity_phone = gsub("[^0-9]", "", entity_phone),
+        fax = gsub("[^0-9]", "", fax) 
+         )
+
+#Remove non-US entities
+haentity <- haentity %>% 
+    filter(!grepl("[A-Za-z]", entity_zip) & 
+           !str_detect(entity_state, "AB|BC|PE|NB|NL|NS|MB|SK|PR"))
+
+#Just for this notebook as we investigate, cast year as character
+haentity <- haentity %>% 
+  mutate(year = as.character(year))
+
+```
+
+## Compare AHA crosswalk options
+
+```{r aha in himss}
+# First, look at completeness of AHA and MCR fields in HIMSS
+haentity %>% 
+  # Single Hospital Health System and IDS/RHA don't have this field completed, ever
+  # filter(entity_type %in% c("Hospital", "Single Hospital Health System", "IDS/RHA")) %>%
+  filter(entity_type %in% c("Hospital")) %>%
+  group_by(year) %>%
+  summarize(
+    total_entries = n(),
+    aha_num_na_count = sum(is.na(ahanumber)),
+    mcr_num_na_count = sum(is.na(medicarenumber))
+  ) %>% 
+  group_by(year) %>% 
+  summarize (
+    aha_num_complete_percent = (1 - aha_num_na_count / total_entries) * 100,
+    mcr_num_complete_percent = (1 - mcr_num_na_count / total_entries) * 100
+  )
+#AHA number is never complete. Looked through old raw files and this was only in the 2005 file, and it was all null. All future years dropped the col entirely
+#mcr is only filled out for hospitals and has a null rate of 5 - 15%
+
+```
+```{r load aha data dta}
+#originally used the .dta file provided, but found that hospital names were being cut off
+#e.g. "vibra specialty hospital of dall", which is probably "vibra specialty hospital of dallas"
+#Ambar provided a csv that is supposed to be the raw data, which we'll use instead
+
+# set file path using manual input at beginning of script
+file_path <- paste0(supplemental_data,"/",file_name_aha_dta)
+
+# # Import the .dta file
+aha_data_dta <- read_dta(file_path) %>%
+  select(all_of(columns_to_keep_dta))
+
+aha_data_dta <- aha_data_dta %>% 
+  rename_all(tolower) %>% 
+  rename(ahanumber = id)
+
+```
+
+```{r load aha data csv}
+#load AHA data
+# set file path using manual input at beginning of script
+file_path <- paste0(supplemental_data,"/",file_name_aha_csv)
+# aha_data_csv <- read_csv(file_path)
+aha_data_csv <- read_csv(file_path, col_types = cols(.default = col_character()))
+
+
+# Use problems() function to identify parsing issues
+parsing_issues <- problems(aha_data_csv)
+
+# Check if any parsing issues were detected
+if (nrow(parsing_issues) > 0) {
+  print(parsing_issues)
+} else {
+  print("No parsing problems detected.")
+}
+
+aha_data_csv <- aha_data_csv %>% 
+  select(all_of(columns_to_keep_csv)) %>% 
+  rename_all(tolower) %>% 
+  rename(ahanumber = id) %>% 
+  mutate(ahanumber = as.character(ahanumber))
+
+  
+```
+
+```{r compare aha datasets}
+#aha_data_dta is 2000 - 2020
+#aha_data from csv is 2005 - 2017
+
+#first, equalize the two datasets (since one covers more years)
+aha_data_dta_reduced_years <- aha_data_dta %>% 
+  filter(year>=2005 & year <=2017) %>% 
+  mutate(across(everything(), as.character))
+
+#approach 1 - simple join
+aha_data_comparison1 <- aha_data_dta_reduced_years %>% 
+  anti_join(aha_data_csv, by=c("year"="year","ahanumber"="ahanumber","mcrnum"="mcrnum"))
+#~9k don't match. fixed CSV import issues that's down a bit but didn't fix
+#further inspection has found a difference in the medicare number. the dta file seems to have dropped leading zeros while csv retained them, e.g. 030094
+#this doesn't explain why crosswalking got less good, though
+
+#approach 2 - join on every column
+# Identify common columns between the two data frames
+common_columns <- intersect(names(aha_data_dta_reduced_years), names(aha_data_csv))
+
+# Perform the left join using all common columns as keys
+aha_data_comparison2 <- aha_data_dta_reduced_years %>%
+  anti_join(aha_data_csv, by = common_columns)
+
+#values differ, which makes sense given that we know mname is cut off
+
+#approach 3 - use dyplyr comparison function
+are_identical <- all_equal(aha_data_dta_reduced_years, aha_data_csv)
+
+# Print the result
+if (are_identical == TRUE) {
+  print("The datasets are exactly identical.")
+} else {
+  print(are_identical)  # This will show the differences if they are not identical
+}
+
+#these results imply different encodings. I'm going to guess the .dta file was unknown (which disrupted my first attempt at fuzzy match) and that the imported csv is already in utf-8, which actually cuts down work later. 
+# Function to check encoding for each column in a data frame
+check_encoding <- function(df) {
+  sapply(df, function(column) {
+    if (is.character(column)) {
+      unique(Encoding(column))  # Returns the unique encoding(s) for character columns
+    } else {
+      NA  # For non-character columns, return NA
+    }
+  })
+}
+
+# Check encodings for aha_data_dta
+encodings_aha_data_dta <- check_encoding(aha_data_dta_reduced_years)
+
+# Check encodings for aha_data
+encodings_aha_data_csv <- check_encoding(aha_data_csv)
+
+# Print the results
+print(encodings_aha_data_dta)
+#result is a mix of unknown, NA, and UTF-8
+print(encodings_aha_data_csv)
+#result is also a mix of encodings
+
+#convert both to UTF-8 and compare again
+# Convert all character columns to UTF-8 encoding
+library(stringi)
+
+aha_data_dta_reduced_years <- aha_data_dta_reduced_years %>%
+  mutate(across(where(is.character), stri_enc_toutf8))
+
+aha_data_csv <- aha_data_csv %>%
+  mutate(across(where(is.character), stri_enc_toutf8))
+
+are_identical <- all_equal(aha_data_dta_reduced_years, aha_data_csv)
+
+# Print the result
+if (are_identical == TRUE) {
+  print("The datasets are exactly identical.")
+} else {
+  print(are_identical)  # This will show the differences if they are not identical
+}
+
+#still some differences, let's look at those
+# Compare each column individually
+# differences <- list()
+# for (col in intersect(names(aha_data_dta_reduced_years), names(aha_data_csv))) {
+#   differences[[col]] <- all.equal(aha_data_dta_reduced_years[[col]], aha_data_csv[[col]])
+# }
+# 
+# # Print the differences for inspection
+# differences
+
+# Set aha data
+aha_data <- aha_data_csv
+# aha_data <- aha_data_dta_reduced_years
+
+```
+
+```{r pull in AHA data xwalk1}
+
+#Now pull in AHA<>MCR Crosswalk 
+file_path <- paste0(supplemental_data,"/",file_name_aha_mcr_xwalk1)
+
+#xwalk1
+aha_xwalk <- read_dta(file_path) %>%
+  rename(ahanumber = id,
+         medicarenumber = pn) %>%
+  mutate(medicarenumber = as.character(medicarenumber),
+         ahanumber = as.character(ahanumber),
+         year = as.character(year))
+
+aha_xwalk %>% 
+  group_by(year) %>%
+  summarize(
+    total_rows = n(),
+    unique_mcrnum_count = n_distinct(medicarenumber)
+  )
+#there are some instances of 1) mcr is null in the xwalk and 2) the same mcr maps to mmultiple AHA numbers. for now, need to collapse that down to successfully merge and will take a simple max. this logic should be interrogated later and refined
+
+aha_xwalk <- aha_xwalk %>% 
+  group_by(year, medicarenumber) %>%
+  #sometimes 2 AHA numbers per MCR number, select one
+  summarize(ahanumber = max(ahanumber, na.rm = TRUE), .groups = 'drop')
+
+#Use crosswalk to pull in AHA numbers for hospitals
+########new code to handle NAs
+haentity_na <- haentity %>%
+  filter(is.na(medicarenumber))
+
+# Handle the rows with non-NA medicarenumber
+haentity_not_na1 <- haentity %>%
+  filter(!is.na(medicarenumber)) %>%
+  left_join(aha_xwalk, by = c("medicarenumber", "year")) %>%
+  mutate(ahanumber = coalesce(ahanumber.y, ahanumber.x)) %>%
+  select(-ahanumber.x, -ahanumber.y)
+
+# Join the aha_data for rows with non-NA ahanumber
+haentity_not_na1 <- haentity_not_na1 %>%
+  left_join(aha_data, by = c("ahanumber", "year"))
+
+# Combine the datasets back together
+haentity1 <- bind_rows(haentity_not_na1, haentity_na)
+
+#recheck completeness
+xwalk1_completeness <- haentity1 %>% 
+  # Single Hospital Health System and IDS/RHA don't have this field completed, ever
+  # filter(entity_type %in% c("Hospital", "Single Hospital Health System", "IDS/RHA")) %>%
+  filter(entity_type %in% c("Hospital")) %>%
+  group_by(year) %>%
+  summarize(
+    total_entries = n(),
+    aha_num_na_count = sum(is.na(ahanumber)),
+    mcr_num_na_count = sum(is.na(medicarenumber))
+  ) %>% 
+  group_by(year) %>% 
+  summarize (
+    aha_num_complete_percent = (1 - aha_num_na_count / total_entries) * 100,
+    mcr_num_complete_percent = (1 - mcr_num_na_count / total_entries) * 100
+  )
+
+```
+
+```{r pull in AHA data xwalk2}
+
+#Now pull in AHA<>MCR Crosswalk 
+file_path <- paste0(supplemental_data,"/",file_name_aha_mcr_xwalk2)
+
+# xwalk2
+aha_xwalk <- read_dta(file_path) %>%
+  rename(ahanumber = ahaid,
+         medicarenumber = mcrnum) %>%
+  select(ahanumber, medicarenumber, year) %>%
+  mutate(year = as.character(year)) %>% 
+  unique()
+
+aha_xwalk %>% 
+  group_by(year) %>%
+  summarize(
+    total_rows = n(),
+    unique_mcrnum_count = n_distinct(medicarenumber)
+  )
+#there are some instances of 1) mcr is null in the xwalk and 2) the same mcr maps to mmultiple AHA numbers. for now, need to collapse that down to successfully merge and will take a simple max. this logic should be interrogated later and refined
+
+aha_xwalk <- aha_xwalk %>% 
+  group_by(year, medicarenumber) %>%
+  #sometimes 2 AHA numbers per MCR number, select one
+  summarize(ahanumber = max(ahanumber, na.rm = TRUE), .groups = 'drop')
+
+#Use crosswalk to pull in AHA numbers for hospitals
+########new code to handle NAs
+
+# Handle the rows with non-NA medicarenumber
+haentity_not_na2 <- haentity %>%
+  filter(!is.na(medicarenumber)) %>%
+  left_join(aha_xwalk, by = c("medicarenumber", "year")) %>%
+  mutate(ahanumber = coalesce(ahanumber.y, ahanumber.x)) %>%
+  select(-ahanumber.x, -ahanumber.y)
+
+# Join the aha_data for rows with non-NA ahanumber
+haentity_not_na2 <- haentity_not_na2 %>%
+  left_join(aha_data, by = c("ahanumber", "year"))
+
+# Combine the datasets back together
+haentity2 <- bind_rows(haentity_not_na2, haentity_na)
+
+#recheck completeness
+xwalk2_completeness <- haentity2 %>% 
+  # Single Hospital Health System and IDS/RHA don't have this field completed, ever
+  # filter(entity_type %in% c("Hospital", "Single Hospital Health System", "IDS/RHA")) %>%
+  filter(entity_type %in% c("Hospital")) %>%
+  group_by(year) %>%
+  summarize(
+    total_entries = n(),
+    aha_num_na_count = sum(is.na(ahanumber)),
+    mcr_num_na_count = sum(is.na(medicarenumber))
+  ) %>% 
+  group_by(year) %>% 
+  summarize (
+    aha_num_complete_percent = (1 - aha_num_na_count / total_entries) * 100,
+    mcr_num_complete_percent = (1 - mcr_num_na_count / total_entries) * 100
+  )
+
+```
+
+```{r aha xwalk3}
+
+#Create AHA<>MCR Crosswalk3, using AHA dataset itself 
+#xwalk3
+aha_xwalk <- aha_data %>%
+  select(year, ahanumber, mcrnum) %>% 
+  unique() %>% 
+  rename(medicarenumber = mcrnum) #%>%
+  # mutate(medicarenumber = as.character(medicarenumber))
+
+aha_xwalk %>% 
+  group_by(year) %>%
+  summarize(
+    total_rows = n(),
+    unique_mcrnum_count = n_distinct(medicarenumber)
+  )
+#there are some instances of 1) mcr is null in the xwalk and 2) the same mcr maps to mmultiple AHA numbers. for now, need to collapse that down to successfully merge and will take a simple max. this logic should be interrogated later and refined
+
+# Neither the .dta or the .csv has medicare numbers for 2005 through 2007
+
+aha_xwalk <- aha_xwalk %>% 
+  group_by(year, medicarenumber) %>%
+  #sometimes 2 AHA numbers per MCR number, select one
+  summarize(ahanumber = max(ahanumber, na.rm = TRUE), .groups = 'drop')
+
+aha_xwalk %>% 
+  group_by(year) %>%
+  summarize(
+    total_rows = n(),
+    unique_mcrnum_count = n_distinct(medicarenumber)
+  )
+
+#Use crosswalk to pull in AHA numbers for hospitals
+########new code to handle NAs
+
+# Handle the rows with non-NA medicarenumber
+haentity_not_na3 <- haentity %>%
+  filter(!is.na(medicarenumber)) %>%
+  left_join(aha_xwalk, by = c("medicarenumber", "year")) %>%
+  mutate(ahanumber = coalesce(ahanumber.y, ahanumber.x)) %>%
+  select(-ahanumber.x, -ahanumber.y)
+
+# Join the aha_data for rows with non-NA ahanumber
+haentity_not_na3 <- haentity_not_na3 %>%
+  left_join(aha_data, by = c("ahanumber", "year"))
+
+# Combine the datasets back together
+haentity3 <- bind_rows(haentity_not_na3, haentity_na)
+
+#recheck completeness
+xwalk3_completeness <- haentity3 %>% 
+  # Single Hospital Health System and IDS/RHA don't have this field completed, ever
+  # filter(entity_type %in% c("Hospital", "Single Hospital Health System", "IDS/RHA")) %>%
+  filter(entity_type %in% c("Hospital")) %>%
+  group_by(year) %>%
+  summarize(
+    total_entries = n(),
+    aha_num_na_count = sum(is.na(ahanumber)),
+    mcr_num_na_count = sum(is.na(medicarenumber))
+  ) %>% 
+  group_by(year) %>% 
+  summarize (
+    aha_num_complete_percent = (1 - aha_num_na_count / total_entries) * 100,
+    mcr_num_complete_percent = (1 - mcr_num_na_count / total_entries) * 100
+  )
+```
+
+```{r aha compare crosswalks}
+
+# Merge xwalk1, xwalk2, and xwalk3 by 'year'
+comparison_df <- xwalk1_completeness %>%
+  rename(aha_num_1 = aha_num_complete_percent, 
+         mcr_num_1 = mcr_num_complete_percent) %>%
+  inner_join(
+    xwalk2_completeness %>%
+      rename(aha_num_2 = aha_num_complete_percent, 
+             mcr_num_2 = mcr_num_complete_percent), 
+    by = "year"
+  ) %>%
+  inner_join(
+    xwalk3_completeness %>%
+      rename(aha_num_3 = aha_num_complete_percent, 
+             mcr_num_3 = mcr_num_complete_percent), 
+    by = "year"
+  ) %>%
+  mutate(
+    aha_diff_1_2 = aha_num_1 - aha_num_2,  # Difference between xwalk1 and xwalk2 for 'aha_num'
+    aha_diff_1_3 = aha_num_1 - aha_num_3,  # Difference between xwalk1 and xwalk3 for 'aha_num'
+    aha_diff_2_3 = aha_num_2 - aha_num_3,  # Difference between xwalk2 and xwalk3 for 'aha_num'
+    mcr_diff_1_2 = mcr_num_1 - mcr_num_2,  # Difference between xwalk1 and xwalk2 for 'mcr_num'
+    mcr_diff_1_3 = mcr_num_1 - mcr_num_3,  # Difference between xwalk1 and xwalk3 for 'mcr_num'
+    mcr_diff_2_3 = mcr_num_2 - mcr_num_3   # Difference between xwalk2 and xwalk3 for 'mcr_num'
+  )
+
+# Print the comparison dataframe with differences
+print(comparison_df)
+
+
+#second crosswalk is better in every year except for 2005
+
+# Plot the aha_num values from xwalk1, xwalk2, and xwalk3 with custom legend labels
+comparison_df %>% 
+  mutate(year = as.integer(year)) %>% 
+  ggplot(., aes(x = year)) +
+  geom_line(aes(y = aha_num_1, color = "Initial Maggie xwalk"), size = 1) +
+  geom_line(aes(y = aha_num_2, color = "Ambar xwalk"), size = 1) +
+  geom_line(aes(y = aha_num_3, color = "AHA Dataset itself as xwalk"), size = 1) +
+  labs(
+    title = "Comparison of AHA Num Values Across Different Datasets",
+    x = "Year",
+    y = "Completeness of AHA Number (%)",
+    color = "Source"
+  ) +
+  scale_color_manual(values = c("Initial Maggie xwalk" = "blue", 
+                                "Ambar xwalk" = "red", 
+                                "AHA Dataset itself as xwalk" = "green")) +
+  scale_x_continuous(breaks = seq(min(comparison_df$year), max(comparison_df$year), by = 1)) +  # Force integer breaks
+  theme_minimal()
+
+```
+
+```{r na medicare num}
+#look into entries with null medicare number
+haentity_na %>%
+  group_by(entity_type, year) %>%
+  summarise(count_unique_ids = n_distinct(entity_uniqueid), .groups = 'drop') %>% 
+  ggplot(., aes(x = year, y = count_unique_ids, color = entity_type, group = entity_type)) +
+  geom_line(size = 1) +  # Create line plot with thicker lines
+  geom_point(size = 2) + # Add points to the lines for better visibility
+  labs(
+    title = "Number of Unique IDs by Type for Each Year",
+    x = "Year",
+    y = "Count of Unique IDs",
+    color = "Entity Type"  # Label for the legend
+  ) +
+  # facet_wrap(~ year) +  # Facet by year
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Adjust x-axis text angle for readability
+
+#Most missing numbers are ambulatory, but there are some hospital
+
+
+```
+```{r hospitals missing mcr num}
+haentity_na_hospitals <- haentity_na %>% 
+  filter(entity_type=="Hospital") %>% 
+  group_by(year) %>%
+  summarise(count_unique_ids = n_distinct(entity_uniqueid), .groups = 'drop') 
+
+# Calculate the completion rate of medicarenumber
+completion_rate_mcr <- haentity %>%
+  group_by(entity_type, type, year) %>%
+  summarise(
+    total_count = n(),  # Total number of entries in each group
+    completed_count = sum(!is.na(medicarenumber)),  # Count of non-missing medicarenumber
+    completion_rate = (completed_count / total_count) * 100  # Calculate the completion rate as a percentage
+  ) %>%
+  ungroup()
+
+# Print the completion rate dataframe
+print(completion_rate_mcr)
+
+completion_rate_mcr_hosp <- completion_rate_mcr %>% 
+  filter(entity_type=="Hospital")
+
+# Plot the completion rate
+ggplot(completion_rate_mcr_hosp, aes(x = year, y = completion_rate, color = type, group = type)) +
+  geom_line(size = 1) +  # Create line plot with thicker lines
+  geom_point(size = 2) +  # Add points to the lines for better visibility
+  labs(
+    title = "Completion Rate of Medicare Number for Hospitals by Type",
+    x = "Year",
+    y = "Completion Rate (%)",
+    color = "Type"
+  ) +
+  # scale_x_continuous(
+    # breaks = pretty(completion_rate_mcr_hosp$year),  # Use pretty breaks to dynamically choose fewer, nice-looking labels
+  #   labels = as.integer  # Ensure the labels are displayed as integers
+  # ) +
+  facet_wrap(~ type, scales = "free_y") +  # Facet by type with independent y-axes for each facet
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Adjust x-axis text angle for readability
+    legend.position = "none"  # Remove the legend
+  )
+
+```
+```{r}
+
+#create dataframe of unmatched hospitals
+unmatched_hosp <- haentity_na %>% 
+  filter(entity_type == "Hospital")
+  
+# List of columns to check in haentity_na
+columns_unmatched_hosp <- c("entity_zip", "entity_address", "entity_name")
+
+# Check encoding for each column in haentity_na
+encodings_unmatched_hosp <- sapply(columns_unmatched_hosp, function(column) {
+  if (column %in% colnames(unmatched_hosp)) {
+    unique(Encoding(unmatched_hosp[[column]]))
+  } else {
+    paste("Column", column, "not found in unmatched_hosp")
+  }
+})
+
+# Print the encoding information for haentity_na
+print(encodings_unmatched_hosp)
+
+# List of columns to check in aha_data
+columns_aha_data <- c("mloczip", "mlocaddr", "mname")
+
+# Check encoding for each column in aha_data
+encodings_aha_data <- sapply(columns_aha_data, function(column) {
+  if (column %in% colnames(aha_data)) {
+    unique(Encoding(aha_data[[column]]))
+  } else {
+    paste("Column", column, "not found in aha_data")
+  }
+})
+
+# Print the encoding information for aha_data
+print(encodings_aha_data)
+```
+
+```{r fuzzy match}
+# for hospitals that don't have an MCR in the HIMSS data, can we fuzzy match directly to the AHA dataset?
+#use a combination of fuzzy match (which looks at string distances for close matches) on hospital name and street address, and regular match criteria for zip. 
+
+#modify dataset, need all to be encoded as UTF-8 for fuzzy match to work, and for some reason some obs are not
+unmatched_hosp <- unmatched_hosp %>% 
+  mutate(
+    # Convert to UTF-8
+    entity_zip = stri_trans_general(entity_zip, "latin-ascii"),
+    entity_address = stri_trans_general(entity_address, "latin-ascii") %>%
+      str_replace_all("-", " ") %>%  # Replace hyphens with a space
+      str_remove_all("[^[:alnum:],.\\s]") %>%  # Remove other punctuation except commas, periods, and spaces
+      str_to_lower() %>%
+      str_squish(),  # Remove extra spaces
+    entity_name = stri_trans_general(entity_name, "latin-ascii") %>%
+      str_replace_all("-", " ") %>%  # Replace hyphens with a space
+      str_remove_all("[^[:alnum:],.\\s]") %>%  # Remove other punctuation except commas, periods, and spaces
+      str_to_lower() %>%
+      str_squish(),  # Remove extra spaces
+    # Extract first five digits of the zip code
+    entity_zip_five = str_extract(entity_zip, "^\\d{5}")
+  )
+
+# Clean and prepare aha_data dataset
+aha_data <- aha_data %>%
+  mutate(
+    # Convert to UTF-8
+    mloczip = stri_trans_general(mloczip, "latin-ascii"),
+    mlocaddr = stri_trans_general(mlocaddr, "latin-ascii") %>% 
+      str_replace_all("-", " ") %>%  # Replace hyphens with a space
+      str_remove_all("[^[:alnum:],.\\s]") %>%  # Remove other punctuation except commas, periods, and spaces
+      str_to_lower() %>%
+      str_squish(),  # Remove extra spaces
+    mname = stri_trans_general(mname, "latin-ascii") %>% 
+      str_replace_all("-", " ") %>%  # Replace hyphens with a space
+      str_remove_all("[^[:alnum:],.\\s]") %>%  # Remove other punctuation except commas, periods, and spaces
+      str_to_lower() %>%
+      str_squish(),  # Remove extra spaces
+    # Extract first five digits of the zip code
+    mloczip_five = str_extract(mloczip, "^\\d{5}")
+  )
+
+fuzzy_match <- unmatched_hosp %>%
+  fuzzy_left_join(
+    aha_data,
+    by = c("entity_zip_five" = "mloczip_five", "year" = "year", "entity_address" = "mlocaddr", "entity_name" = "mname"),
+    match_fun = list(
+      `==`,  # Exact match for zip
+      `==`,  # Exact match for year
+      ~ stringdist::stringdist(.x, .y) <= 5,  # Fuzzy match for address
+      ~ stringdist::stringdist(.x, .y) <= 5   # Fuzzy match for hospital name
+    )
+  ) %>%
+  mutate(
+    # Calculate string distance for names and addresses
+    name_distance = stringdist::stringdist(entity_name, mname),
+    address_distance = stringdist::stringdist(entity_address, mlocaddr)
+  )
+
+#The stringdist::stringdist(.x, .y) <= 2 criterion uses a string distance metric to determine how similar two strings are. Specifically, it measures how many operations (like insertions, deletions, or substitutions of characters) are needed to transform one string into another.This is using the Levenshtein distance. 
+
+#match thresholds (out of 6265 unmatched hospitals)
+# <= 2 only 69 matches w punctuation on addresses, 72 without, remove punc from name and zip 5:
+# <=3 only 120 matches, 122 without on addresses, remove punc from name and zip 5:
+# <= 4 154 matches, 155 without punction on addresses, remove punc from name and zip 5:415
+#<=6 or 7 is too far, it matches shriners with kindred, totally different
+# final, with <= 5 and the aha.dta match is 443, with the csv is 6265
+
+#review the matches
+fuzzy_match_review <- fuzzy_match %>% 
+  filter(!is.na(mname)) %>% 
+  select(entity_name, mname,entity_address, entity_city,entity_zip, entity_zip_five, mlocaddr,mloccity, mloczip, mloczip_five, year.x, year.y, hospn, ahanumber.x,ahanumber.y,medicarenumber,mcrnum,name_distance,address_distance)
+
+
+
+```
+

@@ -1,2 +1,2 @@
-.DS_Store
-**/.DS_Store
+# Ignore the generated Stata configuration file config_stata.do as it contains personalized file paths
+config_stata.do

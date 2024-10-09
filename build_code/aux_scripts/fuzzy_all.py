@@ -355,7 +355,7 @@ with open(json_file, 'w') as f:
         json.dump(graph_data, f)
 
 new_remaining_path = os.path.join(user_path, "derived/auxiliary/new_remaining.csv")
-final_remaining_2.to_csv(remaining_file)
+final_remaining_2.to_csv(new_remaining_path)
 
 new_cleaned_path = os.path.join(user_path, "derived/auxiliary/new_cleaned.csv")
-final_confirmed_2.to_csv(remaining_file)
+final_confirmed_2.to_csv(new_cleaned_path)

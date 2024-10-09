@@ -18,12 +18,7 @@ library(stringdist) # for gender assignment code
 library(data.table) # for gender assignment code
 library(phonics) # for gender assignment code
 library(scales) # improved plotting
-
-# library(dplyr) in tidyverse
-# library(ggplot2) in tidyverse
-# library(stringr) in tidyverse
-# library(tibble) in tidyverse
-# library(purrr) in tidyverse
+library(knitr)
 
 #######  Manual Inputs - if we change the folder structure, this needs to be updated
 # Define the project folder name
@@ -33,6 +28,7 @@ data <- "/_data"
 code <- "/_code"
 raw_files <- "/raw"
 derived_files <-  "/derived"
+auxiliary_files <- "/derived/auxiliary"
 supplemental_files <- "/supplemental"
 nicknames_dictionaries <- "/nicknames dictionaries"
 
@@ -105,7 +101,102 @@ if (is.null(project_directory)) {
 raw_data <- paste0(project_directory,data,raw_files)
 derived_data <- paste0(project_directory,data,derived_files)
 supplemental_data <- paste0(project_directory,data,supplemental_files)
+auxiliary_data <- paste0(project_directory,data,auxiliary_files)
 nicknames_dictionaries <- paste0(project_directory,data,nicknames_dictionaries)
+
+
+# Step 5: Create .do file so that Stata users can configure their scripts
+# Since config.R is in the GitHub code directory, we can get its directory
+# Function to get the script directory
+# get_script_directory <- function() {
+#   # Try to get the script path when running via Rscript
+#   args <- commandArgs(trailingOnly = FALSE)
+#   file_arg_index <- grep("--file=", args)
+#   if (length(file_arg_index) > 0) {
+#     # Running via Rscript
+#     file_arg <- args[file_arg_index]
+#     script_path <- normalizePath(sub("--file=", "", file_arg))
+#     return(dirname(script_path))
+#   } else if (interactive()) {
+#     # Running interactively in RStudio
+#     if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
+#       script_path <- rstudioapi::getActiveDocumentContext()$path
+#       if (nzchar(script_path)) {
+#         return(dirname(normalizePath(script_path)))
+#       } else {
+#         stop("Cannot determine script directory: No active document found in RStudio.")
+#       }
+#     } else {
+#       stop("Cannot determine script directory: Not running in RStudio or rstudioapi not available.")
+#     }
+#   } else {
+#     # Cannot determine script directory
+#     stop("Cannot determine script directory: Unknown execution environment.")
+#   }
+# }
+
+
+###TESTING NEW
+# Load knitr package (if not already loaded)
+if (!requireNamespace("knitr", quietly = TRUE)) {
+  install.packages("knitr")
+}
+library(knitr)
+
+# Updated get_script_directory function
+get_script_directory <- function() {
+  # Try to get the path of the current Rmd file during rendering
+  if (!is.null(current_input())) {
+    script_directory <- dirname(normalizePath(current_input()))
+    return(script_directory)
+  }
+  
+  # Try to get the script path when running via Rscript
+  args <- commandArgs(trailingOnly = FALSE)
+  file_arg_index <- grep("--file=", args)
+  if (length(file_arg_index) > 0) {
+    # Running via Rscript
+    file_arg <- args[file_arg_index]
+    script_path <- normalizePath(sub("--file=", "", file_arg))
+    return(dirname(script_path))
+  } else if (interactive()) {
+    # Running interactively in RStudio
+    if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
+      script_path <- rstudioapi::getActiveDocumentContext()$path
+      if (nzchar(script_path)) {
+        return(dirname(normalizePath(script_path)))
+      } else {
+        stop("Cannot determine script directory: No active document found in RStudio.")
+      }
+    } else {
+      stop("Cannot determine script directory: Not running in RStudio or rstudioapi not available.")
+    }
+  } else {
+    # Fallback to current working directory
+    script_directory <- getwd()
+    return(script_directory)
+  }
+}
+
+####END TEST
+# Use the function to get the code directory
+code_directory <- get_script_directory()
+
+# Define the path to the Stata configuration file in the code directory
+stata_config_path <- file.path(code_directory, "config_stata.do")
+
+# Open a connection to the Stata .do file
+stata_config_file <- file(stata_config_path, open = "w")
+
+# Write global macro definitions to the file
+writeLines(paste0("global DERIVED_DATA \"", derived_data, "\""), con = stata_config_file)
+writeLines(paste0("global RAW_DATA \"", raw_data, "\""), con = stata_config_file)
+writeLines(paste0("global SUPPLEMENTAL_DATA \"", supplemental_data, "\""), con = stata_config_file)
+writeLines(paste0("global AUXILIARY_DATA \"", auxiliary_data, "\""), con = stata_config_file)
+writeLines(paste0("global NICKNAMES_DICTIONARIES \"", nicknames_dictionaries, "\""), con = stata_config_file)
+
+# Close the connection
+close(stata_config_file)
 
 # Export only necessary variables for use in other scripts
 # Clean up the environment by removing functions that are no longer needed
