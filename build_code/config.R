@@ -27,6 +27,7 @@ data <- "/_data"
 code <- "/_code"
 raw_files <- "/raw"
 derived_files <-  "/derived"
+auxiliary_files <- "/derived/auxiliary"
 supplemental_files <- "/supplemental"
 nicknames_dictionaries <- "/nicknames dictionaries"
 
@@ -99,6 +100,7 @@ if (is.null(project_directory)) {
 raw_data <- paste0(project_directory,data,raw_files)
 derived_data <- paste0(project_directory,data,derived_files)
 supplemental_data <- paste0(project_directory,data,supplemental_files)
+auxiliary_data <- paste0(project_directory,data,auxiliary_files)
 nicknames_dictionaries <- paste0(project_directory,data,nicknames_dictionaries)
 
 
@@ -145,6 +147,7 @@ stata_config_file <- file(stata_config_path, open = "w")
 writeLines(paste0("global DERIVED_DATA \"", derived_data, "\""), con = stata_config_file)
 writeLines(paste0("global RAW_DATA \"", raw_data, "\""), con = stata_config_file)
 writeLines(paste0("global SUPPLEMENTAL_DATA \"", supplemental_data, "\""), con = stata_config_file)
+writeLines(paste0("global AUXILIARY_DATA \"", auxiliary_data, "\""), con = stata_config_file)
 writeLines(paste0("global NICKNAMES_DICTIONARIES \"", nicknames_dictionaries, "\""), con = stata_config_file)
 
 # Close the connection
