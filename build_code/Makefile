@@ -1,13 +1,15 @@
 # This Makefile runs the following steps in order:
-# 1. compile_himss.Rmd
-# 2. manual_assignment.Rmd
-# 3. clean_data.py
-# 4. update_gender.py
-# 5. generate_jaro.py
-# 6. generate_digraphs.py
-# 7. generate_blocks.py
-# 8. generate_clean_df.py
-# 9. generate_final.py
+# 1. install_required_packages.R
+# 2. get_project_directory.R
+# 3. compile_himss.Rmd
+# 4. manual_assignment.Rmd
+# 5. clean_data.py
+# 6. update_gender.py
+# 7. generate_jaro.py
+# 8. generate_digraphs.py
+# 9. generate_blocks.py
+# 10. generate_clean_df.py
+# 11. generate_final.py
 
 # Capture USER_DIR by running get_project_directory.R
 USER_DIR := $(shell Rscript get_project_directory.R)
@@ -68,11 +70,15 @@ FINAL_CONFIRMED := $(DERIVED_DIR)/final_confirmed.dta
 PANDOC_PATH := /Applications/RStudio.app/Contents/Resources/app/quarto/bin/tools/x86_64
 
 # Define phony targets
-.PHONY: all compile_himss manual_assignment clean_data update_gender \
+.PHONY: all install_packages compile_himss manual_assignment clean_data update_gender \
 generate_jaro generate_digraphs generate_blocks generate_final
 
 # Default target
-all: final_himss
+all: install_packages final_himss
+
+# Step 0: Install required packages
+install_packages:
+	Rscript installed_packages.R
 
 # Enforce execution order via phony dependencies
 final_himss: generate_final
