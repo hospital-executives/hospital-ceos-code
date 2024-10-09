@@ -19,6 +19,19 @@ if len(sys.argv) == 8:
     components_path = sys.argv[5]
     user_path = sys.argv[6] # data dir
     code_path = sys.argv[7]
+
+    # add
+    regenerate_initial_blocks = True
+
+    # write
+    json_file =  os.path.join(user_path, "derived/auxiliary/graph_all.json")
+    remaining_file =  os.path.join(user_path, 
+    "derived/auxiliary/remaining_all.json")
+    pair_file = os.path.join(user_path, 
+    "derived/auxiliary/pair_results.feather")
+    dropped_file = os.path.join(user_path, 
+    "derived/auxiliary/dropped.json")
+
 else: 
     confirmed_path = os.path.join(user_path, "derived/auxiliary/confirmed_2.csv")
     remaining_path =  os.path.join(user_path, "derived/auxiliary/remaining_2.csv")
@@ -26,7 +39,11 @@ else:
     final_remaining_path =  os.path.join(user_path, "derived/py_remaining.csv")
     components_path =  os.path.join(user_path, "derived/py_graph_components.json")
     code_path = os.getcwd()
+
+    # add
     regenerate_initial_blocks = True
+
+    # write
     json_file =  os.path.join(user_path, "derived/auxiliary/graph_all.json")
     remaining_file =  os.path.join(user_path, 
     "derived/auxiliary/remaining_all.json")
@@ -123,6 +140,11 @@ if regenerate_initial_blocks:
         writer = csv.writer(file)
         writer.writerows(cleaned_dropped3)
 
+    G_loaded = confirmed_graph
+    loaded_pair_results = pair_results
+    loaded_cleaned_remaining3 = cleaned_remaining3
+    loaded_dropped = cleaned_dropped3
+
 else:
     with open(json_file, 'r') as f:
         graph_data = json.load(f)
@@ -134,6 +156,8 @@ else:
 
     loaded_cleaned_remaining3 = pd.read_csv(remaining_file)
     loaded_pair_results = pd.read_csv(pair_file)
+
+    print('loaded')
 
 
 new_graph, cleaned_remaining4 = cc.clean_results_pt4(G_loaded, 
@@ -159,172 +183,13 @@ remaining_a = new_remaining[~((new_remaining['min_same_probability'] >=.5) &
                             (new_remaining['lastname_lev_distance'] <=1))]
 
 
-
-## delete this if statement
-if not_dropping: 
-    # set all dfs to proper type
-    input_df['contact_uniqueid'] = input_df['contact_uniqueid'].astype(int)                        
-    new_himss['contact_uniqueid'] = new_himss['contact_uniqueid'].astype(int)                        
-    loaded_cleaned_remaining3['contact_id1'] = loaded_cleaned_remaining3['contact_id1'].astype(int)                        
-    loaded_cleaned_remaining3['contact_id2'] = loaded_cleaned_remaining3['contact_id2'].astype(int)                        
-
-    remaining_ids = pd.concat([cleaned_remaining3['contact_id1'],
-                                cleaned_remaining3['contact_id2']])
-    cleaned_df = input_df[~input_df['contact_uniqueid'].isin(remaining_ids)]
-
-    # compile dictionaries for next steps
-    id_to_old_first = new_himss.groupby('contact_uniqueid')['old_firstname'].apply(list).to_dict()
-    id_to_old_last = new_himss.groupby('contact_uniqueid')['old_lastname'].apply(list).to_dict()
-
-    # Step 2: Find last names that correspond to only one first name
-    grouped_last = new_himss.groupby('old_lastname').agg(unique_firstnames=('old_firstname', 'nunique'))
-    filtered_lastnames = grouped_last[grouped_last['unique_firstnames'] <= 2].index
-    id_to_last_has_one_first = {id_: any(lastname in filtered_lastnames for lastname in lastnames)
-                                for id_, lastnames in id_to_old_last.items()}
-
-    # Step 4: Find first names that correspond to only one last name
-    grouped_first = new_himss.groupby('old_firstname').agg(unique_lastnames=('old_lastname', 'nunique'))
-    filtered_firstnames = grouped_first[grouped_first['unique_lastnames'] <= 2].index
-    id_to_first_has_one_last = {id_: any(firstname in filtered_firstnames for firstname in firstnames)
-                                for id_, firstnames in id_to_old_first.items()}
-
-    loaded_cleaned_remaining3['id1_last_has_one_first'] = loaded_cleaned_remaining3['contact_id1'].map(id_to_last_has_one_first)
-    loaded_cleaned_remaining3['id1_first_has_one_last'] = loaded_cleaned_remaining3['contact_id1'].map(id_to_first_has_one_last)
-
-    loaded_cleaned_remaining3['id2_last_has_one_first'] = loaded_cleaned_remaining3['contact_id2'].map(id_to_last_has_one_first)
-    loaded_cleaned_remaining3['id2_first_has_one_last'] = loaded_cleaned_remaining3['contact_id2'].map(id_to_first_has_one_last)
-
-
-    cleaned_remaining4 = loaded_cleaned_remaining3[~ 
-    ((loaded_cleaned_remaining3['id1_last_has_one_first'] & 
-    loaded_cleaned_remaining3['id2_last_has_one_first'] & 
-        ((loaded_cleaned_remaining3['firstname_lev_distance'] == 0) | 
-        (loaded_cleaned_remaining3['old_firstname_jw_distance'] > .925)) & 
-    ((loaded_cleaned_remaining3['lastname_lev_distance'] == 0) | 
-    (loaded_cleaned_remaining3['old_lastname_jw_distance'] > .925))) |
-    (loaded_cleaned_remaining3['id1_first_has_one_last'] & 
-    loaded_cleaned_remaining3['id2_first_has_one_last'] & 
-        ((loaded_cleaned_remaining3['firstname_lev_distance'] == 0) | 
-        (loaded_cleaned_remaining3['old_firstname_jw_distance'] > .925)) & 
-    ((loaded_cleaned_remaining3['lastname_lev_distance'] == 0) | 
-    (loaded_cleaned_remaining3['old_lastname_jw_distance'] > .925))))]
-
-
-    same_path = os.path.join(user_path, "derived/auxiliary/same_year.csv")
-    same_year = pd.read_csv(same_path)
-    diff_path = os.path.join(user_path, "derived/auxiliary/diff_year.csv")
-    diff_year = pd.read_csv(diff_path)
-
-    # SAME YEAR TITLES
-    title_dict = new_himss.groupby('contact_uniqueid').apply(lambda x: 
-    list(zip(x['year'], x['title_standardized']))).to_dict()
-
-    def get_titles_in_same_year(contact_id1, contact_id2):
-        titles_id1 = title_dict.get(contact_id1, [])
-        titles_id2 = title_dict.get(contact_id2, [])
-        
-        # Create dictionaries from (year, title) tuples to map year to title for both contacts
-        id1_titles_by_year = {year: title for year, title in titles_id1}
-        id2_titles_by_year = {year: title for year, title in titles_id2}
-        
-        # Find common years and collect the titles from both contacts in those years
-        common_titles = []
-        for year in id1_titles_by_year:
-            if year in id2_titles_by_year:
-                common_titles.append((id1_titles_by_year[year], id2_titles_by_year[year]))
-        
-        return common_titles
-
-    # Step 3: Apply the function to each row in the df_contacts DataFrame
-    cleaned_remaining4['titles_in_same_year'] = cleaned_remaining4.apply(lambda row: 
-    get_titles_in_same_year(row['contact_id1'], row['contact_id2']), axis=1)
-
-    def get_minimum_probability(titles_in_same_year):
-        min_prob = float('inf')  # Initialize min_prob to infinity
-        for title_1, title_2 in titles_in_same_year:
-            # Find matching rows for job_title_1 and job_title_2 in either order
-            match = same_year[((same_year['job_title_1'] == title_1) & (same_year['job_title_2'] == title_2)) |
-                            ((same_year['job_title_1'] == title_2) & (same_year['job_title_2'] == title_1))]
-            if not match.empty:
-                # Get the minimum probability from the matched rows
-                min_prob = min(min_prob, match['probability_total'].min())
-        
-        # If no match is found, return NaN
-        return min_prob if min_prob != float('inf') else None
-
-    # Step 3: Apply the function to each row in df_contacts
-    cleaned_remaining4['min_probability'] = cleaned_remaining4['titles_in_same_year'].apply(get_minimum_probability)
-
-    cleaned_remaining5 = cleaned_remaining4[
-        ~(cleaned_remaining4['min_probability'] < 0.01)
-    ]
-
-    cleaned_remaining6 = cleaned_remaining5[
-        ~((cleaned_remaining5['min_probability'] < .05) &
-        ((cleaned_remaining5['firstname_lev_distance'] > 3) &
-        ~(cleaned_remaining5['name_in_same_row_firstname'])))
-    ]
-
-    ## DIFFERENT YEARS
-    def get_unique_job_tuples(contact_id1, contact_id2):
-        titles_id1 = title_dict.get(contact_id1, [])
-        titles_id2 = title_dict.get(contact_id2, [])
-        
-        # Combine all job titles for both contact_id1 and contact_id2
-        combined_titles = titles_id1 + titles_id2
-        
-        # Sort by year to ensure earlier jobs come first
-        combined_titles.sort(key=lambda x: x[0])  # Sort by year (first element of the tuple)
-        
-        # Create tuples of jobs held in different years (earlier year first, later year second)
-        job_tuples = set()  # Use a set to ensure uniqueness
-        for i in range(len(combined_titles)):
-            for j in range(i+1, len(combined_titles)):
-                year_i, title_i = combined_titles[i]
-                year_j, title_j = combined_titles[j]
-                if year_j > year_i:  # Add (title_i, title_j)
-                    job_tuples.add((title_i, title_j))
-                elif year_i > year_j:  # Add (title_j, title_i)
-                    job_tuples.add((title_j, title_i))
-        
-        return list(job_tuples)
-
-    # Step 3: Apply the function to each row in df_contacts
-    cleaned_remaining6['unique_job_tuples'] = cleaned_remaining6.apply(lambda row: get_unique_job_tuples(row['contact_id1'], row['contact_id2']), axis=1)
-
-    def get_minimum_probability(job_tuples):
-        probabilities = []
-        for title1, title2 in job_tuples:
-            # Find the row in diff_year where previous_title_standardized == title1 and title_standardized == title2
-            match = diff_year[(diff_year['previous_title_standardized'] == title1) & (diff_year['title_standardized'] == title2)]
-            if not match.empty:
-                probabilities.append(match['probability'].values[0])
-        
-        # Return the minimum probability if there are matches, otherwise return None
-        return min(probabilities) if probabilities else None
-
-    # Step 3: Apply the function to the 'unique_job_tuples' column in df_contacts
-    cleaned_remaining6['min_probability_diff'] = cleaned_remaining6['unique_job_tuples'].apply(get_minimum_probability)
-
-    cleaned_remaining7 = cleaned_remaining6[~(cleaned_remaining6['min_probability_diff']<.01)]
-    cleaned_remaining8 = cleaned_remaining7[
-        ~((cleaned_remaining7['min_probability_diff'] < .05) & 
-        ((cleaned_remaining7['firstname_lev_distance'] > 3) | 
-        (cleaned_remaining7['firstname_jw_distance']<.7)) & 
-        ~(cleaned_remaining7['name_in_same_row_firstname']))]
-    cleaned_remaining9 = cleaned_remaining8[
-        ~((cleaned_remaining8['min_probability_diff'] < .05) & 
-        ((cleaned_remaining8['lastname_lev_distance'] > 3) | 
-        (cleaned_remaining8['lastname_jw_distance']<.7)))]
-
-
-cleaned_remaining13 = cleaned_remaining12[((
-   (cleaned_remaining12['min_probability_diff'] >=.25) | 
-   (cleaned_remaining12['min_probability'] >= .25)) & 
-    (((cleaned_remaining12['firstname_jw_distance'] >= .9) | 
-    (cleaned_remaining12['firstname_lev_distance']<= 1)) &
-    ((cleaned_remaining12['lastname_jw_distance'] >=.9) | 
-    (cleaned_remaining12['lastname_lev_distance']<=1)))) ] # i think this needs
+#cleaned_remaining13 = cleaned_remaining12[((
+   #(cleaned_remaining12['min_probability_diff'] >=.25) | 
+   #(cleaned_remaining12['min_probability'] >= .25)) & 
+    #(((cleaned_remaining12['firstname_jw_distance'] >= .9) | 
+   # (cleaned_remaining12['firstname_lev_distance']<= 1)) &
+   # ((cleaned_remaining12['lastname_jw_distance'] >=.9) | 
+   # (cleaned_remaining12['lastname_lev_distance']<=1)))) ] # i think this needs
     # to be a higher threshold because what if they have the same name
 
 
@@ -343,6 +208,11 @@ pair_results_first = pd.concat([cc.find_pairwise_shared_attributes(sub_df,
                                                              for _, 
                      sub_df in new_grouped])
 pair_results_first = cc.update_results(pair_results_first) 
+
+pair_file = os.path.join(user_path, 
+    "derived/auxiliary/pair_results_meta.csv")
+pair_results_first.to_csv(pair_file)
+
 merged_df = pd.merge(pair_results_first
 , pair_results, on=['last_meta', 'contact_id1', 'contact_id2'], how='left', indicator=True)
 test = merged_df[merged_df['_merge'] == 'left_only'].drop(columns=['_merge'])
@@ -428,13 +298,27 @@ remaining_ids = set(cleaned_df['contact_uniqueid'].unique()) - \
                 confirmed_ids - set(test_graph.nodes())
 
 common_nodes =  set(cleaned_df['contact_uniqueid'].unique()
-                    ).union(confirmed_ids) - remaining_ids
+                    ).union(confirmed_ids) - all_remaining_ids
 
 G1_subgraph = confirmed_graph.subgraph(common_nodes).copy()
 G_combined = nx.compose(G1_subgraph, test_graph)
-# 163k IDs
-# with 162k "people"
+
 final_confirmed_2 = cleaned_df[~cleaned_df['contact_uniqueid'].isin(all_remaining_ids)]
+final_remaining_2 = cleaned_df[cleaned_df['contact_uniqueid'].isin(all_remaining_ids)]
+
 final_confirmed_ids_2 = set(final_confirmed_2['contact_uniqueid'])
 
 # 134025 and 1309084 should be the same at the end
+
+graph_data = json_graph.node_link_data(G_combined)
+
+# Write the JSON data to a file
+new_confirmed_graph = os.path.join(user_path, "derived/auxiliary/new_graph.json")
+with open(json_file, 'w') as f:
+        json.dump(graph_data, f)
+
+new_remaining_path = os.path.join(user_path, "derived/auxiliary/new_remaining.csv")
+final_remaining_2.to_csv(remaining_file)
+
+new_cleaned_path = os.path.join(user_path, "derived/auxiliary/new_cleaned.csv")
+final_confirmed_2.to_csv(remaining_file)

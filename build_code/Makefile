@@ -156,8 +156,15 @@ final_himss_manual:
 	"$(GRAPH_COMPS)" "$(FINAL_HIMSS)" "$(FINAL_CONFIRMED)" \
 	"$(HIMSS_ENTITIES_CONTACTS)"
 
-# /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/
+generate_new_cleaned:
+	python3 aux_scripts/fuzzy_all.py "$(CONFIRMED_2)" "$(REMAINING_2)" \
+	"$(PY_CLEANED)" "$(PY_REMAINING)" "$(GRAPH_COMPS)" \
+	"$(DATA_DIR)" "$(CODE_DIR)" 
 
+#clean_new_cleaned:
+#python3 generate_final.py "$(PY_CLEANED)" "$(PY_REMAINING)" \
+	"$(GRAPH_COMPS)" "$(FINAL_HIMSS)" "$(FINAL_CONFIRMED)" \
+	"$(HIMSS_ENTITIES_CONTACTS)" 
 
 # to run to generate blocks: 
 #make /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/auxiliary/confirmed_2.csv /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/auxiliary/remaining_2.csv
