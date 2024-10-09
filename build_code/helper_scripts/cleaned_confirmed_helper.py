@@ -72,6 +72,9 @@ def gen_name_meta_pairs(user_path):
     return name_pairs_set, meta_pairs_set
 
 # GENERATE BLOCKS DF
+def parallel_blocks(group):
+    return find_common_blocks(group)
+
 def find_common_blocks(sub_df, first_meta=None):
     # Grouping by 'contact_uniqueid' and collecting sets in a single pass
     grouped = sub_df.groupby('contact_uniqueid').agg({
@@ -80,7 +83,7 @@ def find_common_blocks(sub_df, first_meta=None):
         'entity_uniqueid': set,
         'system_id': set,
         'entity_address': set,
-        'entity_zip': lambda x: set(z[:5] for z in x)
+        'entity_zip_five': set
     })
     
     # Finding common elements in the sets
@@ -89,7 +92,7 @@ def find_common_blocks(sub_df, first_meta=None):
     common_entity_ids = set.intersection(*grouped['entity_uniqueid']) if len(grouped) > 1 else set()
     common_system_ids = set.intersection(*grouped['system_id']) if len(grouped) > 1 else set()
     common_adds = set.intersection(*grouped['entity_address']) if len(grouped) > 1 else set()
-    common_zips = set.intersection(*grouped['entity_zip']) if len(grouped) > 1 else set()
+    common_zips = set.intersection(*grouped['entity_zip_five']) if len(grouped) > 1 else set()
 
     # Common data to return in both cases
     common_data = {
@@ -99,7 +102,7 @@ def find_common_blocks(sub_df, first_meta=None):
         'entity_uniqueid': list(sub_df['entity_uniqueid'].unique()),
         'entity_address': list(sub_df['entity_address'].unique()),
         'system_id': list(sub_df['system_id'].unique()),
-        'entity_zip': list(sub_df['entity_zip'].str[:5].unique()),
+        'entity_zip': list(sub_df['entity_zip_five'].unique()),
         'common_titles': list(common_titles),
         'common_names': list(common_names),
         'common_entity_ids': list(common_entity_ids),
@@ -142,7 +145,7 @@ def find_pairwise_shared_attributes(sub_df, name_pairs_set, meta_pairs_set):
         'entity_id': sub_df.groupby('contact_uniqueid')['entity_uniqueid'].apply(set).to_dict(),
         'system_id': sub_df.groupby('contact_uniqueid')['system_id'].apply(set).to_dict(),
         'address': sub_df.groupby('contact_uniqueid')['entity_address'].apply(set).to_dict(),
-        'zip': sub_df.groupby('contact_uniqueid')['entity_zip'].apply(lambda x: set(z[:5] for z in x)).to_dict(),
+        'zip': sub_df.groupby('contact_uniqueid')['entity_zip_five'].apply(set).to_dict(),
         'state': sub_df.groupby('contact_uniqueid')['entity_state'].apply(set).to_dict(),
         'firstname': sub_df.groupby('contact_uniqueid')['firstname'].first().fillna('').to_dict(),
         'lastname': sub_df.groupby('contact_uniqueid')['lastname'].first().fillna('').to_dict(),
@@ -317,33 +320,8 @@ def clean_results_pt1(pair_results, confirmed_ids=None):
            lastname_similarity_condition) |
           ((pair_results['lastname_lev_distance'] == 0) &
            (pair_results['name_in_same_row_firstname']) &
-           state_or_system_condition & lastname_count_condition) |
-           (((pair_results['lastname_lev_distance'] == 0) |
-            (pair_results['lastname_jw_distance'] > 0.925)) & 
-            title_similarity_condition & 
-            (pair_results['max_lastname_count_id1'] <= 2) &
-            (pair_results['max_lastname_count_id2'] <= 2)))
+           state_or_system_condition & lastname_count_condition))
     ]
-
-    # Filter remaining for differences and collect dropped pairs
-    dropped_conditions = [
-        (remaining['total_shared_attributes'] == 0) & 
-        (remaining['distinct_state_count'] > 1),
-        (remaining['lastname_lev_distance'] >= 3) & 
-        (~remaining['name_in_same_row_firstname']) & 
-        (remaining['distinct_state_count'] > 1),
-        (~remaining['name_in_same_row_firstname']) & 
-        (remaining['distinct_state_count'] > 1) & 
-        (remaining['lastname_lev_distance'] >= 1) & 
-        (remaining['shared_titles_flag'] == 0),
-        (~remaining['name_in_same_row_firstname']) & 
-        (~remaining['meta_in_same_row'].fillna(False).infer_objects(copy=False)) 
-        & ((remaining['lastname_jw_distance'] < 0.5) | 
-        (remaining['lastname_lev_distance'] >= 3))
-    ]
-
-    dropped = [remaining[cond] for cond in dropped_conditions]
-    remaining = remaining[~dropped_conditions[-1]]
 
     # Add pairs that match the cleaned criteria to the graph
     cleaned =  pair_results[
@@ -357,22 +335,32 @@ def clean_results_pt1(pair_results, confirmed_ids=None):
            lastname_similarity_condition) |
           ((pair_results['lastname_lev_distance'] == 0) &
            (pair_results['name_in_same_row_firstname']) &
-           state_or_system_condition & lastname_count_condition) |
-           (((pair_results['lastname_lev_distance'] == 0) |
-            (pair_results['lastname_jw_distance'] > 0.925)) & 
-            title_similarity_condition & 
-            (pair_results['max_lastname_count_id1'] <= 2) &
-            (pair_results['max_lastname_count_id2'] <= 2)))
+           state_or_system_condition & lastname_count_condition))
     ]
 
     add_to_graph_from_df(G, cleaned)
 
-    # Collect dropped pairs into a set
+    dropped = remaining[
+        (((remaining['firstname_lev_distance'] >=3) |
+          (remaining['firstname_jw_distance'] <= .5)) &
+          ~(remaining['name_in_same_row_firstname'])) &
+          ((remaining['lastname_lev_distance'] >= 3) | 
+         (remaining['lastname_jw_distance'] <= .5) | 
+         (remaining['shared_states'].apply(len) == 0))]
+    
     pairs_set = set()
-    for df in dropped:
-        pairs_set.update(zip(df['contact_id1'], df['contact_id2']))
+    pairs_set.update(zip(dropped['contact_id1'], dropped['contact_id2']))
 
-    return G, pairs_set, remaining
+    new_remaining = remaining[
+        ~((((remaining['firstname_lev_distance'] >=3) |
+          (remaining['firstname_jw_distance'] <= .5)) &
+          ~(remaining['name_in_same_row_firstname'])) &
+          ((remaining['lastname_lev_distance'] >= 3) | 
+         (remaining['lastname_jw_distance'] <= .5) | 
+         (remaining['shared_states'].apply(len) == 0)))]
+
+
+    return G, new_remaining, pairs_set
 
 def clean_results_pt2(remaining, G, dropped_sets, new_himss):
     contact_id_counts = new_himss['contact_uniqueid'].value_counts()
@@ -380,9 +368,12 @@ def clean_results_pt2(remaining, G, dropped_sets, new_himss):
     remaining_updated = check_ids_in_graph(remaining, G)
     
     # Convert contact IDs to strings (if necessary) and map counts
-    remaining_updated[['contact_id1', 'contact_id2']] = remaining_updated[['contact_id1', 'contact_id2']].astype(str)
-    remaining_updated['contact_id1_count'] = remaining_updated['contact_id1'].map(contact_id_counts).fillna(0).astype(int)
-    remaining_updated['contact_id2_count'] = remaining_updated['contact_id2'].map(contact_id_counts).fillna(0).astype(int)
+    remaining_updated[['contact_id1', 'contact_id2']] = \
+        remaining_updated[['contact_id1', 'contact_id2']].astype(str)
+    remaining_updated['contact_id1_count'] = \
+        remaining_updated['contact_id1'].map(contact_id_counts).fillna(0).astype(int)
+    remaining_updated['contact_id2_count'] = \
+        remaining_updated['contact_id2'].map(contact_id_counts).fillna(0).astype(int)
 
     # Conditions to drop rows
     condition1 = (remaining_updated['contact_id1_count'] <= 2) & (~remaining_updated['contact_id1_in_graph']) & \
@@ -449,17 +440,284 @@ def clean_results_pt3(remaining, dropped_sets, user_path, new_himss, cleaned_con
 
     return dropped_sets, remaining2
 
-def clean_results_pt4(remaining, new_himss):
-    id_year_title_dict = new_himss.groupby('contact_uniqueid').apply(
-    lambda x: list(zip(x['year'], x['title_standardized']))
-    ).to_dict()
 
-    remaining[['most_recent_title_id1', 'first_title_id2']] = remaining.apply(
-    lambda row: get_titles_if_no_overlap(row['contact_id1'], row['contact_id2'], id_year_title_dict),
-    axis=1,
-    result_type='expand'
-)
-    return remaining
+def clean_results_pt4(confirmed_graph, remaining, new_himss):
+    
+    ## get rare nicknames
+    new_himss['contact_uniqueid'] = new_himss['contact_uniqueid'].astype(int)
+    remaining['contact_id1'] = remaining['contact_id1'].astype(int)
+    remaining['contact_id2'] = remaining['contact_id2'].astype(int)
+    id_to_old_first = new_himss.groupby('contact_uniqueid')['old_firstname'].apply(list).to_dict()
+    id_to_old_last = new_himss.groupby('contact_uniqueid')['old_lastname'].apply(list).to_dict()
+
+    grouped_last = new_himss.groupby('old_lastname').agg(unique_firstnames=('old_firstname', 'nunique'))
+    filtered_lastnames = grouped_last[grouped_last['unique_firstnames'] <= 2].index
+    id_to_last_has_one_first = {id_: any(lastname in filtered_lastnames for lastname in lastnames)
+                                for id_, lastnames in id_to_old_last.items()}
+
+    grouped_first = new_himss.groupby('old_firstname').agg(unique_lastnames=('old_lastname', 'nunique'))
+    filtered_firstnames = grouped_first[grouped_first['unique_lastnames'] <= 2].index
+    id_to_first_has_one_last = {id_: any(firstname in filtered_firstnames for firstname in firstnames)
+                                for id_, firstnames in id_to_old_first.items()}
+
+    ## add indicators to remaining df
+    remaining['id1_last_has_one_first'] = \
+        remaining['contact_id1'].map(id_to_last_has_one_first)
+    remaining['id1_first_has_one_last'] = \
+        remaining['contact_id1'].map(id_to_first_has_one_last)
+
+    remaining['id2_last_has_one_first'] = \
+        remaining['contact_id2'].map(id_to_last_has_one_first)
+    remaining['id2_first_has_one_last'] = \
+        remaining['contact_id2'].map(id_to_first_has_one_last)
+
+
+    cleaned =  remaining[
+    (
+        # Condition 1: Both id1 and id2 have one corresponding first name, and name distances are satisfied
+        (
+            remaining['id1_last_has_one_first'] & 
+            remaining['id2_last_has_one_first'] & 
+            (
+                (remaining['firstname_lev_distance'] == 0) | 
+                (remaining['old_firstname_jw_distance'] > 0.925)
+            ) & 
+            (
+                (remaining['lastname_lev_distance'] == 0) | 
+                (remaining['old_lastname_jw_distance'] > 0.925)
+            )
+        ) 
+        |
+        # Condition 2: Both id1 and id2 have one corresponding last name, and name distances are satisfied
+        (
+            remaining['id1_first_has_one_last'] & 
+            remaining['id2_first_has_one_last'] & 
+            (
+                (remaining['firstname_lev_distance'] == 0) | 
+                (remaining['old_firstname_jw_distance'] > 0.925)
+            ) & 
+            (
+                (remaining['lastname_lev_distance'] == 0) | 
+                (remaining['old_lastname_jw_distance'] > 0.925)
+            )
+        )
+    )
+]
+    add_to_graph_from_df(confirmed_graph, cleaned)
+    
+
+
+    new_remaining = remaining[
+        ~(
+            # Condition 1: Both id1 and id2 have one corresponding first name, and name distances are satisfied
+            (
+                remaining['id1_last_has_one_first'] & 
+                remaining['id2_last_has_one_first'] & 
+                (
+                    (remaining['firstname_lev_distance'] == 0) | 
+                    (remaining['old_firstname_jw_distance'] > 0.925)
+                ) & 
+                (
+                    (remaining['lastname_lev_distance'] == 0) | 
+                    (remaining['old_lastname_jw_distance'] > 0.925)
+                )
+            ) 
+            |
+            # Condition 2: Both id1 and id2 have one corresponding last name, and name distances are satisfied
+            (
+                remaining['id1_first_has_one_last'] & 
+                remaining['id2_first_has_one_last'] & 
+                (
+                    (remaining['firstname_lev_distance'] == 0) | 
+                    (remaining['old_firstname_jw_distance'] > 0.925)
+                ) & 
+                (
+                    (remaining['lastname_lev_distance'] == 0) | 
+                    (remaining['old_lastname_jw_distance'] > 0.925)
+                )
+            )
+        )
+    ]
+
+    return new_remaining
+
+def clean_results_pt5(dropped_sets,remaining, new_himss, user_path):
+
+    def get_titles_in_same_year(contact_id1, contact_id2):
+        titles_id1 = title_dict.get(contact_id1, [])
+        titles_id2 = title_dict.get(contact_id2, [])
+        
+        # Create dictionaries from (year, title) tuples to map year to title for both contacts
+        id1_titles_by_year = {year: title for year, title in titles_id1}
+        id2_titles_by_year = {year: title for year, title in titles_id2}
+        
+        # Find common years and collect the titles from both contacts in those years
+        common_titles = []
+        for year in id1_titles_by_year:
+            if year in id2_titles_by_year:
+                common_titles.append((id1_titles_by_year[year], id2_titles_by_year[year]))
+    
+        return common_titles
+
+    def get_unique_job_tuples(contact_id1, contact_id2):
+        titles_id1 = title_dict.get(contact_id1, [])
+        titles_id2 = title_dict.get(contact_id2, [])
+        
+        # Combine all job titles for both contact_id1 and contact_id2
+        combined_titles = titles_id1 + titles_id2
+        
+        # Sort by year to ensure earlier jobs come first
+        combined_titles.sort(key=lambda x: x[0])  # Sort by year (first element of the tuple)
+        
+        # Create tuples of jobs held in different years (earlier year first, later year second)
+        job_tuples = set()  # Use a set to ensure uniqueness
+        for i in range(len(combined_titles)):
+            for j in range(i+1, len(combined_titles)):
+                year_i, title_i = combined_titles[i]
+                year_j, title_j = combined_titles[j]
+                if year_j > year_i:  # Add (title_i, title_j)
+                    job_tuples.add((title_i, title_j))
+                elif year_i > year_j:  # Add (title_j, title_i)
+                    job_tuples.add((title_j, title_i))
+        
+        return list(job_tuples)
+    
+    def get_minimum_same_probability(titles_in_same_year):
+        min_prob = float('inf')  # Initialize min_prob to infinity
+        for title_1, title_2 in titles_in_same_year:
+            # Find matching rows for job_title_1 and job_title_2 in either order
+            match = same_year[((same_year['job_title_1'] == title_1) & (same_year['job_title_2'] == title_2)) |
+                            ((same_year['job_title_1'] == title_2) & (same_year['job_title_2'] == title_1))]
+            if not match.empty:
+                # Get the minimum probability from the matched rows
+                min_prob = min(min_prob, match['probability_total'].min())
+        
+        # If no match is found, return NaN
+        return min_prob if min_prob != float('inf') else None
+
+
+
+    def get_minimum_diff_probability(job_tuples):
+        probabilities = []
+        for title1, title2 in job_tuples:
+            # Find the row in diff_year where previous_title_standardized == title1 and title_standardized == title2
+            match = diff_year[(diff_year['previous_title_standardized'] == title1) & (diff_year['title_standardized'] == title2)]
+            if not match.empty:
+                probabilities.append(match['probability'].values[0])
+    
+        return min(probabilities) if probabilities else None
+
+    # load relevant data frames
+    same_path = os.path.join(user_path, "derived/auxiliary/same_year.csv")
+    same_year = pd.read_csv(same_path)
+    diff_path = os.path.join(user_path, "derived/auxiliary/diff_year.csv")
+    diff_year = pd.read_csv(diff_path)
+
+    title_dict = new_himss.groupby('contact_uniqueid').apply(lambda x: 
+    list(zip(x['year'], x['title_standardized']))).to_dict()
+
+    # modify to add jobs in same year probabilities
+    remaining['titles_in_same_year'] = remaining.apply(lambda row: 
+    get_titles_in_same_year(row['contact_id1'], row['contact_id2']), axis=1)
+    remaining['min_same_probability'] = remaining['titles_in_same_year'].apply(get_minimum_same_probability)
+
+    # modify to add jobs in different year probabilities
+    remaining['unique_job_tuples'] = remaining.apply(lambda row: get_unique_job_tuples(row['contact_id1'], row['contact_id2']), axis=1)
+    remaining['min_diff_probability'] = remaining['unique_job_tuples'].apply(get_minimum_diff_probability)
+   
+    # cases that are definitely different
+    to_drop = remaining[(remaining['min_same_probability'] < 0.01) |
+        ((remaining['min_same_probability'] < .05) &
+        ((remaining['firstname_lev_distance'] > 3) &
+        ~(remaining['name_in_same_row_firstname']))) |
+    (remaining['min_diff_probability']<.01) |
+    ((remaining['min_diff_probability'] < .05) & 
+    ((remaining['firstname_lev_distance'] > 3) | 
+    (remaining['firstname_jw_distance']<.7)) & 
+    ~(remaining['name_in_same_row_firstname'])) |
+    ((remaining['min_diff_probability'] < .05) & 
+    ((remaining['lastname_lev_distance'] > 3) | 
+    (remaining['lastname_jw_distance']<.7)))]
+    dropped_sets.update(zip(to_drop['contact_id1'], to_drop['contact_id2']))
+
+    new_remaining = remaining[~((remaining['min_same_probability'] < 0.01) |
+        ((remaining['min_same_probability'] < .05) &
+        ((remaining['firstname_lev_distance'] > 3) &
+        ~(remaining['name_in_same_row_firstname']))) |
+    (remaining['min_diff_probability']<.01) |
+    ((remaining['min_diff_probability'] < .05) & 
+    ((remaining['firstname_lev_distance'] > 3) | 
+    (remaining['firstname_jw_distance']<.7)) & 
+    ~(remaining['name_in_same_row_firstname'])) |
+    ((remaining['min_diff_probability'] < .05) & 
+    ((remaining['lastname_lev_distance'] > 3) | 
+    (remaining['lastname_jw_distance']<.7))))]
+
+    drop1 = new_remaining[((
+    (new_remaining['min_diff_probability'] < .05) | 
+    (new_remaining['min_same_probability'] < .05)) & 
+    (new_remaining['distinct_state_count'] > 1) &
+    ((new_remaining['firstname_jw_distance'] <.8) | 
+    (new_remaining['firstname_lev_distance']>1) |
+    (new_remaining['lastname_jw_distance'] <.8) | 
+    (new_remaining['lastname_lev_distance']>1)))]
+    dropped_sets.update(zip(drop1['contact_id1'], drop1['contact_id2']))
+
+    remaining1 = new_remaining[~((
+    (new_remaining['min_diff_probability'] < .05) | 
+    (new_remaining['min_same_probability'] < .05)) & 
+    (new_remaining['distinct_state_count'] > 1) &
+    ((new_remaining['firstname_jw_distance'] <.8) | 
+    (new_remaining['firstname_lev_distance']>1) |
+    (new_remaining['lastname_jw_distance'] <.8) | 
+    (new_remaining['lastname_lev_distance']>1)))]
+
+    drop2 = remaining1[((
+    (remaining1['min_diff_probability'] < .2) | 
+    (remaining1['min_same_probability'] < .2)) & 
+    (remaining1['distinct_state_count'] > 1) &
+    ((remaining1['firstname_jw_distance'] <.8) | 
+    (remaining1['firstname_lev_distance']>1) |
+    (remaining1['lastname_jw_distance'] <.8) | 
+    (remaining1['lastname_lev_distance']>1)) &
+    ~(remaining1['name_in_same_row_firstname']))]
+    dropped_sets.update(zip(drop2['contact_id1'], drop2['contact_id2']))
+
+
+    remaining2 = remaining1[~((
+    (remaining1['min_diff_probability'] < .2) | 
+    (remaining1['min_same_probability'] < .2)) & 
+    (remaining1['distinct_state_count'] > 1) &
+    ((remaining1['firstname_jw_distance'] <.8) | 
+    (remaining1['firstname_lev_distance']>1) |
+    (remaining1['lastname_jw_distance'] <.8) | 
+    (remaining1['lastname_lev_distance']>1)) &
+    ~(remaining1['name_in_same_row_firstname']))]
+
+    drop3 = remaining2[((
+    (remaining2['min_diff_probability'] < .2) | 
+    (remaining2['min_same_probability'] < .2)) & 
+    (remaining2['both_F_and_M_present']) &
+    ((remaining2['firstname_jw_distance'] <.8) | 
+    (remaining2['firstname_lev_distance']>1) |
+    (remaining2['lastname_jw_distance'] <.8) | 
+    (remaining2['lastname_lev_distance']>1)) &
+    ~(remaining2['name_in_same_row_firstname']))]
+
+    remaining3 = remaining2[~((
+    (remaining2['min_diff_probability'] < .2) | 
+    (remaining2['min_same_probability'] < .2)) & 
+    (remaining2['both_F_and_M_present']) &
+    ((remaining2['firstname_jw_distance'] <.8) | 
+    (remaining2['firstname_lev_distance']>1) |
+    (remaining2['lastname_jw_distance'] <.8) | 
+    (remaining2['lastname_lev_distance']>1)) &
+    ~(remaining2['name_in_same_row_firstname']))]
+    dropped_sets.update(zip(drop3['contact_id1'], drop3['contact_id2']))
+
+
+
+    return remaining3, dropped_sets
 
 def update_confirmed_from_dropped(G, cleaned_dropped, contact_count_dict):
     # Count occurrences of each ID in cleaned_dropped
