@@ -2,6 +2,31 @@ import os
 import sys 
 import json
 import csv
+import subprocess
+
+def install(package):
+    try:
+        # Try installing using pip
+        subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to install {package} using pip. Trying with pip3...")
+        try:
+            # If pip is not found, try with pip3
+            subprocess.check_call([sys.executable, "-m", "pip3", "install", package])
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to install {package} using both pip and pip3. Please check your Python and pip installation.")
+
+# list packages
+required_packages = ['pandas', 'numpy', 'Levenshtein', 'matplotlib',
+                     'metaphone', 'networkx', 'jellyfish','geopy']  
+
+# import packages
+for package in required_packages:
+    try:
+        __import__(package)  # Try to import the package
+    except ImportError:
+        install(package)
+
 import pandas as pd
 import networkx as nx
 from itertools import chain
