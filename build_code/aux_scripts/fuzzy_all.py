@@ -214,9 +214,16 @@ pair_results_first = pd.concat([cc.find_pairwise_shared_attributes(sub_df,
                      sub_df in new_grouped])
 pair_results_first = cc.update_results(pair_results_first) 
 
-pair_file = os.path.join(user_path, 
-    "derived/auxiliary/pair_results_meta.csv")
-pair_results_first.to_csv(pair_file)
+try: 
+    pair_file = os.path.join(user_path, 
+        "derived/auxiliary/pair_results_meta.csv")
+    pair_results_first.to_csv(pair_file)
+except Exception as e:
+    backup_file = os.path.join(user_path, "derived/auxiliary/pair_results_meta_backup.pkl")
+    
+    # Save the DataFrame in a recoverable format (pickle)
+    pair_results_first.to_pickle(backup_file)
+
 
 merged_df = pd.merge(pair_results_first
 , pair_results, on=['last_meta', 'contact_id1', 'contact_id2'], how='left', indicator=True)
