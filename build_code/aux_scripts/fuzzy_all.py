@@ -73,7 +73,7 @@ else:
     code_path = os.getcwd()
 
     # add
-    regenerate_initial_blocks = True
+    regenerate_initial_blocks = False
 
     # write
     json_file =  os.path.join(user_path, "derived/auxiliary/graph_all.json")
@@ -189,6 +189,9 @@ else:
     loaded_cleaned_remaining3 = pd.read_csv(remaining_file)
     loaded_pair_results = pd.read_feather(pair_file)
 
+    name_pairs_set, meta_pairs_set = cc.gen_name_meta_pairs(user_path)
+
+
 
 new_graph, cleaned_remaining4 = cc.clean_results_pt4(G_loaded, 
 loaded_cleaned_remaining3,
@@ -198,7 +201,7 @@ dropped_set = set(tuple(inner_list) for inner_list in loaded_dropped)
 cleaned_remaining5, new_dropped = cc.clean_results_pt5(dropped_set,
 cleaned_remaining4, new_himss, user_path)
 
-contact_dict, contact_count_dict = cc.generate_pair_dicts(pair_results)
+contact_dict, contact_count_dict = cc.generate_pair_dicts(loaded_pair_results)
 
 cc.update_confirmed_from_dropped(G_loaded,new_dropped,contact_count_dict)
 
