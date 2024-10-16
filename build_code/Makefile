@@ -111,6 +111,9 @@ manual_assignment:
 	data_path = \"$(DATA_DIR)\", \
 	himss_entity_contacts = \"$(HIMSS_ENTITIES_CONTACTS)\"))"
 
+manual_assignment_r:
+	Rscript clean_data.R "$(CODE_DIR)" "$(DATA_DIR)" "$(HIMSS_ENTITIES_CONTACTS)"
+
 # Step 3: Clean data
 clean_data:
 	python3 clean_data.py "$(CONFIRMED_R)" "$(REMAINING_R)" \

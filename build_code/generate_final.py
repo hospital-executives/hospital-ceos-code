@@ -19,11 +19,15 @@ if len(sys.argv) == 7:
 
 else: 
     print('WARNING: not using Makefile inputs')
-    confirmed_path =  os.path.join(user_path, "derived/py_confirmed.csv")
-    remainder_path =  os.path.join(user_path, "derived/py_remaining.csv")
-    json_path =  os.path.join(user_path, "derived/py_graph_components.json")
+    #confirmed_path =  os.path.join(user_path, "derived/py_confirmed.csv")
+    #remainder_path =  os.path.join(user_path, "derived/py_remaining.csv")
+    #json_path =  os.path.join(user_path, "derived/py_graph_components.json")
+    confirmed_path =  os.path.join(user_path, "derived/auxiliary/new_cleaned.csv")
+    remainder_path =  os.path.join(user_path, "derived/auxiliary/new_remaining.csv")
+    json_path =  os.path.join(user_path, "derived/auxiliary/new_graph.json")
     final_himss_path = os.path.join(user_path, "derived/final_himss.feather")
-    final_confirmed_path = os.path.join(user_path, "derived/final_confirmed.dta")
+    #final_confirmed_path = os.path.join(user_path, "derived/final_confirmed.dta")
+    final_confirmed_path = os.path.join(user_path, "derived/final_confirmed_new.dta")
     himss_path = os.path.join(user_path, 
     "derived/himss_entities_contacts_0517_v1.feather")
 
@@ -33,6 +37,7 @@ cleaned['confirmed'] = True
 
 remaining = pd.read_csv(remainder_path)
 remaining['confirmed'] = False
+remaining['contact_uniqueid'] = remaining['contact_uniqueid'].astype(int)
 
 new_himss = pd.concat([cleaned, remaining], axis=0)
 new_himss = new_himss[new_himss['first_component'] != 'Unknown']
@@ -53,7 +58,7 @@ precomputed_max = {
 def map_to_max(id_value):
     return precomputed_max.get(id_value, id_value)
 
-new_himss['new_contact_uniqueid'] = new_himss['contact_uniqueid'].astype(str).map(map_to_max)
+new_himss['new_contact_uniqueid'] = new_himss['contact_uniqueid'].astype(int).map(map_to_max)
 
 #### ASSIGN FINAL BLOCKS ####
 new_himss['first_component'] = new_himss['first_component'].astype(int)
@@ -148,18 +153,12 @@ final_df['contact_uniqueid'] = final_df['new_contact_uniqueid']
 final_df = final_df.drop('old_contact_uniqueid', axis=1)
 final_df = final_df.drop('new_contact_uniqueid', axis=1)
 
-def convert_to_str_or_none(value):
-    if isinstance(value, str):
-        return value
-    elif pd.isnull(value):
-        return None
-    else:
-        # Convert other types to string
-        return str(value)
+final_df['modified_firstname'] = final_df['firstname'] != final_df['old_firstname']
+final_df['modified_lastname'] = final_df['lastname'] != final_df['old_lastname']
 
-# Apply the function to all object columns
-object_columns = final_df.select_dtypes(include=['object']).columns.tolist()
-for col in object_columns:
-    final_df[col] = final_df[col].apply(convert_to_str_or_none)
+object_cols = final_df.select_dtypes(include=['object']).columns
+for col in object_cols:
+    final_df[col] = final_df[col].astype(str)
 
-final_df.to_stata(final_confirmed_path, write_index=False, version=118)
+# Now save to Stata
+final_df.to_stata(final_confirmed_path,version=118)

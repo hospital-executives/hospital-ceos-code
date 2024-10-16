@@ -369,7 +369,7 @@ def clean_results_pt2(remaining, G, dropped_sets, new_himss):
     
     # Convert contact IDs to strings (if necessary) and map counts
     remaining_updated[['contact_id1', 'contact_id2']] = \
-        remaining_updated[['contact_id1', 'contact_id2']].astype(str)
+        remaining_updated[['contact_id1', 'contact_id2']].astype(int)
     remaining_updated['contact_id1_count'] = \
         remaining_updated['contact_id1'].map(contact_id_counts).fillna(0).astype(int)
     remaining_updated['contact_id2_count'] = \
@@ -391,8 +391,8 @@ def clean_results_pt2(remaining, G, dropped_sets, new_himss):
 
     # Combine conditions for remaining rows
     remaining = remaining_updated[~(condition1 | condition2 | condition3)]
-    remaining.loc[:, 'contact_id1'] = remaining['contact_id1'].astype(str)
-    remaining.loc[:, 'contact_id2'] = remaining['contact_id2'].astype(str)
+    remaining.loc[:, 'contact_id1'] = remaining['contact_id1'].astype(int)
+    remaining.loc[:, 'contact_id2'] = remaining['contact_id2'].astype(int)
 
     # Update dropped_sets with dropped pairs
     for df in [dropped1, dropped2, dropped3]:
@@ -400,7 +400,7 @@ def clean_results_pt2(remaining, G, dropped_sets, new_himss):
 
     return dropped_sets, remaining
 
-def clean_results_pt3(remaining, dropped_sets, user_path, new_himss, cleaned_confirmed):
+def clean_results_pt3(remaining, dropped_sets, user_path, new_himss):
     # CREATE STATE DF
     statewise_distances_long = generate_state_df(user_path)
 
@@ -421,7 +421,7 @@ def clean_results_pt3(remaining, dropped_sets, user_path, new_himss, cleaned_con
     )
 
     # Create the contact_dict more efficiently using groupby
-    contact_dict = cleaned_confirmed.groupby('contact_uniqueid').apply(
+    contact_dict = new_himss.groupby('contact_uniqueid').apply(
         lambda x: set(zip(x['year'], x['entity_state']))
     ).to_dict()
 

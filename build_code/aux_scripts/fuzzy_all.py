@@ -252,9 +252,15 @@ except Exception as e:
     # Save the DataFrame in a recoverable format (pickle)
     pair_results_first.to_pickle(backup_file)
 
+loaded_pair_results['contact_id1'] = loaded_pair_results['contact_id1'].astype(int)
+loaded_pair_results['contact_id2'] = loaded_pair_results['contact_id2'].astype(int)
 
-merged_df = pd.merge(pair_results_first
-, pair_results, on=['last_meta', 'contact_id1', 'contact_id2'], how='left', indicator=True)
+pair_results_first['contact_id1'] = pair_results_first['contact_id1'].astype(int)
+pair_results_first['contact_id2'] = pair_results_first['contact_id2'].astype(int)
+
+merged_df = pd.merge(pair_results_first, loaded_pair_results, 
+                     on=['last_meta', 'contact_id1', 'contact_id2'], how='left', 
+                     indicator=True)
 test = merged_df[merged_df['_merge'] == 'left_only'].drop(columns=['_merge'])
 test = test.loc[:, ~test.columns.str.endswith('_y')]
 test.columns = test.columns.str.replace('_x$', '', regex=True)
@@ -272,7 +278,7 @@ for id_ in final_confirmed_ids:
 
 contact_dict, contact_count_dict = cc.generate_pair_dicts(test)
 
-test_graph, cleaned_dropped1, cleaned_remaining1 = cc.clean_results_pt1(test)
+test_graph, cleaned_remaining1,cleaned_dropped1 = cc.clean_results_pt1(test)
 
 cc.update_confirmed_from_dropped(test_graph, cleaned_dropped1,
                                                  contact_count_dict)
@@ -299,9 +305,14 @@ cc.update_confirmed_from_dropped(test_graph,new_dropped,contact_count_dict)
 ## ADD NEW RULES
 cleaned_remaining5 = cleaned_remaining4[~(
     (cleaned_remaining4['firstname_lev_distance'] == 0) 
-    & (cleaned_remaining4['lastname_lev_distance'] == 0) 
-    & ((cleaned_remaining4['distinct_state_count'] == 1) |
-    (cleaned_remaining4['shared_system_ids'])))]
+    & (cleaned_remaining4['lastname_lev_distance'] == 0) &
+    (cleaned_remaining4['shared_system_ids']))]
+cleaned_cleaned5 = cleaned_remaining4[(
+    (cleaned_remaining4['firstname_lev_distance'] == 0) 
+    & (cleaned_remaining4['lastname_lev_distance'] == 0) &
+    (cleaned_remaining4['shared_system_ids']))]
+
+cc.add_to_graph_from_df(test_graph, cleaned_cleaned5)
 
 cleaned_remaining6 = cleaned_remaining5[~(
     ((cleaned_remaining5['firstname_jw_distance'] >= 0.8) |
@@ -310,11 +321,25 @@ cleaned_remaining6 = cleaned_remaining5[~(
     & ((cleaned_remaining5['shared_addresses_flag']) |
     (cleaned_remaining5['shared_entity_ids_flag']) |
      (cleaned_remaining5['shared_names_flag'])))]
+cleaned_cleaned6 = cleaned_remaining5[(
+    ((cleaned_remaining5['firstname_jw_distance'] >= 0.8) |
+    (cleaned_remaining5['name_in_same_row_firstname']))
+    & (cleaned_remaining5['lastname_jw_distance'] >= 0.8) 
+    & ((cleaned_remaining5['shared_addresses_flag']) |
+    (cleaned_remaining5['shared_entity_ids_flag']) |
+     (cleaned_remaining5['shared_names_flag'])))]
 
-cleaned_remaining7 = cleaned_remaining6[
-    ~(((cleaned_remaining6['lastname_lev_distance'] > 2) 
-    | (cleaned_remaining6['lastname_jw_distance'] <.8)) & 
-    (cleaned_remaining6['both_F_and_M_present']))]
+cc.add_to_graph_from_df(test_graph, cleaned_cleaned6)
+
+
+#cleaned_remaining7 = cleaned_remaining6[
+    #~(((cleaned_remaining6['lastname_lev_distance'] > 2) 
+    #| (cleaned_remaining6['lastname_jw_distance'] <.8)) & 
+    #(cleaned_remaining6['both_F_and_M_present']))]
+#cleaned_dropped7 = cleaned_remaining6[
+   # (((cleaned_remaining6['lastname_lev_distance'] > 2) 
+   # | (cleaned_remaining6['lastname_jw_distance'] <.8)) & 
+   # (cleaned_remaining6['both_F_and_M_present']))]
 
 ## tentative rules - might need more edge cases
 #cleaned_remaining7[
@@ -323,14 +348,42 @@ cleaned_remaining7 = cleaned_remaining6[
     #~(cleaned_remaining7['shared_system_ids_flag'])]
 
 
-test_graph, cleaned_remaining8 = cc.clean_results_pt4(test_graph, cleaned_remaining7,
+test_graph, cleaned_remaining8 = cc.clean_results_pt4(test_graph, cleaned_remaining6,
 new_himss)
 
+
+#### new logic
+cleaned_nodes_for_subgraph = set(test_graph.nodes()).union(confirmed_ids)
+
+G_int = nx.Graph()
+
+# Map the original nodes to integers and add them to the new graph
+node_mapping = {}
+for node in G_loaded.nodes():
+    try:
+        # Attempt to convert the node to an integer
+        int_node = int(node)
+    except ValueError:
+        # Handle nodes that cannot be directly converted to int (e.g., tuples, strings)
+        int_node = hash(node)  # Use hash as a fallback conversion for non-intable nodes
+    node_mapping[node] = int_node
+
+# Add edges with converted node values to the new graph
+for u, v in G_loaded.edges():
+    G_int.add_edge(node_mapping[u], node_mapping[v])
+
+subgraph_1 = G_int.subgraph(cleaned_nodes_for_subgraph)
+combo = nx.compose(subgraph_1, test_graph)
+
+final = new_himss[new_himss['contact_uniqueid'].isin(combo.nodes())]
+
+
+#### old logic
 # remaining are in cleaned_remaining8 or in remaining_a or in outliers
 remaining_a_ids = set(pd.concat([remaining_a['contact_id1'],
                                 remaining_a['contact_id2']]))
-remaining_b_ids = set(pd.concat([cleaned_remaining7['contact_id1'],
-                                cleaned_remaining7['contact_id2']]))
+remaining_b_ids = set(pd.concat([cleaned_remaining6['contact_id1'],
+                                cleaned_remaining6['contact_id2']]))
 
 all_remaining_ids = outlier_ids.union(remaining_a_ids).union(remaining_b_ids)
 
@@ -340,7 +393,7 @@ remaining_ids = set(cleaned_df['contact_uniqueid'].unique()) - \
 common_nodes =  set(cleaned_df['contact_uniqueid'].unique()
                     ).union(confirmed_ids) - all_remaining_ids
 
-G1_subgraph = confirmed_graph.subgraph(common_nodes).copy()
+G1_subgraph = G_loaded.subgraph(common_nodes).copy()
 G_combined = nx.compose(G1_subgraph, test_graph)
 
 final_confirmed_2 = cleaned_df[~cleaned_df['contact_uniqueid'].isin(all_remaining_ids)]
@@ -354,8 +407,11 @@ graph_data = json_graph.node_link_data(G_combined)
 
 # Write the JSON data to a file
 new_confirmed_graph = os.path.join(user_path, "derived/auxiliary/new_graph.json")
-with open(json_file, 'w') as f:
-        json.dump(graph_data, f)
+connections = {node: set(G_combined.neighbors(node)) for node in G_combined.nodes()}
+connections_serializable = {key: list(value) for key, value in connections.items()}
+with open(new_confirmed_graph, 'w') as json_file:
+    json.dump(connections_serializable, json_file, indent=4)
+
 
 new_remaining_path = os.path.join(user_path, "derived/auxiliary/new_remaining.csv")
 final_remaining_2.to_csv(new_remaining_path)
