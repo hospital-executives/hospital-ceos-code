@@ -13,7 +13,7 @@ required_packages <- c("haven", "dplyr", "tidyverse", "ggplot2", "arrow",
                        "stringr", "stringdist", "data.table", "phonics", "tibble")
 
 # Install missing packages and load them
-install_if_missing(required_packages)
+#install_if_missing(required_packages)
 
 library(haven)
 library(dplyr)
@@ -30,17 +30,12 @@ library(tibble)
 args <- commandArgs(trailingOnly = TRUE)
 
 # Example: Assign arguments to variables
-code_path <- args[1]  # First argument
-data_path <- args[2]  # Second argument
+code_path <- paste0(args[1], "/")  # First argument
+data_path <- paste0(args[2], "/")  # Second argument
 himss_entity_contacts <- args[3]
 
-cat("Code Path:", code_path, "\n")
-#cat("Data Path:", data_path, "\n")
-#cat("HIMSS Entity Contacts:", himss_entity_contacts, "\n")
 
-source(paste0(code_path, "/helper-scripts/one_id_m_names_final.R"))
-
-print('success!!!!')
+source(paste0(code_path, "helper_scripts/one_id_m_names_final.R"))
 
 df <- read_feather(himss_entity_contacts) %>%
   filter(year > 2008) %>%
@@ -58,9 +53,9 @@ to_merge <- df[, c("id", setdiff(names(df), c("id", variable_columns)))]
 
 # set up one id m names
 normalized_levenshtein_cutoff <- 0.3 # default is 0.3
-#source(paste0(code_path, "/helper-scripts/one_id_m_names_final.R"))
+#source(paste0(code_path, "helper_scripts/one_id_m_names_final.R"))
 # set up one name m ids
-#source(paste0(code_path, "/helper-scripts/one_name_m_ids_final.R"))
+#source(paste0(code_path, "helper_scripts/one_name_m_ids_final.R"))
 
 print('loaded')
 
@@ -95,14 +90,14 @@ outliers <- remaining_pt1
 
 outliers <- outliers %>%
   select(-c(add_list, entity_name_list, entityid_list))
-write.csv(outliers, paste0(data_path, "/derived/auxiliary/outliers.csv"), row.names = FALSE)
+write.csv(outliers, paste0(data_path, "derived/auxiliary/outliers.csv"), row.names = FALSE)
 
 all_objects <- ls()
 objects_to_keep <- c("df", "outliers", "code_path", "data_path", "to_clean", 
                      "to_merge")
 objects_to_remove <- setdiff(all_objects, objects_to_keep)
 rm(list = objects_to_remove)
-source(paste0(code_path, "/helper-scripts/one_name_m_ids_final.R"))
+source(paste0(code_path, "helper_scripts/one_name_m_ids_final.R"))
 
 ########## algorithm(s) to consolidate "multiple" ids ########## 
 
@@ -181,9 +176,9 @@ one_name_m_ids_remaining <- final_remaining %>% #18,979 remaining
 final_confirmed <- final_confirmed %>%
   select(-c(add_list, entity_name_list, entityid_list))
 write_feather(final_confirmed, paste0(data_path, 
-                                      "/derived/auxiliary/r_confirmed.feather"))
+                                      "derived/auxiliary/r_confirmed.feather"))
 
 final_remaining <- final_remaining %>%
   select(-c(add_list, entity_name_list, entityid_list))
 write_feather(final_remaining, paste0(data_path, 
-                                      "/derived/auxiliary/r_remaining.feather"))
+                                      "derived/auxiliary/r_remaining.feather"))
