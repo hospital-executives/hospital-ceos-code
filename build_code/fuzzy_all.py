@@ -63,10 +63,11 @@ grouped = input_df.groupby(['last_meta', 'first_component'])
 block_results = Parallel(n_jobs=-1)(
     delayed(fuzz.parallel_blocks)(group) for _, group in grouped
 )
+block_results_df = pd.DataFrame(block_results)
 
 # separate
-cleaned1 = block_results[(block_results['contact_uniqueid'].apply(len) == 1)]
-remaining1 = block_results[(block_results['contact_uniqueid'].apply(len) > 1)]
+cleaned1 = block_results_df[(block_results_df['contact_uniqueid'].apply(len) == 1)]
+remaining1 = block_results_df[(block_results_df['contact_uniqueid'].apply(len) > 1)]
 
 temp_cleaned_ids = set(chain.from_iterable(cleaned1['contact_uniqueid']))
 remaining_ids = set(chain.from_iterable(remaining1['contact_uniqueid'])) # 110754
@@ -78,11 +79,18 @@ name_pairs_set, meta_pairs_set = cc.gen_name_meta_pairs(user_path)
 
 new_grouped = filtered_df.groupby(['last_meta', 'first_component'])
 
+list_of_groups = list(new_grouped)
 results = Parallel(n_jobs=-1)(
-    delayed(fuzz.find_pairwise_shared_attributes)(
+    delayed(fuzz.find_pairwise_shared_attributes_really_old)(
         sub_df, name_pairs_set, meta_pairs_set) 
-    for _, sub_df in new_grouped
+    for _, sub_df in list_of_groups[:100]
 )
+
+#results = Parallel(n_jobs=-1)(
+   #delayed(fuzz.find_pairwise_shared_attributes_old)(
+      #  sub_df, name_pairs_set, meta_pairs_set) 
+    #for _, sub_df in list(new_grouped)[:100]
+#)
 
 component_pairs = pd.concat(results, ignore_index=True)
 print('component pairs complete')

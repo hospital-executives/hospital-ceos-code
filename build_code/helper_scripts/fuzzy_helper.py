@@ -60,7 +60,9 @@ def find_common_blocks(sub_df, first_meta=None):
 
 
 # PAIRWISE COMPARISON FUNCTIONS
-def compute_shared_attributes(id1, id2, attribute_dicts, name_pairs_set, meta_pairs_set, sub_df):
+# option one: compute_shared_attributes 2 and find_pairwise_shared_attributes_really_old
+# 
+def compute_shared_attributes_old(id1, id2, attribute_dicts, name_pairs_set, meta_pairs_set, sub_df):
     # Compute shared attributes
     shared_titles = attribute_dicts['title'][id1] & attribute_dicts['title'][id2]
     shared_names = attribute_dicts['name'][id1] & attribute_dicts['name'][id2]
@@ -131,7 +133,131 @@ def compute_shared_attributes(id1, id2, attribute_dicts, name_pairs_set, meta_pa
         'max_lastname_count_id2': attribute_dicts['max_lastname_count'][id2]
     }
 
-def find_pairwise_shared_attributes_old(sub_df, name_pairs_set, meta_pairs_set):
+def compute_shared_attributes(id1, id2, attribute_dicts, name_pairs_set, meta_pairs_set, sub_df):
+    # Retrieve attributes for id1 and id2 once
+    attrs1 = {attr: attribute_dicts[attr][id1] for attr in attribute_dicts}
+    attrs2 = {attr: attribute_dicts[attr][id2] for attr in attribute_dicts}
+
+    # Compute shared attributes
+    shared_titles = attrs1['title'] & attrs2['title']
+    shared_names = attrs1['name'] & attrs2['name']
+    shared_entity_ids = attrs1['entity_id'] & attrs2['entity_id']
+    shared_system_ids = attrs1['system_id'] & attrs2['system_id']
+    shared_addresses = attrs1['address'] & attrs2['address']
+    shared_zips = attrs1['zip'] & attrs2['zip']
+    shared_states = attrs1['state'] & attrs2['state']
+    distinct_state_count = len(attrs1['state'] | attrs2['state'])
+
+    # Helper function to compute distances and similarities
+    def compute_distances(s1, s2):
+        if not s1 or not s2:
+            return None, None
+        lev_distance = Levenshtein.distance(s1, s2)
+        jw_similarity = jellyfish.jaro_winkler_similarity(s1, s2)
+        return lev_distance, jw_similarity
+
+    # Compute distances and similarities for first and last names
+    firstname_lev_distance, firstname_jw_distance = compute_distances(attrs1['firstname'], attrs2['firstname'])
+    old_firstname_lev_distance, old_firstname_jw_distance = compute_distances(attrs1['old_firstname'], attrs2['old_firstname'])
+    lastname_lev_distance, lastname_jw_distance = compute_distances(attrs1['lastname'], attrs2['lastname'])
+    old_lastname_lev_distance, old_lastname_jw_distance = compute_distances(attrs1['old_lastname'], attrs2['old_lastname'])
+
+    same_first_component = int(attrs1['first_component'] == attrs2['first_component'])
+
+    # Check if names and meta codes are in the same row
+    name_in_same_row_firstname = (attrs1['firstname'], attrs2['firstname']) in name_pairs_set
+    name_in_same_row_old_firstname = (attrs1['old_firstname'], attrs2['old_firstname']) in name_pairs_set
+
+    first_meta_codes1 = attrs1['first_meta']
+    first_meta_codes2 = attrs2['first_meta']
+    meta_in_same_row = any((m1, m2) in meta_pairs_set for m1 in first_meta_codes1 for m2 in first_meta_codes2)
+
+    # Extract subset of sub_df for the two IDs once
+    sub_df_ids = sub_df[sub_df['contact_uniqueid'].isin([id1, id2])]
+
+    # Compute gender-related flags
+    gender_set = set(sub_df_ids['gender'])
+    both_F_and_M_present = 'F' in gender_set and 'M' in gender_set
+
+    # Compute lastname count flag
+    lastname_counts = sub_df_ids['lastname_count']
+    frequent_lastname_flag = any(count > 8 for count in lastname_counts)
+
+    # Prepare the result
+    result = {
+        'last_meta': sub_df_ids['last_meta'].iloc[0] if not sub_df_ids['last_meta'].empty else None,
+        'first_component': sub_df_ids['first_component'].iloc[0] if not sub_df_ids['first_component'].empty else None,
+        'contact_id1': id1,
+        'contact_id2': id2,
+        'shared_titles': list(shared_titles),
+        'shared_names': list(shared_names),
+        'shared_entity_ids': list(shared_entity_ids),
+        'shared_system_ids': list(shared_system_ids),
+        'shared_addresses': list(shared_addresses),
+        'shared_zips': list(shared_zips),
+        'shared_states': list(shared_states),
+        'distinct_state_count': distinct_state_count,
+        'firstname_lev_distance': firstname_lev_distance,
+        'old_firstname_lev_distance': old_firstname_lev_distance,
+        'lastname_lev_distance': lastname_lev_distance,
+        'old_lastname_lev_distance': old_lastname_lev_distance,
+        'firstname_jw_distance': firstname_jw_distance,
+        'old_firstname_jw_distance': old_firstname_jw_distance,
+        'lastname_jw_distance': lastname_jw_distance,
+        'old_lastname_jw_distance': old_lastname_jw_distance,
+        'same_first_component': same_first_component,
+        'name_in_same_row_firstname': name_in_same_row_firstname,
+        'name_in_same_row_old_firstname': name_in_same_row_old_firstname,
+        'meta_in_same_row': meta_in_same_row,
+        'both_F_and_M_present': both_F_and_M_present,
+        'frequent_lastname_flag': frequent_lastname_flag,
+        'max_lastname_count_id1': attrs1['max_lastname_count'],
+        'max_lastname_count_id2': attrs2['max_lastname_count']
+    }
+
+    return result
+
+def find_pairwise_shared_attributes_other(sub_df, name_pairs_set, meta_pairs_set):
+    contact_ids = sub_df['contact_uniqueid'].unique()
+
+    if len(contact_ids) < 2:
+        return pd.DataFrame([], columns=[
+            'last_meta', 'first_component', 'contact_id1', 'contact_id2', 
+            'shared_titles', 'shared_names', 'shared_entity_ids', 'shared_system_ids', 
+            'shared_addresses', 'shared_zips', 'shared_states', 'distinct_state_count',
+            'firstname_lev_distance', 'old_firstname_lev_distance', 
+            'lastname_lev_distance', 'old_lastname_lev_distance',
+            'firstname_jw_distance', 'old_firstname_jw_distance', 
+            'lastname_jw_distance', 'old_lastname_jw_distance',
+            'same_first_component', 'name_in_same_row_firstname', 'name_in_same_row_old_firstname',
+            'meta_in_same_row', 'all_genders_F_or_M', 'both_F_and_M_present', 
+            'frequent_lastname_flag', 'max_lastname_count_id1', 'max_lastname_count_id2'
+        ])
+
+    # Precompute attributes per contact_id
+    group_by_contact = sub_df.groupby('contact_uniqueid')
+    attribute_dicts = {
+        'max_lastname_count': group_by_contact['lastname_count'].max().to_dict(),
+        'title': group_by_contact['title_standardized'].apply(set).to_dict(),
+        'name': group_by_contact['entity_name'].apply(set).to_dict(),
+        'entity_id': group_by_contact['entity_uniqueid'].apply(set).to_dict(),
+        'system_id': group_by_contact['system_id'].apply(set).to_dict(),
+        'address': group_by_contact['entity_address'].apply(set).to_dict(),
+        'zip': group_by_contact['entity_zip_five'].apply(set).to_dict(),
+        'state': group_by_contact['entity_state'].apply(set).to_dict(),
+        'firstname': group_by_contact['firstname'].first().fillna('').to_dict(),
+        'lastname': group_by_contact['lastname'].first().fillna('').to_dict(),
+        'old_firstname': group_by_contact['old_firstname'].first().fillna('').to_dict(),
+        'old_lastname': group_by_contact['old_lastname'].first().fillna('').to_dict(),
+        'first_meta': group_by_contact['first_meta'].apply(set).to_dict(),
+        'first_component': group_by_contact['first_component'].first().to_dict(),
+        'gender_set': group_by_contact['gender'].apply(set).to_dict(),
+        'lastname_counts': group_by_contact['lastname_count'].apply(list).to_dict(),
+        'last_meta': group_by_contact['last_meta'].first().to_dict(),
+    }
+
+
+def find_pairwise_shared_attributes_really_old(sub_df, name_pairs_set, meta_pairs_set):
     contact_ids = sub_df['contact_uniqueid'].unique()
 
     if len(contact_ids) < 2:
@@ -174,7 +300,7 @@ def find_pairwise_shared_attributes_old(sub_df, name_pairs_set, meta_pairs_set):
     return pd.DataFrame(results)
 
 
-def find_pairwise_shared_attributes(sub_df, name_pairs_set, meta_pairs_set):
+def find_pairwise_shared_attributes_not_using(sub_df, name_pairs_set, meta_pairs_set):
     contact_ids = sub_df['contact_uniqueid'].unique()
 
     if len(contact_ids) < 2:
