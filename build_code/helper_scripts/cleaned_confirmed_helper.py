@@ -400,7 +400,7 @@ def clean_results_pt2(remaining, G, dropped_sets, new_himss):
 
     return dropped_sets, remaining
 
-def clean_results_pt3(remaining, dropped_sets, user_path, new_himss, cleaned_confirmed):
+def clean_results_pt3(remaining, dropped_sets, user_path, new_himss):
     # CREATE STATE DF
     statewise_distances_long = generate_state_df(user_path)
 
@@ -409,6 +409,8 @@ def clean_results_pt3(remaining, dropped_sets, user_path, new_himss, cleaned_con
     id_years_dict = new_himss.groupby('contact_uniqueid')['year'].apply(set).to_dict()
     id_streaks_dict = {id_: longest_consecutive_streak(years) for id_, years in id_years_dict.items()}
 
+    remaining['contact_id1'] = remaining['contact_id1'].astype(str)
+    remaining['contact_id2'] = remaining['contact_id2'].astype(str)
     # Calculate longest streaks in a vectorized manner
     remaining[['longest_consecutive_either', 'longest_consecutive_union']] = remaining.apply(
         lambda row: pd.Series(calculate_longest_streaks(row['contact_id1'], 
@@ -419,7 +421,7 @@ def clean_results_pt3(remaining, dropped_sets, user_path, new_himss, cleaned_con
     )
 
     # Create the contact_dict more efficiently using groupby
-    contact_dict = cleaned_confirmed.groupby('contact_uniqueid').apply(
+    contact_dict = new_himss.groupby('contact_uniqueid').apply(
         lambda x: set(zip(x['year'], x['entity_state']))
     ).to_dict()
 
@@ -444,9 +446,9 @@ def clean_results_pt3(remaining, dropped_sets, user_path, new_himss, cleaned_con
 def clean_results_pt4(confirmed_graph, remaining, new_himss):
     
     ## get rare nicknames
-    new_himss['contact_uniqueid'] = new_himss['contact_uniqueid'].astype(int)
-    remaining['contact_id1'] = remaining['contact_id1'].astype(int)
-    remaining['contact_id2'] = remaining['contact_id2'].astype(int)
+    new_himss['contact_uniqueid'] = new_himss['contact_uniqueid'].astype(str)
+    remaining['contact_id1'] = remaining['contact_id1'].astype(str)
+    remaining['contact_id2'] = remaining['contact_id2'].astype(str)
     id_to_old_first = new_himss.groupby('contact_uniqueid')['old_firstname'].apply(list).to_dict()
     id_to_old_last = new_himss.groupby('contact_uniqueid')['old_lastname'].apply(list).to_dict()
 
@@ -539,7 +541,7 @@ def clean_results_pt4(confirmed_graph, remaining, new_himss):
         )
     ]
 
-    return new_remaining
+    return confirmed_graph, new_remaining
 
 def clean_results_pt5(dropped_sets,remaining, new_himss, user_path):
 

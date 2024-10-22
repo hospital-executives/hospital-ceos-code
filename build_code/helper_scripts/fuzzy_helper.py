@@ -58,7 +58,6 @@ def find_common_blocks(sub_df, first_meta=None):
 
     return pd.Series(common_data)
 
-
 # PAIRWISE COMPARISON FUNCTIONS
 def compute_shared_attributes(id1, id2, attribute_dicts, name_pairs_set, meta_pairs_set, sub_df):
     # Compute shared attributes
