@@ -83,7 +83,7 @@ list_of_groups = list(new_grouped)
 results = Parallel(n_jobs=-1)(
     delayed(fuzz.find_pairwise_shared_attributes_really_old)(
         sub_df, name_pairs_set, meta_pairs_set) 
-    for _, sub_df in list_of_groups[:100]
+    for _, sub_df in list_of_groups
 )
 
 #results = Parallel(n_jobs=-1)(
@@ -113,19 +113,18 @@ cc.update_confirmed_from_dropped(confirmed_graph, cleaned_dropped2,
                                                     contact_count_dict)
 
 cleaned_dropped3, cleaned_remaining3 = cc.clean_results_pt3(
-        cleaned_remaining2, cleaned_dropped2, user_path, new_himss, 
-        cleaned_confirmed)
+        cleaned_remaining2, cleaned_dropped2, user_path, new_himss)
 
 # need to check that you are assigned distance correctly
 
 cc.update_confirmed_from_dropped(confirmed_graph, cleaned_dropped3,
                                                     contact_count_dict)
 
-cleaned_remaining4 = cc.clean_results_pt4(confirmed_graph, 
+confirmed_graph, cleaned_remaining4 = cc.clean_results_pt4(confirmed_graph, 
 cleaned_remaining3, new_himss)
 
-cleaned_remaining5, new_dropped = cc.clean_results_pt5(cleaned_dropped3,
-cleaned_remaining4, new_himss, user_path)
+#c#leaned_remaining5, new_dropped = cc.clean_results_pt5(cleaned_dropped3,
+#cleaned_remaining4, new_himss, user_path)
 
 # need to decide if you want to save the data
 # also need to decide how to integrate probabilities

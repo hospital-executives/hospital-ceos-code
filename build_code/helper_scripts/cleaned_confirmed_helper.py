@@ -499,6 +499,9 @@ def clean_results_pt4(confirmed_graph, remaining, new_himss):
     )
 ]
     
+    add_to_graph_from_df(confirmed_graph, cleaned)
+
+    
 
 
     new_remaining = remaining[
