@@ -36,12 +36,58 @@ with open(dropped_file, 'r', newline='') as file:
 loaded_cleaned_remaining3 = pd.read_csv(remaining_file)
 loaded_pair_results = pd.read_feather(pair_file)
 
+column_type_mapping = {'last_meta': 'object',
+ 'first_component': 'float64',
+ 'contact_id1': 'object',
+ 'contact_id2': 'object',
+ 'shared_titles': 'object',
+ 'shared_names': 'object',
+ 'shared_entity_ids': 'object',
+ 'shared_system_ids': 'object',
+ 'shared_addresses': 'object',
+ 'shared_zips': 'object',
+ 'shared_states': 'object',
+ 'distinct_state_count': 'int64',
+ 'firstname_lev_distance': 'int64',
+ 'old_firstname_lev_distance': 'int64',
+ 'lastname_lev_distance': 'int64',
+ 'old_lastname_lev_distance': 'int64',
+ 'firstname_jw_distance': 'float64',
+ 'old_firstname_jw_distance': 'float64',
+ 'lastname_jw_distance': 'float64',
+ 'old_lastname_jw_distance': 'float64',
+ 'same_first_component': 'int64',
+ 'name_in_same_row_firstname': 'bool',
+ 'name_in_same_row_old_firstname': 'bool',
+ 'meta_in_same_row': 'bool',
+ 'all_genders_F_or_M': 'bool',
+ 'both_F_and_M_present': 'bool',
+ 'frequent_lastname_flag': 'bool',
+ 'max_lastname_count_id1': 'int64',
+ 'max_lastname_count_id2': 'int64',
+ 'shared_titles_flag': 'int64',
+ 'shared_names_flag': 'int64',
+ 'shared_entity_ids_flag': 'int64',
+ 'shared_system_ids_flag': 'int64',
+ 'shared_addresses_flag': 'int64',
+ 'shared_zips_flag': 'int64',
+ 'total_shared_attributes': 'int64'}
+
+for col in component_pairs.columns:
+    expected_type = column_type_mapping[col]
+    actual_type = component_pairs[col].dtype
+    if actual_type == 'object' and expected_type != 'object':
+        component_pairs[col] = pd.to_numeric(component_pairs[col], errors='coerce')
+            
+        if expected_type == 'float64':
+            component_pairs[col] = component_pairs[col].astype(float)
+
 name_pairs_set, meta_pairs_set = cc.gen_name_meta_pairs(user_path)
 
 contact_dict, contact_count_dict = cc.generate_pair_dicts(loaded_pair_results)
 
 confirmed_graph, cleaned_remaining1, cleaned_dropped1 = cc.clean_results_pt1(
-        loaded_pair_results, unique_contact_ids)
+        loaded_pair_results) # remaining = 418261
 
 cc.update_confirmed_from_dropped(confirmed_graph, cleaned_dropped1,
                                                     contact_count_dict)
@@ -50,12 +96,14 @@ cc.update_confirmed_from_dropped(confirmed_graph, cleaned_dropped1,
 cleaned_dropped3, cleaned_remaining3 = cc.clean_results_pt3(
         cleaned_remaining1, cleaned_dropped1, user_path, new_himss) # these are the remaining from the confirmed df 
 
+# remaining = 250108
+
 cc.update_confirmed_from_dropped(confirmed_graph, cleaned_dropped3,
                                                     contact_count_dict)
 
 confirmed_graph, cleaned_remaining4 = cc.clean_results_pt4(confirmed_graph, 
 loaded_cleaned_remaining3,
-new_himss)
+new_himss) # len remaining 4 = 3310
 
 dropped_set = set(tuple(inner_list) for inner_list in loaded_dropped)
 cleaned_remaining5, new_dropped = cc.clean_results_pt5(dropped_set,
