@@ -6,7 +6,6 @@ from itertools import combinations
 
 # crying
 
-
 # BLOCKWISE COMPARISON FUNCTIONS
 def parallel_blocks(group):
     return find_common_blocks(group)
@@ -58,50 +57,63 @@ def find_common_blocks(sub_df, first_meta=None):
 
     return pd.Series(common_data)
 
-
 # PAIRWISE COMPARISON FUNCTIONS
-def compute_shared_attributes(id1, id2, attribute_dicts, name_pairs_set, meta_pairs_set, sub_df):
+def compute_shared_attributes(id1, id2, attribute_dicts, name_pairs_set, 
+                              meta_pairs_set, sub_df):
+    
+    # Retrieve attributes for id1 and id2 once
+    attrs1 = {attr: attribute_dicts[attr][id1] for attr in attribute_dicts}
+    attrs2 = {attr: attribute_dicts[attr][id2] for attr in attribute_dicts}
+
     # Compute shared attributes
-    shared_titles = attribute_dicts['title'][id1] & attribute_dicts['title'][id2]
-    shared_names = attribute_dicts['name'][id1] & attribute_dicts['name'][id2]
-    shared_entity_ids = attribute_dicts['entity_id'][id1] & attribute_dicts['entity_id'][id2]
-    shared_system_ids = attribute_dicts['system_id'][id1] & attribute_dicts['system_id'][id2]
-    shared_addresses = attribute_dicts['address'][id1] & attribute_dicts['address'][id2]
-    shared_zips = attribute_dicts['zip'][id1] & attribute_dicts['zip'][id2]
-    shared_states = attribute_dicts['state'][id1] & attribute_dicts['state'][id2]
-    distinct_state_count = len(attribute_dicts['state'][id1] | attribute_dicts['state'][id2])
+    shared_titles = attrs1['title'] & attrs2['title']
+    shared_names = attrs1['name'] & attrs2['name']
+    shared_entity_ids = attrs1['entity_id'] & attrs2['entity_id']
+    shared_system_ids = attrs1['system_id'] & attrs2['system_id']
+    shared_addresses = attrs1['address'] & attrs2['address']
+    shared_zips = attrs1['zip'] & attrs2['zip']
+    shared_states = attrs1['state'] & attrs2['state']
+    distinct_state_count = len(attrs1['state'] | attrs2['state'])
 
-    # Compute distances and similarities for firstname and old_firstname
-    firstname_lev_distance = Levenshtein.distance(attribute_dicts['firstname'][id1], attribute_dicts['firstname'][id2])
-    old_firstname_lev_distance = Levenshtein.distance(attribute_dicts['old_firstname'][id1], attribute_dicts['old_firstname'][id2])
-    firstname_jw_distance = jellyfish.jaro_winkler_similarity(attribute_dicts['firstname'][id1], attribute_dicts['firstname'][id2])
-    old_firstname_jw_distance = jellyfish.jaro_winkler_similarity(attribute_dicts['old_firstname'][id1], attribute_dicts['old_firstname'][id2])
+    # Helper function to compute distances and similarities
+    def compute_distances(s1, s2):
+        if not s1 or not s2:
+            return None, None
+        lev_distance = Levenshtein.distance(s1, s2)
+        jw_similarity = jellyfish.jaro_winkler_similarity(s1, s2)
+        return lev_distance, jw_similarity
 
-    # Compute distances and similarities for lastname and old_lastname
-    lastname_lev_distance = Levenshtein.distance(attribute_dicts['lastname'][id1], attribute_dicts['lastname'][id2])
-    old_lastname_lev_distance = Levenshtein.distance(attribute_dicts['old_lastname'][id1], attribute_dicts['old_lastname'][id2])
-    lastname_jw_distance = jellyfish.jaro_winkler_similarity(attribute_dicts['lastname'][id1], attribute_dicts['lastname'][id2])
-    old_lastname_jw_distance = jellyfish.jaro_winkler_similarity(attribute_dicts['old_lastname'][id1], attribute_dicts['old_lastname'][id2])
+    # Compute distances and similarities for first and last names
+    firstname_lev_distance, firstname_jw_distance = compute_distances(attrs1['firstname'], attrs2['firstname'])
+    old_firstname_lev_distance, old_firstname_jw_distance = compute_distances(attrs1['old_firstname'], attrs2['old_firstname'])
+    lastname_lev_distance, lastname_jw_distance = compute_distances(attrs1['lastname'], attrs2['lastname'])
+    old_lastname_lev_distance, old_lastname_jw_distance = compute_distances(attrs1['old_lastname'], attrs2['old_lastname'])
 
-    same_first_component = int(attribute_dicts['first_component'][id1] == attribute_dicts['first_component'][id2])
+    same_first_component = int(attrs1['first_component'] == attrs2['first_component'])
 
     # Check if names and meta codes are in the same row
-    name_in_same_row_firstname = (attribute_dicts['firstname'][id1], attribute_dicts['firstname'][id2]) in name_pairs_set
-    name_in_same_row_old_firstname = (attribute_dicts['old_firstname'][id1], attribute_dicts['old_firstname'][id2]) in name_pairs_set
+    name_in_same_row_firstname = (attrs1['firstname'], attrs2['firstname']) in name_pairs_set
+    name_in_same_row_old_firstname = (attrs1['old_firstname'], attrs2['old_firstname']) in name_pairs_set
 
-    first_meta_codes1, first_meta_codes2 = attribute_dicts['first_meta'][id1], attribute_dicts['first_meta'][id2]
+    first_meta_codes1 = attrs1['first_meta']
+    first_meta_codes2 = attrs2['first_meta']
     meta_in_same_row = any((m1, m2) in meta_pairs_set for m1 in first_meta_codes1 for m2 in first_meta_codes2)
 
-    gender_set = set(sub_df[sub_df['contact_uniqueid'].isin([id1, id2])]['gender'])
-    all_genders_F_or_M = gender_set.issubset({'F', 'M'})
+    # Extract subset of sub_df for the two IDs once
+    sub_df_ids = sub_df[sub_df['contact_uniqueid'].isin([id1, id2])]
+
+    # Compute gender-related flags
+    gender_set = set(sub_df_ids['gender'])
     both_F_and_M_present = 'F' in gender_set and 'M' in gender_set
 
-    lastname_set = set(sub_df[sub_df['contact_uniqueid'].isin([id1, id2])]['lastname_count'])
-    frequent_lastname_flag = any(count > 8 for count in lastname_set)
+    # Compute lastname count flag
+    lastname_counts = sub_df_ids['lastname_count']
+    frequent_lastname_flag = any(count > 8 for count in lastname_counts)
 
-    return {
-        'last_meta': sub_df['last_meta'].iloc[0],
-        'first_component': sub_df['first_component'].iloc[0],
+    # Prepare the result
+    result = {
+        'last_meta': sub_df_ids['last_meta'].iloc[0] if not sub_df_ids['last_meta'].empty else None,
+        'first_component': sub_df_ids['first_component'].iloc[0] if not sub_df_ids['first_component'].empty else None,
         'contact_id1': id1,
         'contact_id2': id2,
         'shared_titles': list(shared_titles),
@@ -124,14 +136,15 @@ def compute_shared_attributes(id1, id2, attribute_dicts, name_pairs_set, meta_pa
         'name_in_same_row_firstname': name_in_same_row_firstname,
         'name_in_same_row_old_firstname': name_in_same_row_old_firstname,
         'meta_in_same_row': meta_in_same_row,
-        'all_genders_F_or_M': all_genders_F_or_M,
         'both_F_and_M_present': both_F_and_M_present,
         'frequent_lastname_flag': frequent_lastname_flag,
-        'max_lastname_count_id1': attribute_dicts['max_lastname_count'][id1],
-        'max_lastname_count_id2': attribute_dicts['max_lastname_count'][id2]
+        'max_lastname_count_id1': attrs1['max_lastname_count'],
+        'max_lastname_count_id2': attrs2['max_lastname_count']
     }
 
-def find_pairwise_shared_attributes_old(sub_df, name_pairs_set, meta_pairs_set):
+    return result
+
+def find_pairwise_shared_attributes(sub_df, name_pairs_set, meta_pairs_set):
     contact_ids = sub_df['contact_uniqueid'].unique()
 
     if len(contact_ids) < 2:
@@ -170,126 +183,5 @@ def find_pairwise_shared_attributes_old(sub_df, name_pairs_set, meta_pairs_set):
     results = Parallel(n_jobs=-1)(delayed(compute_shared_attributes)(
         id1, id2, attribute_dicts, name_pairs_set, meta_pairs_set, sub_df
     ) for id1, id2 in combinations(contact_ids, 2))
-
-    return pd.DataFrame(results)
-
-
-def find_pairwise_shared_attributes(sub_df, name_pairs_set, meta_pairs_set):
-    contact_ids = sub_df['contact_uniqueid'].unique()
-
-    if len(contact_ids) < 2:
-        return pd.DataFrame([], columns=[
-            'last_meta', 'first_component', 'contact_id1', 'contact_id2', 
-            'shared_titles', 'shared_names', 'shared_entity_ids', 'shared_system_ids', 
-            'shared_addresses', 'shared_zips', 'shared_states', 'distinct_state_count',
-            'firstname_lev_distance', 'old_firstname_lev_distance', 
-            'lastname_lev_distance', 'old_lastname_lev_distance',
-            'firstname_jw_distance', 'old_firstname_jw_distance', 
-            'lastname_jw_distance', 'old_lastname_jw_distance',
-            'same_first_component', 'name_in_same_row_firstname', 'name_in_same_row_old_firstname',
-            'meta_in_same_row', 'all_genders_F_or_M', 'both_F_and_M_present', 
-            'frequent_lastname_flag', 'max_lastname_count_id1', 'max_lastname_count_id2'
-        ])
-
-    # Precompute sets and attributes once
-    attribute_dicts = {
-        'max_lastname_count': sub_df.groupby('contact_uniqueid')['lastname_count'].max().to_dict(),
-        'title': sub_df.groupby('contact_uniqueid')['title_standardized'].apply(set).to_dict(),
-        'name': sub_df.groupby('contact_uniqueid')['entity_name'].apply(set).to_dict(),
-        'entity_id': sub_df.groupby('contact_uniqueid')['entity_uniqueid'].apply(set).to_dict(),
-        'system_id': sub_df.groupby('contact_uniqueid')['system_id'].apply(set).to_dict(),
-        'address': sub_df.groupby('contact_uniqueid')['entity_address'].apply(set).to_dict(),
-        'zip': sub_df.groupby('contact_uniqueid')['entity_zip_five'].apply(set).to_dict(),
-        'state': sub_df.groupby('contact_uniqueid')['entity_state'].apply(set).to_dict(),
-        'firstname': sub_df.groupby('contact_uniqueid')['firstname'].first().fillna('').to_dict(),
-        'lastname': sub_df.groupby('contact_uniqueid')['lastname'].first().fillna('').to_dict(),
-        'old_firstname': sub_df.groupby('contact_uniqueid')['old_firstname'].first().fillna('').to_dict(),
-        'old_lastname': sub_df.groupby('contact_uniqueid')['old_lastname'].first().fillna('').to_dict(),
-        'first_meta': sub_df.groupby('contact_uniqueid')['first_meta'].apply(set).to_dict(),
-        'first_component': sub_df.groupby('contact_uniqueid')['first_component'].first().to_dict(),
-    }
-
-    # Precompute for gender and lastname_count to avoid redundant filtering
-    gender_set_map = {cid: set(sub_df[sub_df['contact_uniqueid'] == cid]['gender']) for cid in contact_ids}
-    lastname_count_map = {cid: set(sub_df[sub_df['contact_uniqueid'] == cid]['lastname_count']) for cid in contact_ids}
-
-    results = []
-    for id1, id2 in combinations(contact_ids, 2):
-        # Precompute shared attributes and set intersections
-        shared_titles = attribute_dicts['title'][id1] & attribute_dicts['title'][id2]
-        shared_names = attribute_dicts['name'][id1] & attribute_dicts['name'][id2]
-        shared_entity_ids = attribute_dicts['entity_id'][id1] & attribute_dicts['entity_id'][id2]
-        shared_system_ids = attribute_dicts['system_id'][id1] & attribute_dicts['system_id'][id2]
-        shared_addresses = attribute_dicts['address'][id1] & attribute_dicts['address'][id2]
-        shared_zips = attribute_dicts['zip'][id1] & attribute_dicts['zip'][id2]
-        shared_states = attribute_dicts['state'][id1] & attribute_dicts['state'][id2]
-        distinct_state_count = len(attribute_dicts['state'][id1] | attribute_dicts['state'][id2])
-
-        # Compute distances and similarities for firstnames and lastnames
-        firstname1, firstname2 = attribute_dicts['firstname'][id1], attribute_dicts['firstname'][id2]
-        old_firstname1, old_firstname2 = attribute_dicts['old_firstname'][id1], attribute_dicts['old_firstname'][id2]
-
-        firstname_lev_distance = Levenshtein.distance(firstname1, firstname2)
-        old_firstname_lev_distance = Levenshtein.distance(old_firstname1, old_firstname2)
-        firstname_jw_distance = jellyfish.jaro_winkler_similarity(firstname1, firstname2)
-        old_firstname_jw_distance = jellyfish.jaro_winkler_similarity(old_firstname1, old_firstname2)
-
-        # Compute distances and similarities for lastnames
-        lastname1, lastname2 = attribute_dicts['lastname'][id1], attribute_dicts['lastname'][id2]
-        old_lastname1, old_lastname2 = attribute_dicts['old_lastname'][id1], attribute_dicts['old_lastname'][id2]
-
-        lastname_lev_distance = Levenshtein.distance(lastname1, lastname2)
-        old_lastname_lev_distance = Levenshtein.distance(old_lastname1, old_lastname2)
-        lastname_jw_distance = jellyfish.jaro_winkler_similarity(lastname1, lastname2)
-        old_lastname_jw_distance = jellyfish.jaro_winkler_similarity(old_lastname1, old_lastname2)
-
-        same_first_component = int(attribute_dicts['first_component'][id1] == attribute_dicts['first_component'][id2])
-
-        # Check if names and meta codes are in the same row
-        name_in_same_row_firstname = (firstname1, firstname2) in name_pairs_set or (firstname2, firstname1) in name_pairs_set
-        name_in_same_row_old_firstname = (old_firstname1, old_firstname2) in name_pairs_set or (old_firstname2, old_firstname1) in name_pairs_set
-
-        first_meta_codes1, first_meta_codes2 = attribute_dicts['first_meta'][id1], attribute_dicts['first_meta'][id2]
-        meta_in_same_row = any((m1, m2) in meta_pairs_set or (m2, m1) in meta_pairs_set 
-                               for m1 in first_meta_codes1 for m2 in first_meta_codes2)
-
-        gender_set = gender_set_map[id1] | gender_set_map[id2]
-        all_genders_F_or_M = gender_set.issubset({'F', 'M'})
-        both_F_and_M_present = 'F' in gender_set and 'M' in gender_set
-
-        lastname_set = lastname_count_map[id1] | lastname_count_map[id2]
-        frequent_lastname_flag = any(count > 8 for count in lastname_set)
-
-        results.append({
-            'last_meta': sub_df['last_meta'].iloc[0],
-            'first_component': sub_df['first_component'].iloc[0],
-            'contact_id1': id1,
-            'contact_id2': id2,
-            'shared_titles': list(shared_titles),
-            'shared_names': list(shared_names),
-            'shared_entity_ids': list(shared_entity_ids),
-            'shared_system_ids': list(shared_system_ids),
-            'shared_addresses': list(shared_addresses),
-            'shared_zips': list(shared_zips),
-            'shared_states': list(shared_states),
-            'distinct_state_count': distinct_state_count,
-            'firstname_lev_distance': firstname_lev_distance,
-            'old_firstname_lev_distance': old_firstname_lev_distance,
-            'lastname_lev_distance': lastname_lev_distance,
-            'old_lastname_lev_distance': old_lastname_lev_distance,
-            'firstname_jw_distance': firstname_jw_distance,
-            'old_firstname_jw_distance': old_firstname_jw_distance,
-            'lastname_jw_distance': lastname_jw_distance,
-            'old_lastname_jw_distance': old_lastname_jw_distance,
-            'same_first_component': same_first_component,
-            'name_in_same_row_firstname': name_in_same_row_firstname,
-            'name_in_same_row_old_firstname': name_in_same_row_old_firstname,
-            'meta_in_same_row': meta_in_same_row,
-            'all_genders_F_or_M': all_genders_F_or_M,
-            'both_F_and_M_present': both_F_and_M_present,
-            'frequent_lastname_flag': frequent_lastname_flag,
-            'max_lastname_count_id1': attribute_dicts['max_lastname_count'][id1],
-            'max_lastname_count_id2': attribute_dicts['max_lastname_count'][id2]
-        })
 
     return pd.DataFrame(results)
