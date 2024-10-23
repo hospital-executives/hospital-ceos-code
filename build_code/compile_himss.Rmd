@@ -142,6 +142,7 @@ for (prefix in file_prefixes) {
         mutate(year = year) %>%  # Add the year as a new column
         rename_with(tolower)
 
+      #add a comment
       # In some years the same fields data storage type changed. Dynamically adjust data types for combination: Convert numeric and logical columns to character.
       # df <- df %>%
       #   mutate(across(where(is.numeric), ~if_else(is.na(.), as.character(.), as.character(.)))) %>%
