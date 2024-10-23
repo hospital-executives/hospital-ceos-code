@@ -74,15 +74,31 @@ name_pairs_set, meta_pairs_set = cc.gen_name_meta_pairs(user_path)
 new_grouped = filtered_df.groupby(['last_meta', 'first_component'])
 
 list_of_groups = list(new_grouped)
+for i in range(2):
+    results_list = Parallel(n_jobs=-1)(
+    delayed(fuzz.find_pairwise_shared_attributes)(
+        sub_df, name_pairs_set, meta_pairs_set) 
+    for _, sub_df in list_of_groups[:100]
+)
+    
 results_list = Parallel(n_jobs=-1)(
     delayed(fuzz.find_pairwise_shared_attributes)(
         sub_df, name_pairs_set, meta_pairs_set) 
     for _, sub_df in list_of_groups
 )
-component_pairs = pd.concat(results_list, ignore_index=True)
-
+component_pairs = pd.concat(results_list, ignore_index=True, sort=False)
 component_pairs = cc.update_results(component_pairs)
 contact_dict, comp_contact_count_dict = cc.generate_pair_dicts(component_pairs)
+
+# can probably delete from here
+columns_with_lists = [col for col in component_pairs.columns 
+                      if component_pairs[col].apply(lambda x: isinstance(x, list)).any()]
+for col in columns_with_lists:
+    component_pairs[col] = component_pairs[col].apply(lambda x: 
+                                            tuple(x) if isinstance(x, list) 
+                                            else x)
+deduplicated = component_pairs.drop_duplicates()
+# delete to here
 
 confirmed_graph, cleaned_remaining1, comp_dropped = cc.clean_results_pt1(
         component_pairs, cleaned_ids)
@@ -99,6 +115,33 @@ cc.update_confirmed_from_dropped(confirmed_graph, comp_dropped,
 confirmed_graph, comp_remaining1 = cc.clean_results_pt4(confirmed_graph, 
 cleaned_remaining3,
 new_himss)
+
+# comp remaining 1 needs to be smaller
+remaining1 = comp_remaining1[
+    ~((comp_remaining1['total_distance'] >= 500) &
+    (comp_remaining1['diff_state_years_count'] >= 2) &
+    ~(comp_remaining1['shared_system_ids_flag']) &
+    (comp_remaining1['lastname_lev_distance'] > 2) &
+    (comp_remaining1['firstname_jw_distance'] < .6))
+]
+
+remaining2 = remaining1[
+    ((remaining1['total_distance'] >= 500) &
+    (remaining1['diff_state_years_count'] >= 2) &
+    ~(remaining1['shared_system_ids_flag']) &
+    ((remaining1['id1_last_has_one_first']) |
+     (remaining1['id2_last_has_one_first']))  &
+    (remaining1['firstname_jw_distance'] < .6))
+]
+
+for col in columns_with_lists:
+    remaining1[col] = remaining1[col].apply(lambda x: 
+                                            tuple(x) if isinstance(x, list) 
+                                            else x)
+
+df_no_duplicates = remaining1.drop_duplicates()
+
+
 
 remaining_ids = pd.concat([comp_remaining1['contact_id1'],
                                 comp_remaining1['contact_id2']])

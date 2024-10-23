@@ -6,7 +6,6 @@ from itertools import combinations
 
 # crying
 
-
 # BLOCKWISE COMPARISON FUNCTIONS
 def parallel_blocks(group):
     return find_common_blocks(group)

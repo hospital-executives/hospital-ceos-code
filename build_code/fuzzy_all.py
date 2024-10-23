@@ -64,9 +64,11 @@ block_results = Parallel(n_jobs=-1)(
     delayed(fuzz.parallel_blocks)(group) for _, group in grouped
 )
 
+block_df = pd.concat(block_results, ignore_index=True)
+
 # separate
-cleaned1 = block_results[(block_results['contact_uniqueid'].apply(len) == 1)]
-remaining1 = block_results[(block_results['contact_uniqueid'].apply(len) > 1)]
+cleaned1 = block_df[(block_df['contact_uniqueid'].apply(len) == 1)]
+remaining1 = block_df[(block_df['contact_uniqueid'].apply(len) > 1)]
 
 temp_cleaned_ids = set(chain.from_iterable(cleaned1['contact_uniqueid']))
 remaining_ids = set(chain.from_iterable(remaining1['contact_uniqueid'])) # 110754
@@ -78,6 +80,13 @@ name_pairs_set, meta_pairs_set = cc.gen_name_meta_pairs(user_path)
 
 new_grouped = filtered_df.groupby(['last_meta', 'first_component'])
 
+for i in (0,1,2):
+    results = Parallel(n_jobs=-1)(
+    delayed(fuzz.find_pairwise_shared_attributes)(
+        sub_df, name_pairs_set, meta_pairs_set) 
+    for _, sub_df in new_grouped[:100]
+)
+    
 results = Parallel(n_jobs=-1)(
     delayed(fuzz.find_pairwise_shared_attributes)(
         sub_df, name_pairs_set, meta_pairs_set) 
@@ -115,9 +124,6 @@ cc.update_confirmed_from_dropped(confirmed_graph, cleaned_dropped3,
 
 cleaned_remaining4 = cc.clean_results_pt4(confirmed_graph, 
 cleaned_remaining3, new_himss)
-
-cleaned_remaining5, new_dropped = cc.clean_results_pt5(cleaned_dropped3,
-cleaned_remaining4, new_himss, user_path)
 
 # need to decide if you want to save the data
 # also need to decide how to integrate probabilities
