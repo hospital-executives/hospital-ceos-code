@@ -97,7 +97,8 @@ if (is.null(project_directory)) {
 
 # Step 4: Set paths within the project folder
 #data_path <- file.path(project_directory, "derived", "data.dta")
-
+code <- paste0(project_directory,code)
+data_file_path <- paste0(project_directory,data,"/") #specifically created to align with Katherine's naming conventions
 raw_data <- paste0(project_directory,data,raw_files)
 derived_data <- paste0(project_directory,data,derived_files)
 supplemental_data <- paste0(project_directory,data,supplemental_files)
