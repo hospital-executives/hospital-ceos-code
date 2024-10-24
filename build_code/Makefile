@@ -100,10 +100,11 @@ compile_himss:
 # Step 2: Manual assignment
 manual_assignment:
 	export RSTUDIO_PANDOC=$(PANDOC_PATH); \
-	Rscript -e "rmarkdown::render(\"clean_data.Rmd\", \
-	params = list(code_path = \"$(CODE_DIR)\", \
-	data_path = \"$(DATA_DIR)\", \
-	himss_entity_contacts = \"$(HIMSS_ENTITIES_CONTACTS)\"))"
+	Rscript -e "rmarkdown::render('clean_data.Rmd', \
+	params = list(code_dir = '$(CODE_DIR)', \
+	code_path = '$(CODE_DIR)', \
+	data_path = '$(DATA_DIR)', \
+	himss_entity_contacts = '$(HIMSS_ENTITIES_CONTACTS)'))"
 
 # Step 3: Clean data
 clean_data:
