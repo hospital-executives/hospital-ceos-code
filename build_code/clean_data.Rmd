@@ -14,76 +14,84 @@ params:
 ---
 This RMD handles the non-ML portion of cleaning the contact_uniqueid code.
 
-```{r auto setup, include=FALSE}
-#clear environment
-rm(list = setdiff(ls(), c("params"))) # #to make compatible with R file
+```{r}
+# Clear environment but keep params
+rm(list = setdiff(ls(), c("params")))
 
-# NO manual entry required. This automatically loads necessary libraries and detects file paths. 
+# Set knitr options
 knitr::opts_chunk$set(echo = TRUE)
 
-# Source the configuration script
-# Check if rstudioapi is installed and install if necessary
-if (!requireNamespace("rstudioapi", quietly = TRUE)) {
-  install.packages("rstudioapi")
+# Load necessary packages
+if (!requireNamespace("knitr", quietly = TRUE)) {
+  install.packages("knitr")
+}
+library(knitr)
+
+# Function to get the script directory
+get_script_directory <- function() {
+  # Try to get the path of the current Rmd file during rendering
+  if (!is.null(knitr::current_input())) {
+    script_directory <- dirname(normalizePath(knitr::current_input()))
+    return(script_directory)
+  }
+  
+  # Fallback to params$code_dir if provided
+  if (!is.null(params$code_dir) && params$code_dir != "None") {
+    return(params$code_dir)
+  }
+  
+  # Try to get the script path when running via Rscript
+  args <- commandArgs(trailingOnly = FALSE)
+  file_arg_index <- grep("--file=", args)
+  if (length(file_arg_index) > 0) {
+    # Running via Rscript
+    file_arg <- args[file_arg_index]
+    script_path <- normalizePath(sub("--file=", "", file_arg))
+    return(dirname(script_path))
+  } else if (interactive()) {
+    # Running interactively in RStudio
+    if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
+      script_path <- rstudioapi::getActiveDocumentContext()$path
+      if (nzchar(script_path)) {
+        return(dirname(normalizePath(script_path)))
+      } else {
+        stop("Cannot determine script directory: No active document found in RStudio.")
+      }
+    } else {
+      stop("Cannot determine script directory: Not running in RStudio or rstudioapi not available.")
+    }
+  } else {
+    # Fallback to current working directory
+    script_directory <- getwd()
+    return(script_directory)
+  }
 }
 
-library(rstudioapi)
+# Detect the script directory
+script_directory <- get_script_directory()
 
-# Detect the path to the current script's directory dynamically
-# script_directory <- dirname(rstudioapi::getActiveDocumentContext()$path)
+# Print script directory for debugging
+message("Script directory detected at: ", script_directory)
 
-# Detect the path to the current script's directory dynamically
-# Updated for compatability with makefile
-if (rstudioapi::isAvailable()) {
-  script_directory <- dirname(rstudioapi::getActiveDocumentContext()$path)
-} else {
-  # Provide a fallback path or set a default
-  script_directory <- params$code_dir
-}
-
-# Construct the path to the config.R file
+# Construct the path to config.R and source it
 config_path <- file.path(script_directory, "config.R")
 
-# Source the config file dynamically
+# Check if config.R exists
+if (!file.exists(config_path)) {
+  stop("config.R not found at path: ", config_path)
+}
+
+# Source the config file
 source(config_path)
 
-#Now all necessary libraries are loaded, and file paths are set
+# Define code_path and data_path using variables from config.R
+code_path <- if (params$code_path != "None") params$code_path else code_directory
+data_path <- if (params$data_path != "None") params$data_path else derived_data
 
-#clean up
-rm(script_directory, config_path)
+# Clean up
+rm(config_path)
+
 ```
-
-```{r}
-# install_if_missing <- function(packages) {
-#   new_packages <- packages[!(packages %in% installed.packages()[, "Package"])]
-#   if (length(new_packages)) {
-#     install.packages(new_packages)
-#   }
-#   invisible(lapply(packages, library, character.only = TRUE))
-# }
-# 
-# # List of required packages
-# required_packages <- c("haven", "dplyr", "tidyverse", "ggplot2", "arrow",
-#                        "stringr", "stringdist", "data.table", "phonics", "tibble")
-# 
-# # Install missing packages and load them
-# install_if_missing(required_packages)
-```
-
-
-```{r setup}
-# library(haven)
-# library(dplyr)
-# library(tidyverse)
-# library(ggplot2)
-# library(arrow)
-# library(stringr)
-# library(stringdist)
-# library(data.table)
-# library(phonics)
-# library(tibble)
-```
-
 
 ```{r load_data_and_scripts}
 # code_path <- paste0(params$code_path, "/") # change if not KP
