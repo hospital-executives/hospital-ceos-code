@@ -1,5 +1,6 @@
 # Ignore the generated Stata configuration file config_stata.do as it contains personalized file paths
 config_stata.do
 **/.DS_Store
+build_code/.DS_Store
 *.html
 __pycache__/
