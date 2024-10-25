@@ -32,6 +32,19 @@ auxiliary_files <- "/derived/auxiliary"
 supplemental_files <- "/supplemental"
 nicknames_dictionaries <- "/nicknames dictionaries"
 
+# Function to check and install missing packages
+install_if_missing <- function(packages) {
+  new_packages <- packages[!(packages %in% installed.packages()[, "Package"])]
+  if (length(new_packages)) {
+    install.packages(new_packages, dependencies = TRUE)
+  }
+  invisible(lapply(packages, library, character.only = TRUE))
+}
+
+# Install and load required packages
+install_if_missing(required_packages)
+
+
 ####### Now, automatically set-up all file paths for the project.
 
 # Step 1: Detect the current user's home directory
