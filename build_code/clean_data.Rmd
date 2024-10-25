@@ -3,52 +3,105 @@ title: "Manual Assignment Master Code"
 output: html_document
 date: "2024-07-10"
 params:
-  code_path: "/Users/loaner/hospital-ceos-code" 
-  data_path: "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data"
+  code_dir: "None" # #to make compatible with R file
+  code_path: "None"  # Add this line
+  data_path: "None"  # Add this line
+  r_gender: "None"
+  # code_path: "/Users/loaner/hospital-ceos-code" 
+  # data_path: "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data"
   himss_entity_contacts: NULL
   targets: NULL
 ---
 This RMD handles the non-ML portion of cleaning the contact_uniqueid code.
 
 ```{r}
-install_if_missing <- function(packages) {
-  new_packages <- packages[!(packages %in% installed.packages()[, "Package"])]
-  if (length(new_packages)) {
-    install.packages(new_packages)
+# Clear environment but keep params
+rm(list = setdiff(ls(), c("params")))
+
+# Set knitr options
+knitr::opts_chunk$set(echo = TRUE)
+
+# Load necessary packages
+if (!requireNamespace("knitr", quietly = TRUE)) {
+  install.packages("knitr")
+}
+library(knitr)
+
+# Function to get the script directory
+get_script_directory <- function() {
+  # Try to get the path of the current Rmd file during rendering
+  if (!is.null(knitr::current_input())) {
+    script_directory <- dirname(normalizePath(knitr::current_input()))
+    return(script_directory)
   }
-  invisible(lapply(packages, library, character.only = TRUE))
+  
+  # Fallback to params$code_dir if provided
+  if (!is.null(params$code_dir) && params$code_dir != "None") {
+    return(params$code_dir)
+  }
+  
+  # Try to get the script path when running via Rscript
+  args <- commandArgs(trailingOnly = FALSE)
+  file_arg_index <- grep("--file=", args)
+  if (length(file_arg_index) > 0) {
+    # Running via Rscript
+    file_arg <- args[file_arg_index]
+    script_path <- normalizePath(sub("--file=", "", file_arg))
+    return(dirname(script_path))
+  } else if (interactive()) {
+    # Running interactively in RStudio
+    if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
+      script_path <- rstudioapi::getActiveDocumentContext()$path
+      if (nzchar(script_path)) {
+        return(dirname(normalizePath(script_path)))
+      } else {
+        stop("Cannot determine script directory: No active document found in RStudio.")
+      }
+    } else {
+      stop("Cannot determine script directory: Not running in RStudio or rstudioapi not available.")
+    }
+  } else {
+    # Fallback to current working directory
+    script_directory <- getwd()
+    return(script_directory)
+  }
 }
 
-# List of required packages
-required_packages <- c("haven", "dplyr", "tidyverse", "ggplot2", "arrow",
-                       "stringr", "stringdist", "data.table", "phonics", "tibble")
+# Detect the script directory
+script_directory <- get_script_directory()
 
-# Install missing packages and load them
-install_if_missing(required_packages)
+# Print script directory for debugging
+message("Script directory detected at: ", script_directory)
+
+# Construct the path to config.R and source it
+config_path <- file.path(script_directory, "config.R")
+
+# Check if config.R exists
+if (!file.exists(config_path)) {
+  stop("config.R not found at path: ", config_path)
+}
+
+# Source the config file
+source(config_path)
+
+# Define code_path and data_path using variables from config.R
+code_path <- if (params$code_path != "None") params$code_path else code_directory
+data_path <- if (params$data_path != "None") params$data_path else derived_data
+
+# Clean up
+rm(config_path)
+
 ```
-
-
-```{r setup}
-library(haven)
-library(dplyr)
-library(tidyverse)
-library(ggplot2)
-library(arrow)
-library(stringr)
-library(stringdist)
-library(data.table)
-library(phonics)
-library(tibble)
-```
-
 
 ```{r load_data_and_scripts}
-code_path <- paste0(params$code_path, "/") # change if not KP
-data_path <- paste0(params$data_path, "/") # change if not KP
-cat("Data Path: ", data_path, "\n")
+# code_path <- paste0(params$code_path, "/") # change if not KP
+code_path <- code_directory
+# data_path <- paste0(params$data_path, "/") # change if not KP
+data_path <- data_file_path
+# cat("Data Path: ", data_path, "\n")
 
 himss_feather <- if (is.null(params$himss_entity_contacts)) {
-  paste0(data_path, "derived/himss_entities_contacts_0517_v1.feather")  # Specify your backup value here
+  paste0(derived_data, "/", "himss_entities_contacts_0517_v1.feather") # Specify your backup value here
 } else {
   params$himss_entity_contacts
 }
@@ -71,9 +124,9 @@ to_merge <- df[, c("id", setdiff(names(df), c("id", variable_columns)))]
 
 # set up one id m names
 normalized_levenshtein_cutoff <- 0.3 # default is 0.3
-source(paste0(code_path, "helper-scripts/one_id_m_names_final.R"))
+source(paste0(code_path,"/", "helper_scripts/one_id_m_names_final.R"))
 # set up one name m ids
-source(paste0(code_path, "helper-scripts/one_name_m_ids_final.R"))
+source(paste0(code_path,"/", "helper_scripts/one_name_m_ids_final.R"))
 
 
 ```
@@ -125,7 +178,7 @@ objects_to_keep <- c("df", "outliers", "code_path", "data_path", "to_clean",
                      "to_merge")
 objects_to_remove <- setdiff(all_objects, objects_to_keep)
 rm(list = objects_to_remove)
-source(paste0(code_path, "helper-scripts/one_name_m_ids_final.R"))
+source(paste0(code_path,"/", "helper_scripts/one_name_m_ids_final.R"))
 
 ########## algorithm(s) to consolidate "multiple" ids ########## 
 
@@ -207,11 +260,11 @@ one_name_m_ids_remaining <- final_remaining %>% #18,979 remaining
 
 final_confirmed <- final_confirmed %>%
   select(-c(add_list, entity_name_list, entityid_list))
-write_feather(final_confirmed, paste0(data_path, "derived/auxiliary/r_confirmed.feather"))
+write_feather(final_confirmed, paste0(data_path,"derived/auxiliary/", "r_confirmed.feather"))
 
 final_remaining <- final_remaining %>%
   select(-c(add_list, entity_name_list, entityid_list))
-write_feather(final_remaining, paste0(data_path, "derived/auxiliary/r_remaining.feather"))
+write_feather(final_remaining, paste0(data_path,"derived/auxiliary/", "r_remaining.feather"))
 
 
 ```

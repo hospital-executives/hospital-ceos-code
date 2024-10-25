@@ -65,12 +65,17 @@ block_results = Parallel(n_jobs=-1)(
 ) #193000
 
 block_component_pairs = pd.DataFrame(block_results)
+)
+
+block_df = pd.concat(block_results, ignore_index=True)
 
 # separate
 cleaned1 = block_component_pairs[
     (block_component_pairs['contact_uniqueid'].apply(len) == 1)]
 remaining1 = block_component_pairs[
     (block_component_pairs['contact_uniqueid'].apply(len) > 1)]
+cleaned1 = block_df[(block_df['contact_uniqueid'].apply(len) == 1)]
+remaining1 = block_df[(block_df['contact_uniqueid'].apply(len) > 1)]
 
 temp_cleaned_ids = set(chain.from_iterable(cleaned1['contact_uniqueid']))
 remaining_ids = set(chain.from_iterable(remaining1['contact_uniqueid'])) # 110754
@@ -88,6 +93,14 @@ for i in (0,1,2):
     delayed(fuzz.find_pairwise_shared_attributes)(
         sub_df, name_pairs_set, meta_pairs_set) 
     for _, sub_df in new_grouped_list[:100]
+)
+    
+
+for i in (0,1,2):
+    results = Parallel(n_jobs=-1)(
+    delayed(fuzz.find_pairwise_shared_attributes)(
+        sub_df, name_pairs_set, meta_pairs_set) 
+    for _, sub_df in new_grouped[:100]
 )
     
 results = Parallel(n_jobs=-1)(

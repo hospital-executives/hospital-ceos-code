@@ -87,7 +87,6 @@ results_list = Parallel(n_jobs=-1)(
     for _, sub_df in list_of_groups
 )
 component_pairs = pd.concat(results_list, ignore_index=True, sort=False)
-
 component_pairs = cc.update_results(component_pairs)
 
 column_type_mapping = {'last_meta': 'object',
