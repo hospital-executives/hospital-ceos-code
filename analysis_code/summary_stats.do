@@ -8,7 +8,8 @@
 
 
 * Include the custom configuration file
-do "config_stata.do"
+*do "config_stata.do"
+do "/Users/ambarlaforgia/hospital-ceos-code/analysis_code/config_stata.do"
 
 * Now you have the following globals to use as shortcuts to the DropBox:
 * DERIVED_DATA,RAW_DATA, SUPPLEMENTAL_DATA, AUXILIARY_DATA, NICKNAMES_DICTIONARIES 
