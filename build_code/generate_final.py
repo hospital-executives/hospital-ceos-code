@@ -23,7 +23,7 @@ else:
     remainder_path =  os.path.join(user_path, "derived/py_remaining.csv")
     json_path =  os.path.join(user_path, "derived/py_graph_components.json")
     final_himss_path = os.path.join(user_path, "derived/final_himss.feather")
-    final_confirmed_path = os.path.join(user_path, "derived/final_confirmed.dta")
+    final_confirmed_path = os.path.join(user_path, "derived/final_confirmed_new.dta")
     himss_path = os.path.join(user_path, 
     "derived/himss_entities_contacts_0517_v1.feather")
 
@@ -147,6 +147,9 @@ final_df = new_cleaned.copy()
 final_df['contact_uniqueid'] = final_df['new_contact_uniqueid']
 final_df = final_df.drop('old_contact_uniqueid', axis=1)
 final_df = final_df.drop('new_contact_uniqueid', axis=1)
+
+final_df['modified_firstname'] = final_df['firstname'] != final_df['old_firstname']
+final_df['modified_lastname'] = final_df['lastname'] != final_df['old_lastname']
 
 def convert_to_str_or_none(value):
     if isinstance(value, str):
