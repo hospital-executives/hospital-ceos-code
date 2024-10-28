@@ -134,6 +134,7 @@ restore
 	drop _merge
 	
 
+
 * ======================================================
 		* SUMMARY STATS.
 * ======================================================
@@ -143,7 +144,8 @@ restore
 
 	*Share of hosp w/c-suite roles	
 	
-foreach aa in CEO CFO CIO COO{ 	
+*foreach aa in CEO CFO CIO COO{ 
+	foreach aa in CEO { 		
 	
 	preserve 
 	
@@ -167,7 +169,7 @@ foreach aa in CEO CFO CIO COO{
 		
 		sort entity_cntrl year
 
-		qui twoway (line share_`aa' year if entity_cntrl == 1, lcolor(blue) lpattern(solid)) (line share_`aa' year if entity_cntrl == 2, lcolor(red) lpattern(dash)) (line share_`aa' year if entity_cntrl == 3, lcolor(green) lpattern(shortdash)) (line total_share year if entity_cntrl == 1, lcolor(black) lpattern(longdash_dot)), legend(order(1 "Not-for-Profit" 2 "For-Profit" 3 "Government" 4 "All Hospitals") ring(0)) xlabel(2009(1)2017) ylabel(0.6(0.1)1) title("`aa' Share Over Time by Hospital Ownership") ytitle("`aa' Share") xtitle("Year")  graphregion(fcolor(white)) nodraw
+		qui twoway (line share_`aa' year if entity_cntrl == 1, lcolor(blue) lpattern(solid)) (line share_`aa' year if entity_cntrl == 2, lcolor(red) lpattern(dash)) (line share_`aa' year if entity_cntrl == 3, lcolor(green) lpattern(shortdash)) (line total_share year if entity_cntrl == 1, lcolor(black) lpattern(longdash_dot)), legend(order(1 "Not-for-Profit" 2 "For-Profit" 3 "Government" 4 "All Hospitals") ring(0)) xlabel(2009(1)2017) ylabel(0.6(0.1)1) title("`aa' Share Over Time by Hospital Ownership") ytitle("`aa' Share") xtitle("Year")  graphregion(fcolor(white)) 
 
 		graph export "$OUTPUT/share_with`aa'.jpg", replace
 		
@@ -201,7 +203,6 @@ foreach aa in CEO CFO CIO COO{
 	
 	merge m:1 entity_uniqueid using `year_count'
 	assert _merge!=2
-	
 	drop _merge
 	
 	preserve 
@@ -318,8 +319,9 @@ foreach aa in CEO CFO CIO COO{
 		
 		
 		keep year entity_cntrl turnover_rate_entity turnover_rate
+		duplicates drop 
 
-		qui twoway (line turnover_rate_entity year if entity_cntrl == 1, lcolor(blue) lpattern(solid)) (line turnover_rate_entity year if entity_cntrl == 2, lcolor(red) lpattern(dash)) (line turnover_rate_entity year if entity_cntrl == 3, lcolor(green) lpattern(shortdash)) (line turnover_rate year if entity_cntrl == 1, lcolor(black) lpattern(longdash_dot)), legend(order(1 "Not-for-Profit" 2 "For-Profit" 3 "Government" 4 "All Hospitals") ring(0)) xlabel(2009(1)2017) ylabel(0(0.05).3) title("CEO Turnover Rate") ytitle("CEO Turnover Rate") xtitle("Year")  graphregion(fcolor(white)) nodraw
+		qui twoway (line turnover_rate_entity year if entity_cntrl == 1, lcolor(blue) lpattern(solid)) (line turnover_rate_entity year if entity_cntrl == 2, lcolor(red) lpattern(dash)) (line turnover_rate_entity year if entity_cntrl == 3, lcolor(green) lpattern(shortdash)) (line turnover_rate year if entity_cntrl == 1, lcolor(black) lpattern(longdash_dot)), legend(order(1 "Not-for-Profit" 2 "For-Profit" 3 "Government" 4 "All Hospitals") ring(0)) xlabel(2009(1)2017) ylabel(0(0.05).3) title("CEO Turnover Rate") ytitle("CEO Turnover Rate") xtitle("Year")  graphregion(fcolor(white)) 
 
 		graph export "$OUTPUT/CEO_turnover.jpg", replace
 		
@@ -327,19 +329,18 @@ foreach aa in CEO CFO CIO COO{
 
 		collapse (mean) turnover_rate_entity turnover_rate, by(entity_cntrl)
 		
-		
 		tempfile turnover
 		save `turnover'
 	restore
 		
 		
 	*View sumstats for now 	
+	preserve 
 		use `share_CEO', clear
 		append using `avg_tenure'
 		append using `turnover'
 		
-		x
-	
+	x
 	restore 
 	x
 	
