@@ -47,6 +47,7 @@ use "$DERIVED_DATA/final_confirmed_new.dta", clear
 order contact_uniqueid year entity_uniqueid system_id full_name firstname lastname title title_standardized c_suite entity_name type entity_profitstatus cntrl
 sort contact_uniqueid year 
 
+
 *Only keep hospitals for now
 keep if entity_type==("Hospital")
 
@@ -261,7 +262,7 @@ restore
 		
 
 	*CEO turnover
-	**Annual Turnover Rate**: Calculate the proportion of hospitals that experienced a change in CEO each year.
+	**Annual Turnover Rate: Calculate the proportion of hospitals that experienced a change in CEO each year.
 	
 	preserve
 		bys entity_uniqueid: egen ever_ceo=max(CEO)
@@ -291,21 +292,21 @@ restore
 		* Step 3: Identify CEO Changes
 		gen ceo_change = .
 
-		* Case 1: Both years have CEO==1
-		replace ceo_change = 0 if CEO == 1 & CEO_lag == 1 & contact_uniqueid == ceo_lag
-		replace ceo_change = 1 if CEO == 1 & CEO_lag == 1 & contact_uniqueid != ceo_lag
+			* Case 1: Both years have CEO==1
+			replace ceo_change = 0 if CEO == 1 & CEO_lag == 1 & contact_uniqueid == ceo_lag
+			replace ceo_change = 1 if CEO == 1 & CEO_lag == 1 & contact_uniqueid != ceo_lag
 
-		* Case 2: CEO leaves, position becomes vacant
-		replace ceo_change = 1 if CEO == 0 & CEO_lag == 1
+			* Case 2: CEO leaves, position becomes vacant
+			replace ceo_change = 1 if CEO == 0 & CEO_lag == 1
 
-		* Case 3: CEO position filled after vacancy
-		replace ceo_change = 1 if CEO == 1 & CEO_lag == 0
+			* Case 3: CEO position filled after vacancy
+			replace ceo_change = 1 if CEO == 1 & CEO_lag == 0
 
-		* Case 4: Both years have no CEO
-		replace ceo_change = 0 if CEO == 0 & CEO_lag == 0
+			* Case 4: Both years have no CEO
+			replace ceo_change = 0 if CEO == 0 & CEO_lag == 0
 
-		* Handle missing data (first year of each hospital)
-		replace ceo_change = . if missing(CEO_lag)
+			* Handle missing data (first year of each hospital)
+			replace ceo_change = . if missing(CEO_lag)
 
 		* Step 4: Calculate Annual Turnover Rate
 		by year, sort: egen num_hospitals = count(ceo_change)
