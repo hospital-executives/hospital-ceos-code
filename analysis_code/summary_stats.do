@@ -42,15 +42,71 @@ do "/Users/ambarlaforgia/hospital-ceos-code/analysis_code/config_stata.do"
 
 use "$DERIVED_DATA/final_confirmed_new.dta", clear
 
-
 *Organize
 order contact_uniqueid year entity_uniqueid system_id full_name firstname lastname title title_standardized c_suite entity_name type entity_profitstatus cntrl
 sort contact_uniqueid year 
 
-
 *Only keep hospitals for now
 keep if entity_type==("Hospital")
 
+*Identify which hospitals are missing CEO in a year
+preserve
+	import delimited "$DERIVED_DATA/missing_ceos.csv", varnames(1) clear
+	keep entity_uniqueid year missing_ceo
+	duplicates drop
+	rename missing_ceo temp
+	gen missing_ceo=(temp=="True")
+	
+	drop temp
+	drop if entity_uniqueid==.
+	
+	tempfile ceo
+	save `ceo'
+restore 
+
+merge m:1 entity_uniqueid year using `ceo'
+keep if _merge==3
+drop _merge 
+	
+
+
+/*
+
+*Keep AHA classification hospitals for comparison to ACHE (academic and general medical & surgical)
+preserve
+	keep year entity_uniqueid entity_name type
+	egen group=group(type)
+	
+	*drop if ever critical access 
+	gen cah=1 if group==5
+	bys entity_uniqueid: egen max=max(cah)
+	drop if max==1
+	drop cah max
+	
+	*keep if ever general medical or academic (note that some still show up as other types in some years)
+	gen academic=1 if group==1
+	bys entity_uniqueid: egen max=max(academic)
+	
+	gen general=1 if group==8
+	bys entity_uniqueid: egen max2=max(general)
+	
+	keep if max==1 | max2==1
+	drop max* academic general 
+	
+	keep entity_uniqueid
+	duplicates drop 
+	
+	tempfile subset
+	save `subset'
+restore 	
+
+merge m:1 entity_uniqueid using `subset'
+assert _merge!=2
+keep if _merge==3
+drop _merge
+
+*3494 hospitals 
+*/
 
 *Only keep if ever c_suite 
 bys contact_uniqueid: egen max=max(c_suite)
@@ -142,6 +198,37 @@ restore
 
 
 *Basic characterisitcs 
+
+*Since data is still being cleaned using "missing_ceo" to tell us if an org has a CEO or not 
+
+preserve
+		
+		collapse (max) missing_ceo, by(year entity_uniqueid entity_cntrl)
+		
+		gen has_ceo=(missing_ceo==0)
+
+		egen total_hosp = count(entity_uniqueid), by(year entity_cntrl)
+		egen total_with_ceo = total(has_ceo), by(year entity_cntrl)
+	
+		bys entity_cntrl: gen share_ceo = total_with_ceo / total_hosp
+		
+		egen total_hosp2 = count(entity_uniqueid), by(year )
+		egen total_with_ceo2 = total(has_ceo), by(year )
+	
+		bys entity_cntrl: gen total_share = total_with_ceo2 / total_hosp2
+		
+		keep year share_ceo total_share entity_cntrl
+		duplicates drop 
+		
+		sort entity_cntrl year	
+
+		qui twoway (line share_ceo year if entity_cntrl == 1, lcolor(blue) lpattern(solid)) (line share_ceo year if entity_cntrl == 2, lcolor(red) lpattern(dash)) (line share_ceo year if entity_cntrl == 3, lcolor(green) lpattern(shortdash)) (line total_share year if entity_cntrl == 1, lcolor(black) lpattern(longdash_dot)), legend(order(1 "Not-for-Profit" 2 "For-Profit" 3 "Government" 4 "All Hospitals") ring(0)) xlabel(2009(1)2017) ylabel(0.9(0.05)1) title("CEO Share Over Time by Hospital Ownership") ytitle("CEO Share") xtitle("Year")  graphregion(fcolor(white)) 
+		
+		graph export "$OUTPUT/nonmissing_ceo.jpg", replace
+		
+restore 		
+
+
 
 	*Share of hosp w/c-suite roles	
 	
@@ -336,14 +423,12 @@ restore
 		
 		
 	*View sumstats for now 	
-	preserve 
 		use `share_CEO', clear
 		append using `avg_tenure'
 		append using `turnover'
 		
 	x
-	restore 
-	x
+
 	
 	
 
