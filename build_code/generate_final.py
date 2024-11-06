@@ -93,10 +93,9 @@ new_himss['old_first_component'] = pd.to_numeric(new_himss['old_first_component'
  errors='coerce')
 new_himss['new_contact_uniqueid'] = new_himss['new_contact_uniqueid'].astype(str)
 
-new_himss.to_feather(final_himss_path)
 
 #### GENERATE FINAL CLEAN DF WITH FLAGS ####
-new_cleaned = new_himss[new_himss['confirmed']]
+new_cleaned = new_himss.copy()
 himss = pd.read_feather(himss_path)
 
 himss['id'] == himss['id'].astype(float)
@@ -165,4 +164,6 @@ object_columns = final_df.select_dtypes(include=['object']).columns.tolist()
 for col in object_columns:
     final_df[col] = final_df[col].apply(convert_to_str_or_none)
 
-final_df.to_stata(final_confirmed_path, write_index=False, version=118)
+final_df.to_feather(final_himss_path)
+final_dta = final_df[final_df['confirmed']]
+final_dta.to_stata(final_confirmed_path, write_index=False, version=118)

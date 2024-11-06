@@ -17,7 +17,8 @@ def install(package):
             print(f"Failed to install {package} using both pip and pip3. Please check your Python and pip installation.")
 
 # list packages
-required_packages = ['pandas', 'numpy', 'Levenshtein', 'matplotlib','metaphone']  
+required_packages = ['pandas', 'numpy', 'Levenshtein', 'matplotlib','metaphone',
+                     'seaborn', 'pyarrow', 'matplotlib', 'jellyfish', 'joblib']  
 
 # import packages
 for package in required_packages:
@@ -26,6 +27,7 @@ for package in required_packages:
     except ImportError:
         install(package)
 
+import pandas as pd
 
 # specify data path 
 data_path = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data"

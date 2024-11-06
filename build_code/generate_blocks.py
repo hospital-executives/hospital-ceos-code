@@ -55,13 +55,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'helper_scripts'))
 import blocking_helper
 import cleaned_confirmed_helper as cc
 
-# LOAD DFS
-#print(himss_path)
-#print(updated_gender_path)
-#print(himss_1_path)
-#print(confirmed_1_path)
-#print(remaining_1_path)
-#print(data_dir)
  
 gender_df = pd.read_csv(updated_gender_path)
 gender_df_unique = gender_df.drop_duplicates(subset='firstname')
@@ -69,14 +62,6 @@ gender_df_unique = gender_df.drop_duplicates(subset='firstname')
 cleaned_himss = pd.read_csv(himss_1_path)
 cleaned_confirmed = pd.read_csv(confirmed_1_path)
 cleaned_remainder = pd.read_csv(remaining_1_path)
-
-## DEBUG FROM HERE - ALSO DELETE WHEN RUNNING FROM MAKEFILE
-#gender_df = pd.read_csv('/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/derived/auxiliary/updated_gender.csv')
-#gender_df_unique = gender_df.drop_duplicates(subset='firstname')
-
-##cleaned_himss = pd.read_csv('/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/derived/auxiliary/himss_1.csv')
-#cleaned_confirmed = pd.read_csv('/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/derived/auxiliary/confirmed_1.csv')
-#cleaned_remainder = pd.read_csv('/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/derived/auxiliary/remaining_1.csv')
 
 # backfill the John Null case which accidentally got dropped
 list_of_dfs = [cleaned_confirmed, cleaned_remainder, cleaned_himss]  # Replace with your actual list of DataFrames
@@ -122,10 +107,10 @@ f_graph, f_df = blocking_helper.generate_female_blocks(cleaned_himss,
 last_graph, last_df = blocking_helper.generate_last_blocks(cleaned_himss, himss, 
                                                            data_dir, 0.9, 
                                                            gender = "all") # 2961 comps
-
-
 m_graph, m_df = blocking_helper.generate_male_blocks(cleaned_himss, 
-                                                        cleaned_himss, himss_nicknames, data_dir) # 3125 comps
+                                                        cleaned_himss, 
+                                                        himss_nicknames, 
+                                                        data_dir) # 3125 comps
 
 
 female_components = list(nx.connected_components(f_graph))

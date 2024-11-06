@@ -17,7 +17,7 @@ else:
     "derived/auxiliary/updated_gender.csv")
     gender_path = os.path.join(data_dir, "supplemental/gender.csv")
 
-sys.path.append(os.path.join(os.path.dirname(__file__), 'helper-scripts'))
+sys.path.append(os.path.join(os.path.dirname(__file__), 'helper_scripts'))
 
 # LOAD HELPER FILES
 import blocking_helper

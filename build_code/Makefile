@@ -114,17 +114,17 @@ clean_data:
 
 # Step 4: Update gender
 update_gender:
-	python3 helper-scripts/update_gender.py "$(CONFIRMED_1)" "$(UPDATED_GENDER)" \
+	python3 helper_scripts/update_gender.py "$(CONFIRMED_1)" "$(UPDATED_GENDER)" \
 	"$(DATA_DIR)" "$(R_GENDER)"
 
 # Step 5: Generate Jaro
 generate_jaro:
-	python3 helper-scripts/jaro_algo.py "$(CODE_DIR)" "$(CONFIRMED_R)" \
+	python3 helper_scripts/jaro_algo.py "$(CODE_DIR)" "$(CONFIRMED_R)" \
 	"$(UPDATED_GENDER)" "$(JARO)"
 
 # Step 6: Generate digraphs
 generate_digraphs:
-	python3 helper-scripts/generate_digraphs.py "$(HIMSS_1)" "$(HIMSS_NICKNAMES)" \
+	python3 helper_scripts/generate_digraphs.py "$(HIMSS_1)" "$(HIMSS_NICKNAMES)" \
 	"$(DIGRAPHNAME)" "$(DIGRAPHMETA)" "$(SUPP_DIR)"
 
 # Step 7: Generate blocks
@@ -135,7 +135,7 @@ generate_blocks:
 
 # Step 8: Generate final cleaned data
 generate_final:
-	python3 -u fuzzy_matching.py "$(CONFIRMED_2)" "$(REMAINING_2)" \
+	python3 -u fuzzy_final.py "$(CONFIRMED_2)" "$(REMAINING_2)" \
 	"$(PY_CLEANED)" "$(PY_REMAINING)" "$(GRAPH_COMPS)" \
 	"$(DATA_DIR)" "$(CODE_DIR)"
 
@@ -157,15 +157,3 @@ final_himss_manual:
 	"$(GRAPH_COMPS)" "$(FINAL_HIMSS)" "$(FINAL_CONFIRMED)" \
 	"$(HIMSS_ENTITIES_CONTACTS)"
 
-# /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/
-
-
-# to run to generate blocks: 
-#make /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/auxiliary/confirmed_2.csv /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/auxiliary/remaining_2.csv
-# confirmed r: 
-# /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/r_confirmed.feather
-# updated gender:
-# /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/auxiliary/updated_gender.csv
-# make final cleand df
-
-# make -B /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/derived/himss_entities_contacts_0517_v1.feather /Users/loaner/BFI\ Dropbox/Katherine\ Papen/hospital_ceos/_data/supplemental/gender.csv
