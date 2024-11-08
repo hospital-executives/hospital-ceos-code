@@ -20,6 +20,28 @@ library(phonics) # for gender assignment code
 library(scales) # improved plotting
 library(knitr)
 
+# Define required packages
+required_packages <- c(
+  "tidyverse",
+  "readr",
+  "readxl",
+  "tools",
+  "haven",
+  "foreign",
+  "wordcloud",
+  "feather",
+  "tibble",
+  "jsonlite",
+  "stringi",
+  "fuzzyjoin",
+  "arrow",
+  "stringdist",
+  "data.table",
+  "phonics",
+  "scales",
+  "knitr"
+)
+
 #######  Manual Inputs - if we change the folder structure, this needs to be updated
 # Define the project folder name
 project_folder <- "hospital_ceos"
