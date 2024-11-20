@@ -129,6 +129,49 @@ gen COO=(regexm(title_standardized, "COO:"))
 
 gen CIO=(regexm(title_standardized, "CIO:"))
 
+
+
+*Create dataset for Katherine to explore
+preserve
+	keep if CEO==1 & missing_ceo==0
+	
+	sort entity_uniqueid year
+	
+	order entity_uniqueid year entity_name missing_ceo full_name firstname lastname madmin  
+	duplicates drop 
+	
+	tempfile has_ceo
+	save `has_ceo'
+restore 
+
+
+*293 hospitals don't ever have a CEO 
+preserve
+	bys entity_uniqueid: egen max=max(CEO)
+	drop if max==1
+	drop max 
+	
+	
+	keep entity_uniqueid year entity_name missing_ceo madmin  aha_entity_name
+	duplicates drop
+	
+	gen algo_noceo=1 
+
+	
+	append using `has_ceo'
+	
+	sort entity_uniqueid year
+	order entity_uniqueid year entity_name missing_ceo algo_noceo full_name firstname lastname madmin aha_entity_name 
+	
+	compress
+	
+	
+	save "$DERIVED_DATA/ceo_data_check", replace 
+	
+restore 	
+
+x
+
 *Type of hospital
 
 preserve
