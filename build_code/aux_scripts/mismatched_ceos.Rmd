@@ -1,0 +1,142 @@
+---
+title: "Missing CEOs"
+output: html_document
+date: "2024-12-02"
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(haven)
+library(tidyverse)
+library(stringdist)
+```
+
+```{r load data}
+missing <- read_dta('/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/derived/ceo_data_check.dta')
+```
+
+```{r question 2}
+q2 <- missing %>% 
+  select(entity_uniqueid, year, entity_name, missing_ceo, algo_noceo,
+         full_name, firstname, lastname, madmin, aha_entity_name, entity_type) %>%
+  mutate(
+    # Remove punctuation and convert to lowercase
+    clean_name = str_to_lower(str_remove_all(madmin, "[[:punct:]]")),
+    aha_first = word(clean_name, 1),  # Get the first word as the first name
+    aha_last = map_chr(clean_name, ~ {
+      # Split the name into words
+      words <- str_split(.x, "\\s+")[[1]]
+      # Skip the second word if it's an initial or single character, otherwise use it
+      ifelse(nchar(words[2]) == 1 || str_detect(words[2], "^[a-z]\\.$"), words[3], words[2])
+    })
+  ) %>% 
+  mutate(firstname = ifelse(firstname == "", NA_character_, firstname),
+         lastname = ifelse(lastname == "", NA_character_, lastname),
+         madmin = ifelse(madmin == "", NA_character_, madmin)) %>%
+  filter(!is.na(firstname) & !is.na(lastname) & !is.na(madmin))
+
+mismatch <- q2 %>%
+  filter(firstname != aha_first | lastname != aha_last) %>%
+  mutate(
+    firstname_distance = 
+      stringdist::stringdist(firstname, aha_first, method = "lv") / 
+      pmax(nchar(firstname), nchar(aha_first)),
+    lastname_distance = 
+      stringdist::stringdist(lastname, aha_last, method = "lv") / 
+      pmax(nchar(lastname), nchar(aha_last)),
+    firstname_metaphone = phonics::metaphone(firstname),
+    aha_first_metaphone = phonics::metaphone(aha_first),
+    lastname_metaphone = phonics::metaphone(lastname),
+    aha_last_metaphone = phonics::metaphone(aha_last)
+  ) 
+
+filtered_mismatch <- mismatch %>% 
+  filter(!(firstname_distance == 0 & lastname_distance <=0.15)) %>%
+  filter(!(firstname_distance <= 0.15 & lastname_distance ==0)) %>%
+  filter(!(firstname_metaphone == aha_first_metaphone &
+           lastname_metaphone == aha_last_metaphone)) %>%
+  filter(!(firstname_metaphone == aha_first_metaphone &
+           lastname_distance <= 0.2)) %>%
+  filter(!(lastname_metaphone == aha_last_metaphone &
+           firstname_distance <= 0.2)) %>%
+rowwise() %>%
+  mutate(
+    firstnames_in_same_row = names_in_same_row(c(firstname, aha_first), names1) 
+  ) %>%
+   filter(!(firstnames_in_same_row & 
+           (lastname_metaphone == aha_last_metaphone | lastname_distance <= 0.2))) %>%
+  mutate(
+    f_same_row = names_in_same_row(c(firstname, aha_first), female_lower) ,
+    m_same_row = names_in_same_row(c(firstname, aha_first), male_lower) 
+  ) %>%
+  filter(!((m_same_row|f_same_row) & 
+           (lastname_metaphone == aha_last_metaphone | lastname_distance <= 0.2)))
+
+view <- filtered_mismatch  %>% 
+    filter(!(aha_last == 'van' & (str_detect(firstname, 'van') |str_detect(lastname, 'van')) )) %>%
+  mutate(
+    aha_last_2 = map_chr(madmin, ~ {
+      words <- str_split(.x, "\\s+")[[1]]
+      
+      words <- str_to_lower(str_remove_all(words, "[[:punct:]]"))
+      
+      i <- 3 # Start checking from the third word
+      while (i <= length(words) && (nchar(words[i]) == 1 || str_detect(words[i], "^[a-z]$"))) {
+        i <- i + 1
+      }
+      
+      # Return the valid word or NA if not found
+      if (i <= length(words)) words[i] else NA_character_
+    })
+  ) %>%
+   select(firstname, lastname, aha_first, aha_last, aha_last_2, madmin, entity_name, f_same_row, 
+           m_same_row,firstname_distance, year)
+
+current_remaining <- view %>% filter(lastname != aha_last_2 & firstname != aha_last) %>%
+  mutate(
+    lastname_flag = case_when(
+      # Check if lastname is a subset of aha_last or aha_last_2
+      str_detect(aha_last, fixed(lastname)) | str_detect(aha_last_2, fixed(lastname)) ~ TRUE,
+      # Check if aha_last or aha_last_2 is a subset of lastname
+      str_detect(lastname, fixed(aha_last)) | str_detect(lastname, fixed(aha_last_2)) ~ TRUE,
+      TRUE ~ FALSE # Default to FALSE
+    )
+  ) %>%
+  filter(!lastname_flag)
+```
+```{r}
+set.seed(123)  # Replace 123 with any number to control randomness
+
+# Get a random sample of 10 rows
+sampled_data <-  current_remaining[sample(nrow(current_remaining), 5), ]
+
+test <- current_remaining %>% filter(entity_name == 'landmark medical center woonsocket unit')
+
+```
+
+```{r}
+code_path <- '/Users/loaner/hospital-ceos-code/build_code'
+data_path <- '/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/'
+source(paste0(code_path,"/", "helper_scripts/one_id_m_names_final.R"))
+
+if (exists("data_path")) {
+    # Print the provided arguments
+    names1 <- read.csv(paste0(data_path, "supplemental/carltonnorthernnames.csv"), header = FALSE)
+    
+    female <- read.csv(paste0(data_path, "supplemental/female_diminutives.csv"), header = FALSE)
+    female_lower <- female
+    female_lower[] <- lapply(female_lower, function(x) {
+      if (is.character(x)) tolower(x) else x
+    })
+    
+    male <- read.csv(paste0(data_path, "supplemental/male_diminutives.csv"), header = FALSE)
+    male_lower <- male
+    male_lower[] <- lapply(male_lower, function(x) {
+      if (is.character(x)) tolower(x) else x
+    })
+  }
+    else {
+      print("Please set data_path.")
+    }
+```
+
