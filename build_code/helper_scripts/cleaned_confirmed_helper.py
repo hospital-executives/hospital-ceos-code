@@ -900,6 +900,47 @@ def clean_results_pt7(cleaned_remaining_comp,confirmed_graph,
     
     return comp_remaining3, dropped_comp
 
+def clean_results_pt8(remaining_input,confirmed_graph,
+                      dropped_comp, contact_count_dict):
+    dropped = remaining_input[
+        (((remaining_input['min_same_probability'].isna())) & 
+        ((remaining_input['min_diff_probability'].isna())) & 
+        ~(remaining_input['shared_titles_flag'])) & 
+        ((remaining_input['lastname_jw_distance'] < 0.7) |
+        ((remaining_input['lastname_jw_distance'] < 0.5) & 
+        ~(remaining_input['name_in_same_row_firstname'])) |
+       ( ~(remaining_input['shared_system_ids_flag']) & 
+        (remaining_input['shared_states'].apply(len)  == 0) & 
+        (remaining_input['lastname_lev_distance'] >= 3)))
+    ]
+    dropped_comp.update(zip(dropped['contact_id1'], dropped['contact_id2']))
+    update_confirmed_from_dropped(confirmed_graph, dropped_comp,
+                                                        contact_count_dict)
+
+    remaining_output = remaining_input[
+        ~((((remaining_input['min_same_probability'].isna())) & 
+        ((remaining_input['min_diff_probability'].isna())) & 
+        ~(remaining_input['shared_titles_flag'])) & 
+        ((remaining_input['lastname_jw_distance'] < 0.7) |
+        ((remaining_input['lastname_jw_distance'] < 0.5) & 
+        ~(remaining_input['name_in_same_row_firstname'])) |
+       ( ~(remaining_input['shared_system_ids_flag']) & 
+        (remaining_input['shared_states'].apply(len)  == 0) & 
+        (remaining_input['lastname_lev_distance'] >= 3))))
+    ]
+
+    # to add
+    # drop these: 
+    #comp_remaining[(comp_remaining['shared_system_ids'].apply(len) == 0) & ~(comp_remaining['name_in_same_row_firstname'])
+    # & (comp_remaining['firstname_jw_distance'] <= 0.75) & (comp_remaining['lastname_jw_distance'] <= 0.75)]
+
+    # comp_remaining[(comp_remaining['total_distance']>= 500) & 
+    # ~(comp_remaining['name_in_same_row_firstname']) & 
+    # (comp_remaining['firstname_jw_distance']<=0.7)]
+
+    return remaining_output, dropped_comp
+
+
 
 def update_confirmed_from_dropped(G, cleaned_dropped, contact_count_dict):
     # Count occurrences of each ID in cleaned_dropped

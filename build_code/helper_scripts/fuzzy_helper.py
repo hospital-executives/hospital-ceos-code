@@ -7,8 +7,7 @@ import pandas as pd
 import jellyfish
 import Levenshtein 
 from itertools import combinations
-
-# crying
+from collections import defaultdict
 
 # BLOCKWISE COMPARISON FUNCTIONS
 def parallel_blocks(group):
@@ -190,6 +189,82 @@ def find_pairwise_shared_attributes(sub_df, name_pairs_set, meta_pairs_set):
     ) for id1, id2 in combinations(contact_ids, 2))
 
     return pd.DataFrame(results)
+
+# UPDATE GRAPHS IF ALL PAIRS ARE ACCOUNTED FOR
+def build_id_map(id_set):
+    """Build a mapping of IDs to the tuples they appear in."""
+    id_map = defaultdict(set)
+    for id1, id2 in id_set:
+        id_map[id1].add((id1, id2))
+        id_map[id2].add((id1, id2))
+    return id_map
+
+def find_tuples_with_id_optimized(id_to_match, id_map):
+    """Efficiently find tuples using a precomputed map."""
+    return id_map.get(id_to_match, set())
+
+def find_valid_tuples_optimized(still_missing, comp_set, comp_dropped, meta_set, meta_dropped):
+    """
+    Optimized function to find valid tuples for each ID in still_missing.
+
+    Args:
+    - still_missing (set): Set of IDs to process.
+    - comp_set (set of tuples): Set of all comp pairs.
+    - comp_dropped (set of tuples): Set of dropped comp pairs.
+    - meta_set (set of tuples): Set of all meta pairs.
+    - meta_dropped (set of tuples): Set of dropped meta pairs.
+
+    Returns:
+    - dict: Dictionary where each key is an ID from still_missing, and the value is a set of tuples
+            that are valid (in ids_from_all but not in dropped_ids) for both comp and meta sets.
+    """
+    def normalize_tuple(tup):
+        """Normalize a tuple so that ('ida', 'idb') == ('idb', 'ida')."""
+        return tuple(sorted(tup))
+
+    # Preprocess: Normalize all tuples once
+    comp_set_normalized = {normalize_tuple(tup) for tup in comp_set}
+    comp_dropped_normalized = {normalize_tuple(tup) for tup in comp_dropped}
+    meta_set_normalized = {normalize_tuple(tup) for tup in meta_set}
+    meta_dropped_normalized = {normalize_tuple(tup) for tup in meta_dropped}
+
+    # Precompute maps for fast lookup
+    def build_id_to_tuples_map(normalized_set):
+        """Build a mapping from ID to the normalized tuples it appears in."""
+        id_to_tuples = {}
+        for id1, id2 in normalized_set:
+            if id1 not in id_to_tuples:
+                id_to_tuples[id1] = set()
+            if id2 not in id_to_tuples:
+                id_to_tuples[id2] = set()
+            id_to_tuples[id1].add((id1, id2))
+            id_to_tuples[id2].add((id1, id2))
+        return id_to_tuples
+
+    comp_map = build_id_to_tuples_map(comp_set_normalized)
+    comp_dropped_map = build_id_to_tuples_map(comp_dropped_normalized)
+    meta_map = build_id_to_tuples_map(meta_set_normalized)
+    meta_dropped_map = build_id_to_tuples_map(meta_dropped_normalized)
+
+    # Result dictionary
+    result = {}
+
+    # Process each ID
+    for id in still_missing:
+        # Get tuples for comp_set
+        ids_from_all_1 = comp_map.get(id, set())
+        dropped_ids_1 = comp_dropped_map.get(id, set())
+        valid_comp_tuples = ids_from_all_1 - dropped_ids_1
+
+        # Get tuples for meta_set
+        ids_from_all_2 = meta_map.get(id, set())
+        dropped_ids_2 = meta_dropped_map.get(id, set())
+        valid_meta_tuples = ids_from_all_2 - dropped_ids_2
+
+        # Combine results
+        result[id] = valid_comp_tuples.union(valid_meta_tuples)
+
+    return result
 
 # HELPER 
 def cast_types(df):

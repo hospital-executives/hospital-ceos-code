@@ -2,11 +2,11 @@ import os
 import sys
 import json
 import pandas as pd
-import numpy as np
-from itertools import combinations
 import re
+from datetime import datetime
 
 user_path = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data"
+current_date = datetime.now().strftime("%m-%d")
 
 #### SET VARIABLES ####
 if len(sys.argv) == 7:
@@ -23,7 +23,8 @@ else:
     remainder_path =  os.path.join(user_path, "derived/py_remaining.csv")
     json_path =  os.path.join(user_path, "derived/py_graph_components.json")
     final_himss_path = os.path.join(user_path, "derived/final_himss.feather")
-    final_confirmed_path = os.path.join(user_path, "derived/final_confirmed_new.dta")
+    final_confirmed_path = os.path.join(user_path, "derived", 
+                                        f"final_confirmed_{current_date}.dta")
     himss_path = os.path.join(user_path, 
     "derived/himss_entities_contacts_0517_v1.feather")
 
@@ -156,7 +157,6 @@ def convert_to_str_or_none(value):
     elif pd.isnull(value):
         return None
     else:
-        # Convert other types to string
         return str(value)
 
 # Apply the function to all object columns
@@ -165,5 +165,5 @@ for col in object_columns:
     final_df[col] = final_df[col].apply(convert_to_str_or_none)
 
 final_df.to_feather(final_himss_path)
-final_dta = final_df[final_df['confirmed']]
-final_dta.to_stata(final_confirmed_path, write_index=False, version=118)
+# final_dta = final_df[final_df['confirmed']]
+# final_dta.to_stata(final_confirmed_path, write_index=False, version=118)

@@ -29,33 +29,33 @@ comp_set = set(zip(comp_pairs["contact_id1"], comp_pairs["contact_id2"]))
 meta_set = set(zip(meta_pairs["contact_id1"], meta_pairs["contact_id2"]))
 
 
-def find_tuples_with_id(id_to_match, id_set):
-    """
-    Finds all tuples in the set where either id1 or id2 matches the provided ID.
+#def find_tuples_with_id(id_to_match, id_set):
+    #"""
+    #Finds all tuples in the set where either id1 or id2 matches the provided ID.
 
-    Args:
-    - id_to_match (str): The ID to search for.
-    - id_set (set of tuples): The set of (id1, id2) tuples.
+    #Args:
+    #- id_to_match (str): The ID to search for.
+    #- id_set (set of tuples): The set of (id1, id2) tuples.
 
-    Returns:
-    - set: A set of tuples where either id1 or id2 matches the provided ID.
-    """
-    return {tup for tup in id_set if id_to_match in tup}
+   # Returns:
+    #- set: A set of tuples where either id1 or id2 matches the provided ID.
+   # """
+   # #return {tup for tup in id_set if id_to_match in tup}
 
 
-ids_from_all = find_tuples_with_id('1343896', comp_set)
-dropped_ids = find_tuples_with_id('1343896', comp_dropped)
+#ids_from_all = find_tuples_with_id('1343896', comp_set)
+#dropped_ids = find_tuples_with_id('1343896', comp_dropped)
 
-ids_from_all = find_tuples_with_id('1343896', meta_set)
-dropped_ids = find_tuples_with_id('1343896', meta_dropped)
+#ids_from_all = find_tuples_with_id('1343896', meta_set)
+#dropped_ids = find_tuples_with_id('1343896', meta_dropped)
 
 # case 1 - 1343896 should be included but i am missing them
 
-ids_from_all_1 = find_tuples_with_id(id, comp_set)
-dropped_ids_1 = find_tuples_with_id(id, comp_dropped)
+#ids_from_all_1 = find_tuples_with_id(id, comp_set)
+#dropped_ids_1 = find_tuples_with_id(id, comp_dropped)
 
-ids_from_all_2 = find_tuples_with_id(id, meta_set)
-dropped_ids_2 = find_tuples_with_id(id, meta_dropped)
+#ids_from_all_2 = find_tuples_with_id(id, meta_set)
+#dropped_ids_2 = find_tuples_with_id(id, meta_dropped)
 
 def find_ids_to_add(
     ids, comp_set, comp_dropped, meta_set, meta_dropped
@@ -95,12 +95,12 @@ def find_ids_to_add(
 
     return new_ids
 
-random_ids = random.sample(list(first_meta_ids), 1000)
 
-new_ids = find_ids_to_add(remaining_meta_ids, comp_set, comp_dropped, meta_set, meta_dropped)
-cleaned_new_ids = new_ids - outlier_ids
+#new_ids = find_ids_to_add(meta_remaining_set, comp_set, comp_dropped, 
+                         # meta_set, meta_dropped)
+#cleaned_new_ids = new_ids - outlier_ids
 # test 
-test = new_ids.union(final_ids)
+#test = new_ids.union(final_ids)
 
 from collections import defaultdict
 
@@ -113,9 +113,9 @@ def build_id_map(id_set):
     return id_map
 
 comp_map = build_id_map(comp_set)
-comp_dropped_map = build_id_map(comp_dropped)
+comp_dropped_map = build_id_map(comp_dropped.union(confirmed_diff).union(confirmed_same))
 meta_map = build_id_map(meta_set)
-meta_dropped_map = build_id_map(meta_dropped)
+meta_dropped_map = build_id_map(meta_dropped.union(confirmed_diff).union(confirmed_same))
 
 def find_tuples_with_id_optimized(id_to_match, id_map):
     """Efficiently find tuples using a precomputed map."""
@@ -124,9 +124,9 @@ def find_tuples_with_id_optimized(id_to_match, id_map):
 with open('/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/derived/temp/missing_ids.txt', "r") as f:
     ids_set = set(line.strip() for line in f)
 
-unmissing = cleaned_new_ids.intersection(ids_set) # recovered 179/293 =>
+#unmissing = cleaned_new_ids.intersection(ids_set) # recovered 179/293 =>
 
-still_missing = ids_set - unmissing
+#still_missing = ids_set - unmissing
 
 def find_valid_tuples_optimized(still_missing, comp_set, comp_dropped, meta_set, meta_dropped):
     """
@@ -191,11 +191,57 @@ def find_valid_tuples_optimized(still_missing, comp_set, comp_dropped, meta_set,
 
     return result
 
-real_missing = still_missing - outlier_ids
-result = find_valid_tuples_optimized(still_missing, comp_set, comp_dropped, meta_set, meta_dropped)
+new_comp_dropped = comp_dropped.union(set(confirmed_diff)).union(set(confirmed_same))
+new_meta_dropped = meta_dropped.union(set(confirmed_diff)).union(set(confirmed_same))
+
+result2 = find_valid_tuples_optimized(remaining_ids, 
+                                         comp_set, new_comp_dropped, meta_set, 
+                                         new_meta_dropped)
 
 all_ids = set(input_df['contact_uniqueid'])
-filtered_data = {key: value for key, value in result.items() if key in all_ids}
+filtered_data = {key: value for key, value in result2.items() if key in all_ids}
 
 # problem case 1 - they are (mostly) in the cleaned data but are not showing up
 empty_values = {key: value for key, value in filtered_data.items() if len(value) == 0}
+
+non_empty =  {key: value for key, value in filtered_data.items() if len(value) != 0}
+
+#remaining = {key: value for key, value in non_empty.items() if key not in cleaned_ids}
+
+remaining_with_all_pairs = {
+    key: value 
+    for key, value in result.items() 
+    if  not 
+    all(tup in (confirmed_same).union((confirmed_diff)) for tup in value)
+}
+
+accounted_for = set(confirmed_graph.edges()).union(set(meta_graph.edges())
+                                              ).union(confirmed_same).union(
+                                                  confirmed_diff
+                                              )
+remaining_pairs = {
+    key: [tup for tup in value if tup not in accounted_for]
+    for key, value in result.items()
+    if any(tup not in accounted_for for tup in value)
+}
+
+curr = {key: value for key, value in remaining.items() if len(value) == 2}
+
+ids = {item for tup in {
+('105802', '2310655'),
+ ('105802', '2345189'),
+ ('105802', '593855')
+  } #, ('23662394', '673454')} #, } 
+                 for item in tup}
+#ids = ('122114', '1350600')
+new_himss[new_himss['contact_uniqueid'].isin(ids)][['contact_uniqueid', 
+                                                          'firstname', 'lastname',
+                                                          'madmin',
+                                                            'title_standardized', 
+                                                            'entity_name', 
+                                                            'entity_uniqueid',
+                                                            'entity_address',
+                                                            'entity_zip',
+                                                            'entity_state',
+                                                            'system_id',
+                                                            'year', 'entity_type']]
