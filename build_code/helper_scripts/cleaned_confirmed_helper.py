@@ -917,7 +917,7 @@ def clean_results_pt8(remaining_input,confirmed_graph,
     update_confirmed_from_dropped(confirmed_graph, dropped_comp,
                                                         contact_count_dict)
 
-    remaining_output = remaining_input[
+    remaining1 = remaining_input[
         ~((((remaining_input['min_same_probability'].isna())) & 
         ((remaining_input['min_diff_probability'].isna())) & 
         ~(remaining_input['shared_titles_flag'])) & 
@@ -931,14 +931,121 @@ def clean_results_pt8(remaining_input,confirmed_graph,
 
     # to add
     # drop these: 
-    #comp_remaining[(comp_remaining['shared_system_ids'].apply(len) == 0) & ~(comp_remaining['name_in_same_row_firstname'])
-    # & (comp_remaining['firstname_jw_distance'] <= 0.75) & (comp_remaining['lastname_jw_distance'] <= 0.75)]
+    #
 
-    # comp_remaining[(comp_remaining['total_distance']>= 500) & 
-    # ~(comp_remaining['name_in_same_row_firstname']) & 
-    # (comp_remaining['firstname_jw_distance']<=0.7)]
+    ## new rules
+    dropped2 = remaining1[
+    (((remaining1['min_same_probability'].isna()) & 
+    (remaining1['min_diff_probability'] < 0.05)) |
+    ((remaining1['min_diff_probability'].isna()) & 
+    (remaining1['min_same_probability'] < 0.05))) & 
+    (remaining1['shared_titles'].apply(len) == 0) & 
+    ~(
+        remaining1['lastname_jw_distance'] >= 0.9) & 
+        ((remaining1['firstname_jw_distance'] >= 0.9) |
+        (remaining1['name_in_same_row_firstname'])) &
+    ((remaining1['shared_states'].apply(len) > 0) |
+    (remaining1['shared_system_ids_flag']))
+    ]
+    dropped_comp.update(zip(dropped2['contact_id1'], dropped2['contact_id2']))
+    update_confirmed_from_dropped(confirmed_graph, dropped_comp,
+                                                        contact_count_dict)
+    
+    remaining2 = remaining1[
+    ~((((remaining1['min_same_probability'].isna()) & 
+    (remaining1['min_diff_probability'] < 0.05)) |
+    ((remaining1['min_diff_probability'].isna()) & 
+    (remaining1['min_same_probability'] < 0.05))) & 
+    (remaining1['shared_titles'].apply(len) == 0) & 
+    ~(
+        remaining1['lastname_jw_distance'] >= 0.9) & 
+        ((remaining1['firstname_jw_distance'] >= 0.9) |
+        (remaining1['name_in_same_row_firstname'])) &
+    ((remaining1['shared_states'].apply(len) > 0) |
+    (remaining1['shared_system_ids_flag'])))
+    ]
 
-    return remaining_output, dropped_comp
+    dropped3 = remaining2[(remaining2['total_distance']>= 500) & 
+     ~(remaining2['name_in_same_row_firstname']) & 
+     (remaining2['firstname_jw_distance']<=0.7)]
+    dropped_comp.update(zip(dropped3['contact_id1'], dropped3['contact_id2']))
+    update_confirmed_from_dropped(confirmed_graph, dropped_comp,
+                                                        contact_count_dict)
+    
+    remaining3 = remaining2[~((remaining2['total_distance']>= 500) & 
+     ~(remaining2['name_in_same_row_firstname']) & 
+     (remaining2['firstname_jw_distance']<=0.7))]
+    
+    dropped4 = remaining3[
+        (remaining3['shared_system_ids'].apply(len) == 0) & 
+        ~(remaining3['name_in_same_row_firstname']) & 
+        (remaining3['firstname_jw_distance'] <= 0.75) & 
+        (remaining3['lastname_jw_distance'] <= 0.75)]
+    dropped_comp.update(zip(dropped4['contact_id1'], dropped4['contact_id2']))
+    update_confirmed_from_dropped(confirmed_graph, dropped_comp,
+                                                        contact_count_dict)
+    remaining4 = remaining3[
+        ~((remaining3['shared_system_ids'].apply(len) == 0) & 
+        ~(remaining3['name_in_same_row_firstname']) & 
+        (remaining3['firstname_jw_distance'] <= 0.75) & 
+        (remaining3['lastname_jw_distance'] <= 0.75))]
+    
+    dropped5 = remaining4[
+        (remaining4['firstname_jw_distance'] < 0.5) & 
+        ~(remaining4['name_in_same_row_firstname'])]
+    dropped_comp.update(zip(dropped5['contact_id1'], dropped5['contact_id2']))
+    update_confirmed_from_dropped(confirmed_graph, dropped_comp,
+                                                        contact_count_dict)
+    remaining5 = remaining4[
+        ~((remaining4['firstname_jw_distance'] < 0.5) & 
+        ~(remaining4['name_in_same_row_firstname']))]
+    
+    # to drop
+    dropped6 = remaining5[
+        ((remaining5['id1_last_has_one_first'] | 
+          remaining5['id2_last_has_one_first'])) & 
+          (remaining5['lastname_jw_distance'] < 0.6) & 
+          (((remaining5['min_same_probability'].isna()) & 
+    (remaining5['min_diff_probability'] < 0.1)) |
+    ((remaining5['min_diff_probability'].isna()) & 
+    (remaining5['min_same_probability'] < 0.1))) & 
+    (remaining5['shared_titles'].apply(len) == 0)]
+    dropped_comp.update(zip(dropped6['contact_id1'], dropped6['contact_id2']))
+    update_confirmed_from_dropped(confirmed_graph, dropped_comp,
+                                                        contact_count_dict)
+    remaining6 = remaining5[
+       ~(((remaining5['id1_last_has_one_first'] | 
+          remaining5['id2_last_has_one_first'])) & 
+          (remaining5['lastname_jw_distance'] < 0.6) & 
+          (((remaining5['min_same_probability'].isna()) & 
+    (remaining5['min_diff_probability'] < 0.1)) |
+    ((remaining5['min_diff_probability'].isna()) & 
+    (remaining5['min_same_probability'] < 0.1))) & 
+    (remaining5['shared_titles'].apply(len) == 0))]
+
+    dropped7 = remaining6[(
+        remaining6['firstname_jw_distance'] < 0.75) & 
+        (remaining6['firstname_lev_distance'] > 4) &
+          ~(remaining6['name_in_same_row_firstname']) & 
+          (((remaining6['min_same_probability'].isna()) & 
+            (remaining6['min_diff_probability'] < 0.1)) |
+            ((remaining6['min_diff_probability'].isna()) & 
+             (remaining6['min_same_probability'] < 0.1))) & 
+             (remaining6['shared_titles'].apply(len) == 0)]
+    dropped_comp.update(zip(dropped7['contact_id1'], dropped7['contact_id2']))
+    update_confirmed_from_dropped(confirmed_graph, dropped_comp,
+                                                        contact_count_dict)
+    remaining7 = remaining6[~((
+        remaining6['firstname_jw_distance'] < 0.75) & 
+        (remaining6['firstname_lev_distance'] > 4) &
+          ~(remaining6['name_in_same_row_firstname']) & 
+          (((remaining6['min_same_probability'].isna()) & 
+            (remaining6['min_diff_probability'] < 0.1)) |
+            ((remaining6['min_diff_probability'].isna()) & 
+             (remaining6['min_same_probability'] < 0.1))) & 
+             (remaining6['shared_titles'].apply(len) == 0))]
+    
+    return remaining7, dropped_comp
 
 
 

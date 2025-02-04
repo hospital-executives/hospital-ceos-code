@@ -60,6 +60,7 @@ block_results = Parallel(n_jobs=-1)(
     delayed(fuzz.parallel_blocks)(group) for _, group in grouped
 )
 block_component_pairs = pd.DataFrame(block_results)
+print('block component pairs done')
 
 # separate into ids that still need to be checked (remaining1)
 cleaned1 = block_component_pairs[
@@ -95,9 +96,11 @@ results_list = Parallel(n_jobs=-1)(
 component_pairs = pd.concat(results_list, ignore_index=True, sort=False)
 component_pairs = cc.update_results(component_pairs)
 component_pairs = fuzz.cast_types(component_pairs)
+print('component pairs done')
 
-#component_path = os.path.join(user_path, "derived/temp/component_pairs.feather")
-#component_pairs.to_feather(component_path)
+# START HERE
+component_path = os.path.join(user_path, "derived/temp/component_pairs.feather")
+component_pairs.to_feather(component_path)
     
 contact_dict, comp_contact_count_dict = cc.generate_pair_dicts(component_pairs)
 
@@ -132,8 +135,21 @@ comp_remaining, comp_dropped = cc.clean_results_pt6(cleaned_remaining4,
                                                     comp_contact_count_dict,
                                                     cleaned_remaining_ids)
 
-remaining_ids = pd.concat([comp_remaining['contact_id1'],
-                                comp_remaining['contact_id2']])
+comp_set = set(zip(component_pairs["contact_id1"], 
+                   component_pairs["contact_id2"]))
+result = fuzz.find_valid_tuples_optimized(set(comp_remaining['contact_id1']
+                                         ).union(set(comp_remaining['contact_id2'])), 
+                                         comp_set, comp_dropped, set(), set())
+
+all_ids = set(input_df['contact_uniqueid'])
+filtered_data = {key: value for key, value in result.items() if key in all_ids}
+comp_empty_values_1 = {key: value for key, value in filtered_data.items() if 
+                len(value) == 0}
+confirmed_graph.add_nodes_from(comp_empty_values_1.keys())
+
+remaining_ids = set(zip(comp_remaining['contact_id1'], 
+                        comp_remaining['contact_id2'])) - \
+                            comp_empty_values_1.keys()
 cleaned_df = input_df[~input_df['contact_uniqueid'].isin(remaining_ids)]
 
 ### LAST META, FIRST META ROUND 1
@@ -165,6 +181,7 @@ results_list = Parallel(n_jobs=-1)(
     for _, sub_df in list_of_groups
 )
 meta_pairs = pd.concat(results_list, ignore_index=True)
+print('meta pairs done')
 
 meta_pairs['contact_id_min'] = meta_pairs[['contact_id1', 
                                            'contact_id2']].min(axis=1)
@@ -191,6 +208,8 @@ all_meta_pairs = all_meta_pairs.drop(columns=['contact_id_min',
                                               'contact_id_max'])
 
 all_meta_pairs = fuzz.cast_types(all_meta_pairs)
+meta_path = os.path.join(user_path, "derived/temp/meta_pairs.feather")
+all_meta_pairs.to_feather(meta_path)
 
 all_meta_pairs['contact_id1'] = all_meta_pairs['contact_id1'].astype(str)
 all_meta_pairs['contact_id2'] = all_meta_pairs['contact_id2'].astype(str)
@@ -307,6 +326,10 @@ comp_remaining, dropped_comp = cc.clean_results_pt8(cleaned_remaining_comp,
 cc.update_confirmed_from_dropped(confirmed_graph, dropped_comp,
                                  comp_contact_count_dict)
 
+comp_remaining_path = '/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/derived/temp/comp_remaining.feather'
+comp_remaining.to_feather(comp_remaining_path)
+
+
 # can remove once done debugging
 import copy
 confirmed_graph_backup = copy.deepcopy(confirmed_graph)
@@ -322,13 +345,13 @@ result = fuzz.find_valid_tuples_optimized(set(comp_remaining['contact_id1']
 
 all_ids = set(input_df['contact_uniqueid'])
 filtered_data = {key: value for key, value in result.items() if key in all_ids}
-empty_values = {key: value for key, value in filtered_data.items() if 
+comp_empty_values2 = {key: value for key, value in filtered_data.items() if 
                 len(value) == 0}
-#confirmed_graph.add_nodes_from(set(empty_values.keys()))
+confirmed_graph.add_nodes_from(set(comp_empty_values2.keys()))
 
 comp_confirmed_ids_final = (set(confirmed_graph.nodes()) - \
 set(comp_remaining['contact_id1']).union(set(comp_remaining['contact_id2']))
-).union(set(empty_values.keys()))
+).union(set(comp_empty_values2.keys()))
 
 # determine new meta pairs and clean
 meta_pairs_2 = all_meta_pairs[
@@ -353,7 +376,7 @@ for id_ in comp_confirmed_ids_final:
 meta_confirmed_ids = set()
 ids_to_check = set(comp_remaining['contact_id1']
                              ).union(set(comp_remaining['contact_id2'])) - \
-                             set(empty_values.keys())
+                             set(comp_empty_values2.keys())
 for id_ in unique_contact_ids2:
     if id_ not in ids_to_check:
         meta_confirmed_ids.add(id_) 
@@ -413,7 +436,8 @@ for u, v in confirmed_graph.edges():
     if final_graph.has_node(u) and final_graph.has_node(v):
         final_graph.add_edge(u, v)
 
-remaining_ids = set(input_df['contact_uniqueid']) - final_graph.nodes()
+# remaining_ids = set(zip(meta_remaining['contact_id1'], meta_remaining['contact_id2']))
+#set(input_df['contact_uniqueid']) - final_graph.nodes()
 meta_set = set(zip(meta_pairs["contact_id1"], meta_pairs["contact_id2"]))
 
 # manually clean remaining CEOs
@@ -431,6 +455,8 @@ confirmed_diff = [tuple(item) for item in confirmed_diff_json]
 # need to update graph + remaining for manual CEOs 
 final_graph.add_edges_from(confirmed_same)
 
+remaining_ids = set(zip(meta_remaining['contact_id1'], 
+                        meta_remaining['contact_id2']))
 new_comp_dropped = dropped_comp.union(set(confirmed_diff)
                                       ).union(set(confirmed_same))
 new_meta_dropped = meta_dropped.union(set(confirmed_diff)
@@ -448,10 +474,14 @@ meta_remaining_ids = set(zip(meta_remaining["contact_id1"],
                             meta_remaining["contact_id2"]))
 comp_remaining_ids = set(zip(comp_remaining["contact_id1"],
                             comp_remaining["contact_id2"]))
-final_ids = final_graph.nodes() - meta_remaining_ids.union(comp_remaining_ids)
+final_ids = (final_graph.nodes() - 
+             meta_remaining_ids).union(cleaned_empty_values
+                                       ).union(comp_empty_values2.keys())
 
 # create and save cleaned data frames
 py_cleaned = input_df[input_df['contact_uniqueid'].isin(final_ids)]
+
+
 py_remaining = new_himss[~new_himss['id'].isin(py_cleaned['id'])]
 
 connections = {node: set(final_graph.neighbors(node)) for node in 
