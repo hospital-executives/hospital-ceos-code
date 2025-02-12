@@ -25,7 +25,7 @@ meta_pairs = pd.read_feather(meta_pairs_path)
 comp_remaining_set = set(zip(comp_remaining["contact_id1"], comp_remaining["contact_id2"]))
 meta_remaining_set = set(zip(meta_remaining["contact_id1"], meta_remaining["contact_id2"]))
 
-comp_set = set(zip(comp_pairs["contact_id1"], comp_pairs["contact_id2"]))
+comp_set = set(zip(component_pairs["contact_id1"], component_pairs["contact_id2"]))
 meta_set = set(zip(meta_pairs["contact_id1"], meta_pairs["contact_id2"]))
 
 
@@ -194,7 +194,7 @@ def find_valid_tuples_optimized(still_missing, comp_set, comp_dropped, meta_set,
 new_comp_dropped = comp_dropped.union(set(confirmed_diff)).union(set(confirmed_same))
 new_meta_dropped = meta_dropped.union(set(confirmed_diff)).union(set(confirmed_same))
 
-result2 = find_valid_tuples_optimized(remaining_ids, 
+result2 = find_valid_tuples_optimized(set(corresponding_contact_ids), 
                                          comp_set, new_comp_dropped, meta_set, 
                                          new_meta_dropped)
 
@@ -227,12 +227,11 @@ remaining_pairs = {
 
 curr = {key: value for key, value in remaining.items() if len(value) == 2}
 
-ids = {item for tup in {
-('105802', '2310655'),
- ('105802', '2345189'),
- ('105802', '593855')
-  } #, ('23662394', '673454')} #, } 
-                 for item in tup}
+ids =['86599',	'1379066'	]
+# {item for tup in {
+#'1322293'	'100854'	
+  #} #, ('23662394', '673454')} #, } 
+                #for item in tup}
 #ids = ('122114', '1350600')
 new_himss[new_himss['contact_uniqueid'].isin(ids)][['contact_uniqueid', 
                                                           'firstname', 'lastname',

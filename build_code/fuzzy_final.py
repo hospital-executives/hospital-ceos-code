@@ -170,11 +170,13 @@ filtered_df = input_df[input_df['contact_uniqueid'].isin(remaining_ids2)]
 
 new_grouped = filtered_df.groupby(['last_meta', 'first_meta'])
 list_of_groups = list(new_grouped)
-results_list = Parallel(n_jobs=-1)(
-    delayed(fuzz.find_pairwise_shared_attributes)(
-        sub_df, name_pairs_set, meta_pairs_set) 
-    for _, sub_df in list_of_groups[:100]
-)
+for i in range(2):
+    results_list = Parallel(n_jobs=-1)(
+        delayed(fuzz.find_pairwise_shared_attributes)(
+            sub_df, name_pairs_set, meta_pairs_set) 
+        for _, sub_df in list_of_groups[:100]
+    )
+
 results_list = Parallel(n_jobs=-1)(
     delayed(fuzz.find_pairwise_shared_attributes)(
         sub_df, name_pairs_set, meta_pairs_set) 
@@ -326,8 +328,22 @@ comp_remaining, dropped_comp = cc.clean_results_pt8(cleaned_remaining_comp,
 cc.update_confirmed_from_dropped(confirmed_graph, dropped_comp,
                                  comp_contact_count_dict)
 
-comp_remaining_path = '/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/derived/temp/comp_remaining.feather'
-comp_remaining.to_feather(comp_remaining_path)
+comp_remaining, dropped_comp = cc.clean_results_pt9(comp_remaining,
+                                                    confirmed_graph,
+                                                    dropped_comp, 
+                                                    comp_contact_count_dict,
+                                                    new_himss)
+
+cc.update_confirmed_from_dropped(confirmed_graph, dropped_comp,
+                                 comp_contact_count_dict)
+
+## add male indicator and entity indicator
+
+
+
+
+#comp_remaining_path = '/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/derived/temp/comp_remaining.feather'
+#comp_remaining.to_feather(comp_remaining_path)
 
 
 # can remove once done debugging
@@ -347,7 +363,7 @@ all_ids = set(input_df['contact_uniqueid'])
 filtered_data = {key: value for key, value in result.items() if key in all_ids}
 comp_empty_values2 = {key: value for key, value in filtered_data.items() if 
                 len(value) == 0}
-confirmed_graph.add_nodes_from(set(comp_empty_values2.keys()))
+#confirmed_graph.add_nodes_from(set(comp_empty_values2.keys()))
 
 comp_confirmed_ids_final = (set(confirmed_graph.nodes()) - \
 set(comp_remaining['contact_id1']).union(set(comp_remaining['contact_id2']))
@@ -423,6 +439,16 @@ meta_remaining, meta_dropped = cc.clean_results_pt8(cleaned_remaining5,meta_grap
 cc.update_confirmed_from_dropped(meta_graph, meta_dropped,
                                  meta_2_contact_count_dict)
 
+meta_remaining, meta_dropped = cc.clean_results_pt9(meta_remaining,
+                                                    meta_graph,
+                                                    meta_dropped, 
+                                                    meta_2_contact_count_dict,
+                                                    new_himss)
+
+cc.update_confirmed_from_dropped(meta_graph, meta_dropped,
+                                 meta_2_contact_count_dict)
+
+
 ## GENERATE FINAL DATA FRAMES
 
 # get confirmed IDs
@@ -470,16 +496,23 @@ cleaned_empty_values = empty_values.keys() - outlier_ids
 final_graph.add_nodes_from(cleaned_empty_values)
 
 # get final ids 
-meta_remaining_ids = set(zip(meta_remaining["contact_id1"],
-                            meta_remaining["contact_id2"]))
-comp_remaining_ids = set(zip(comp_remaining["contact_id1"],
-                            comp_remaining["contact_id2"]))
+meta_remaining_ids = set(meta_remaining["contact_id1"]).union(
+                            set(meta_remaining["contact_id2"]))
+comp_remaining_ids =  set(comp_remaining["contact_id1"]).union(
+                            set(comp_remaining["contact_id2"]))
 final_ids = (final_graph.nodes() - 
              meta_remaining_ids).union(cleaned_empty_values
                                        ).union(comp_empty_values2.keys())
+# need union with early cleaned values
+unaccounted = comp_remaining_ids.union(meta_remaining_ids).union(outlier_ids)
+new_final = (set(new_himss['contact_uniqueid']) - unaccounted).\
+    union(cleaned_empty_values).union(comp_empty_values2)
+new_py_cleaned = input_df[input_df['contact_uniqueid'].isin(new_final)]
+
+to_check = new_final - final_ids # debugging - remove later
 
 # create and save cleaned data frames
-py_cleaned = input_df[input_df['contact_uniqueid'].isin(final_ids)]
+py_cleaned = input_df[input_df['contact_uniqueid'].isin(test)]
 
 
 py_remaining = new_himss[~new_himss['id'].isin(py_cleaned['id'])]
@@ -489,7 +522,34 @@ connections = {node: set(final_graph.neighbors(node)) for node in
 connections_serializable = {key: list(value) for key, value in 
                             connections.items()}
 
-py_cleaned.to_csv(final_cleaned_path)
+new_py_cleaned.to_csv(final_cleaned_path)
 py_remaining.to_csv(final_remaining_path)
 with open(components_path, 'w') as json_file:
    json.dump(connections_serializable, json_file, indent=4)
+
+# debugging - can ignore
+contact_type_dict = new_himss.groupby('contact_uniqueid')\
+        ['entity_type'].apply(set).to_dict()
+
+def type_mismatch2(contact1, contact2):
+        id1_types = contact_type_dict.get(contact1, [])
+        id2_types = contact_type_dict.get(contact2, [])
+
+        condition1 = any(t in ['Ambulatory'] for t in id1_types)
+        condition2 = any(t in ['Ambulatory'] for t in id2_types)
+
+        return condition1 ^ condition2
+
+comp_remaining['amb_mismatch'] = comp_remaining.apply(lambda row:
+                                        type_mismatch2(row['contact_id1'], 
+                                                    row['contact_id2']), axis=1)
+
+# Function to check if "manager" is in any tuple
+def has_head(job_list):
+    return any('Head of Facility' in job for job in job_list)
+
+# Filter rows where "manager" is NOT in any tuple
+filtered_df = df[~df['jobs'].apply(has_manager)]
+
+# Print the filtered DataFrame
+print(filtered_df)
