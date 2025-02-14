@@ -10,11 +10,12 @@
 # 9. generate_final.py
 
 # Capture USER_DIR by running get_project_directory.R
-USER_DIR := $(shell Rscript get_project_directory.R)
+USER_DIR := $(shell Rscript get_makefile_paths.R)
+R_USER_DIR := $(shell Rscript get_project_directory.R)
 
 # Check if USER_DIR is empty
 ifeq ($(strip $(USER_DIR)),)
-$(error USER_DIR could not be determined. Please check get_project_directory.R)
+$(error USER_DIR could not be determined. Please check get_makefile_paths.R)
 endif
 
 # Define Code Directory as the directory containing the Makefile
@@ -28,6 +29,10 @@ AUX_DIR := $(DERIVED_DIR)/auxiliary
 SUPP_DIR := $(DATA_DIR)/supplemental
 
 # Define File Paths
+# Paths for R scripts
+GENDER_R := "$(R_USER_DIR)/_data/nicknames dictionaries/gender_test.csv"
+HIMSS_R := $(R_USER_DIR)/_data/derived/himss_entities_contacts_0517_v1.feather
+
 # Manual paths
 MANUAL_PATH := $(CODE_DIR)/manual_assignment.Rmd
 HIMSS_ENTITIES_CONTACTS := $(DERIVED_DIR)/himss_entities_contacts_0517_v1.feather
@@ -79,16 +84,23 @@ FINAL_STAMP := $(STAMP_DIR)/final.stamp
 # Other
 PANDOC_PATH := /Applications/RStudio.app/Contents/Resources/app/quarto/bin/tools/x86_64
 
+print-pandoc:
+	@echo "PANDOC_PATH = $(PANDOC_PATH)"
+
+debug: 
+	@echo "R_PATH = $(R_USER_DIR)"
+	@echo "CODE = $(CODE_DIR)"
+	@echo "HIMSS = $(HIMSS_R)"
+
 # Stamp Dependencies
 all: '$(FINAL_STAMP)'
 
 # Step 1: Compile HIMSS data
 compile_himss: $(COMPILE_STAMP)
-
 $(COMPILE_STAMP):
 	export RSTUDIO_PANDOC=$(PANDOC_PATH); \
 	Rscript -e "rmarkdown::render('compile_himss.Rmd', \
-	params = list(code_dir = $(CODE_DIR), r_gender = $(R_GENDER)))"
+	params = list(code_dir = '$(CODE_DIR)/', r_gender = '$(R_GENDER)'))"
 	touch $(COMPILE_STAMP)
 
 # Step 2: Manual assignment
@@ -96,10 +108,10 @@ manual_assignment: $(MANUAL_STAMP)
 $(MANUAL_STAMP): $(COMPILE_STAMP)
 	export RSTUDIO_PANDOC=$(PANDOC_PATH); \
 	Rscript -e "rmarkdown::render('clean_data.Rmd', \
-	params = list(code_dir = $(CODE_DIR), \
-	code_path = $(CODE_DIR), \
-	data_path = $(DATA_DIR), \
-	himss_entity_contacts = $(HIMSS_ENTITIES_CONTACTS)))"
+	params = list(code_dir = '$(CODE_DIR)', \
+	code_path = '$(CODE_DIR)', \
+	data_path = '$(R_USER_DIR)', \
+	himss_entity_contacts = '$(HIMSS_R)'))"
 	touch $(MANUAL_STAMP)
 
 # Step 3: Clean data

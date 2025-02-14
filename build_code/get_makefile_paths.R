@@ -42,4 +42,5 @@ suppressMessages({
 })
 
 # Output the project_directory path
+project_directory <- gsub(" ", "\\\\ ", project_directory)
 cat(project_directory)
