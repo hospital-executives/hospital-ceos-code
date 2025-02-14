@@ -23,6 +23,7 @@ CODE_DIR := $(CURDIR)
 # Define Data Directories using USER_DIR
 DATA_DIR := $(USER_DIR)/_data
 DERIVED_DIR := $(DATA_DIR)/derived
+STAMP_DIR := $(DERIVED_DIR)/stamps
 AUX_DIR := $(DERIVED_DIR)/auxiliary
 SUPP_DIR := $(DATA_DIR)/supplemental
 
@@ -41,7 +42,7 @@ HIMSS_1 := $(AUX_DIR)/himss_1.csv
 HIMSS_NICKNAMES := $(AUX_DIR)/himss_nicknames.csv
 
 # Updated gender path
-R_GENDER := $(DATA_DIR)/nicknames dictionaries/gender_test.csv
+R_GENDER := $(DATA_DIR)/nicknames\ dictionaries/gender_test.csv
 UPDATED_GENDER := $(AUX_DIR)/updated_gender.csv
 
 # Jaro path
@@ -64,96 +65,94 @@ GRAPH_COMPS := $(AUX_DIR)/py_graph_components.json
 FINAL_HIMSS := $(DERIVED_DIR)/final_himss.feather
 FINAL_CONFIRMED := $(DERIVED_DIR)/final_confirmed.dta
 
+# Define Stamps
+COMPILE_STAMP := $(STAMP_DIR)/compile.stamp
+MANUAL_STAMP := $(STAMP_DIR)/manual.stamp
+CLEAN_PY_STAMP := $(STAMP_DIR)/clean_py.stamp
+GENDER_STAMP := $(STAMP_DIR)/update_gender.stamp
+JARO_STAMP := $(STAMP_DIR)/jaro.stamp
+DIGRAPHS_STAMP := $(STAMP_DIR)/digraphs.stamp
+BLOCKS_STAMP := $(STAMP_DIR)/blocks.stamp
+FUZZY_STAMP := $(STAMP_DIR)/fuzzy.stamp
+FINAL_STAMP := $(STAMP_DIR)/final.stamp
+
 # Other
 PANDOC_PATH := /Applications/RStudio.app/Contents/Resources/app/quarto/bin/tools/x86_64
 
-# Define phony targets
-.PHONY: all compile_himss manual_assignment clean_data update_gender \
-generate_jaro generate_digraphs generate_blocks generate_final
-
-# Default target
-all: final_himss
-
-# Enforce execution order via phony dependencies
-final_himss: generate_final
-
-generate_final: generate_blocks
-
-generate_blocks: generate_digraphs
-
-generate_digraphs: generate_jaro
-
-generate_jaro: update_gender
-
-update_gender: clean_data
-
-clean_data: manual_assignment
-
-manual_assignment: compile_himss
+# Stamp Dependencies
+all: '$(FINAL_STAMP)'
 
 # Step 1: Compile HIMSS data
-compile_himss:
+compile_himss: $(COMPILE_STAMP)
+
+$(COMPILE_STAMP):
 	export RSTUDIO_PANDOC=$(PANDOC_PATH); \
 	Rscript -e "rmarkdown::render('compile_himss.Rmd', \
-	params = list(code_dir = '$(CODE_DIR)', r_gender = '$(R_GENDER)'))"
+	params = list(code_dir = $(CODE_DIR), r_gender = $(R_GENDER)))"
+	touch $(COMPILE_STAMP)
 
 # Step 2: Manual assignment
-manual_assignment:
+manual_assignment: $(MANUAL_STAMP)
+$(MANUAL_STAMP): $(COMPILE_STAMP)
 	export RSTUDIO_PANDOC=$(PANDOC_PATH); \
 	Rscript -e "rmarkdown::render('clean_data.Rmd', \
-	params = list(code_dir = '$(CODE_DIR)', \
-	code_path = '$(CODE_DIR)', \
-	data_path = '$(DATA_DIR)', \
-	himss_entity_contacts = '$(HIMSS_ENTITIES_CONTACTS)'))"
+	params = list(code_dir = $(CODE_DIR), \
+	code_path = $(CODE_DIR), \
+	data_path = $(DATA_DIR), \
+	himss_entity_contacts = $(HIMSS_ENTITIES_CONTACTS)))"
+	touch $(MANUAL_STAMP)
 
 # Step 3: Clean data
-clean_data:
-	python3 clean_data.py "$(CONFIRMED_R)" "$(REMAINING_R)" \
-	"$(HIMSS_ENTITIES_CONTACTS)" "$(CONFIRMED_1)" "$(REMAINING_1)" \
-	"$(HIMSS_1)" "$(HIMSS_NICKNAMES)"
+clean_py : $(CLEAN_PY_STAMP)
+$(CLEAN_PY_STAMP): $(MANUAL_STAMP)
+	python3 clean_data.py $(CONFIRMED_R) $(REMAINING_R) \
+	$(HIMSS_ENTITIES_CONTACTS) $(CONFIRMED_1) $(REMAINING_1) \
+	$(HIMSS_1) $(HIMSS_NICKNAMES)
+	touch $(CLEAN_PY_STAMP)
 
 # Step 4: Update gender
-update_gender:
-	python3 helper_scripts/update_gender.py "$(CONFIRMED_1)" "$(UPDATED_GENDER)" \
-	"$(DATA_DIR)" "$(R_GENDER)"
+update_gender: $(GENDER_STAMP)
+$(GENDER_STAMP): $(CLEAN_PY_STAMP)
+	python3 helper_scripts/update_gender.py $(CONFIRMED_1) $(UPDATED_GENDER) \
+	$(DATA_DIR) $(R_GENDER)
+	touch $(GENDER_STAMP)
 
 # Step 5: Generate Jaro
-generate_jaro:
-	python3 helper_scripts/jaro_algo.py "$(CODE_DIR)" "$(CONFIRMED_R)" \
-	"$(UPDATED_GENDER)" "$(JARO)"
+update_jaro : $(JARO_STAMP)
+$(JARO_STAMP): $(GENDER_STAMP)
+	python3 helper_scripts/jaro_algo.py $(CODE_DIR) $(CONFIRMED_R) \
+	$(UPDATED_GENDER) $(JARO)
+	touch $(JARO_STAMP)
 
 # Step 6: Generate digraphs
-generate_digraphs:
-	python3 helper_scripts/generate_digraphs.py "$(HIMSS_1)" "$(HIMSS_NICKNAMES)" \
-	"$(DIGRAPHNAME)" "$(DIGRAPHMETA)" "$(SUPP_DIR)"
+make_digraphs: $(DIGRAPHS_STAMP)
+$(DIGRAPHS_STAMP): $(JARO_STAMP)
+	python3 helper_scripts/generate_digraphs.py $(HIMSS_1) $(HIMSS_NICKNAMES) \
+	$(DIGRAPHNAME) $(DIGRAPHMETA) $(SUPP_DIR)
+	touch $(DIGRAPHS_STAMP)
 
 # Step 7: Generate blocks
-generate_blocks:
-	python3 generate_blocks.py "$(HIMSS_ENTITIES_CONTACTS)" "$(CONFIRMED_1)" \
-	"$(REMAINING_1)" "$(UPDATED_GENDER)" "$(HIMSS_1)" "$(CONFIRMED_2)" \
-	"$(REMAINING_2)" "$(DATA_DIR)"
+make_blocks: $(BLOCKS_STAMP)
+$(BLOCKS_STAMP): $(DIGRAPHS_STAMP)
+	python3 generate_blocks.py $(HIMSS_ENTITIES_CONTACTS) $(CONFIRMED_1) \
+	$(REMAINING_1) $(UPDATED_GENDER) $(HIMSS_1) $(CONFIRMED_2) \
+	$(REMAINING_2) $(DATA_DIR)
+	touch $(BLOCKS_STAMP)
 
 # Step 8: Generate final cleaned data
-generate_final:
-	python3 -u fuzzy_final.py "$(CONFIRMED_2)" "$(REMAINING_2)" \
-	"$(PY_CLEANED)" "$(PY_REMAINING)" "$(GRAPH_COMPS)" \
-	"$(DATA_DIR)" "$(CODE_DIR)"
+fuzzy: $(FUZZY_STAMP)
+$(FUZZY_STAMP): $(BLOCKS_STAMP)
+	python3 -u fuzzy_final.py $(CONFIRMED_2) $(REMAINING_2) \
+	$(PY_CLEANED) $(PY_REMAINING) $(GRAPH_COMPS) \
+	$(DATA_DIR) $(CODE_DIR)
+	touch $(FUZZY_STAMP)
 
 # Step 9: Generate final HIMSS dataset and cleaned dta with flags
-final_himss:
-	python3 generate_final.py "$(PY_CLEANED)" "$(PY_REMAINING)" \
-	"$(GRAPH_COMPS)" "$(FINAL_HIMSS)" "$(FINAL_CONFIRMED)" \
-	"$(HIMSS_ENTITIES_CONTACTS)"
+make_final: $(FINAL_STAMP)
+$(FINAL_STAMP): $(FUZZY_STAMP)
+	python3 generate_final.py $(PY_CLEANED) $(PY_REMAINING) \
+	$(GRAPH_COMPS) $(FINAL_HIMSS) $(FINAL_CONFIRMED) \
+	$(HIMSS_ENTITIES_CONTACTS)
+	touch $(FINAL_STAMP)
 
-# debugging code
-debug:
-	python3 generate_final.py "$(PY_CLEANED)" "$(PY_REMAINING)" \
-	"$(GRAPH_COMPS)" "$(FINAL_HIMSS)" "$(FINAL_CONFIRMED)" \
-	"$(HIMSS_ENTITIES_CONTACTS)"
-
-
-final_himss_manual:
-	python3 generate_final.py "$(PY_CLEANED)" "$(PY_REMAINING)" \
-	"$(GRAPH_COMPS)" "$(FINAL_HIMSS)" "$(FINAL_CONFIRMED)" \
-	"$(HIMSS_ENTITIES_CONTACTS)"
 
