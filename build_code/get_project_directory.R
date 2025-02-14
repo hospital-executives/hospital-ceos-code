@@ -24,6 +24,7 @@ get_script_directory <- function() {
       stop("Cannot determine the script directory.")
     }
   }
+  
   return(script_directory)
 }
 
@@ -41,4 +42,5 @@ suppressMessages({
 })
 
 # Output the project_directory path
+project_directory <- gsub(" ", "\\\\ ", project_directory)
 cat(project_directory)
