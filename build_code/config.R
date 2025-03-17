@@ -19,6 +19,8 @@ library(data.table) # for gender assignment code
 library(phonics) # for gender assignment code
 library(scales) # improved plotting
 library(knitr)
+library(writexl)
+library(stringr)
 
 # Define required packages
 required_packages <- c(
@@ -39,7 +41,9 @@ required_packages <- c(
   "data.table",
   "phonics",
   "scales",
-  "knitr"
+  "knitr",
+  "writxl",
+  "stringr"
 )
 
 #######  Manual Inputs - if we change the folder structure, this needs to be updated
