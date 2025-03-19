@@ -61,6 +61,13 @@ DIGRAPHMETA := $(AUX_DIR)/digraphmeta.csv
 CONFIRMED_2 := $(AUX_DIR)/confirmed_2.csv
 REMAINING_2 := $(AUX_DIR)/remaining_2.csv
 
+# Pair paths
+COMP_PAIRS := $(AUX_DIR)/comp_pairs.feather
+META_PAIRS := $(AUX_DIR)/meta_pairs.feather
+CLEAN_META_PAIRS := $(AUX_DIR)/cleaned_meta_pairs.feather
+COMP_CLEANED := $(AUX_DIR)/comp_cleaned.json
+META_CLEANED := $(AUX_DIR)/meta_cleaned.json
+
 # Cleaned paths
 PY_CLEANED := $(AUX_DIR)/py_confirmed.csv
 PY_REMAINING := $(AUX_DIR)/py_remaining.csv
@@ -78,6 +85,7 @@ GENDER_STAMP := $(STAMP_DIR)/update_gender.stamp
 JARO_STAMP := $(STAMP_DIR)/jaro.stamp
 DIGRAPHS_STAMP := $(STAMP_DIR)/digraphs.stamp
 BLOCKS_STAMP := $(STAMP_DIR)/blocks.stamp
+PAIRS_STAMP := $(STAMP_DIR)/pairs.stamp
 FUZZY_STAMP := $(STAMP_DIR)/fuzzy.stamp
 FINAL_STAMP := $(STAMP_DIR)/final.stamp
 
@@ -151,10 +159,19 @@ $(BLOCKS_STAMP): $(DIGRAPHS_STAMP)
 	$(REMAINING_2) $(DATA_DIR)
 	touch $(BLOCKS_STAMP)
 
-# Step 8: Generate final cleaned data
+# Step 8: Generate pairwise comparisons
+pairs: $(PAIRS_STAMP)
+$(PAIRS_STAMP): $(BLOCKS_STAMP)
+	python3 generate_pairs.py  $(CONFIRMED_2) $(REMAINING_2) \
+	$(COMP_PAIRS) $(META_PAIRS) $(CLEAN_META_PAIRS) \
+	$(COMP_CLEANED) $(META_CLEANED) \
+	$(DATA_DIR) $(CODE_DIR)
+	touch $(PAIRS_STAMP)
+
 fuzzy: $(FUZZY_STAMP)
-$(FUZZY_STAMP): $(BLOCKS_STAMP)
-	python3 -u fuzzy_final.py $(CONFIRMED_2) $(REMAINING_2) \
+$(FUZZY_STAMP): $(PAIRS_STAMP)
+	python3 new_fuzzy_match.py $(CONFIRMED_2) $(REMAINING_2) \
+	$(COMP_PAIRS) $(META_PAIRS) $(CLEAN_META_PAIRS) $(COMP_CLEANED) $(META_CLEANED) \
 	$(PY_CLEANED) $(PY_REMAINING) $(GRAPH_COMPS) \
 	$(DATA_DIR) $(CODE_DIR)
 	touch $(FUZZY_STAMP)

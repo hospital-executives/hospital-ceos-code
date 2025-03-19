@@ -1,4 +1,5 @@
 # get_project_directory.R
+options(repos = c(CRAN = "https://cloud.r-project.org"))
 
 # Function to get the script directory
 get_script_directory <- function() {

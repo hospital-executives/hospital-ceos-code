@@ -42,7 +42,7 @@ required_packages <- c(
   "phonics",
   "scales",
   "knitr",
-  "writxl",
+  "writexl",
   "stringr"
 )
 

@@ -303,7 +303,9 @@ def cast_types(df):
  'shared_system_ids_flag': 'int64',
  'shared_addresses_flag': 'int64',
  'shared_zips_flag': 'int64',
- 'total_shared_attributes': 'int64'}
+ 'total_shared_attributes': 'int64',
+ 'contact_id_min': 'str',
+ 'contact_id_max': 'str'}
 
     for col in df.columns:
         expected_type = column_type_mapping[col]
