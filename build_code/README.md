@@ -12,3 +12,25 @@ This folder contains two subfolders:
 aforementioned files
 2) aux-scripts, which contains Katherine's exploratory work at different stages
 of the process
+
+R packages required (you can also open "config.R" and it will prompt you to install anything you don't already have: 
+"tidyverse",
+  "readr",
+  "readxl",
+  "tools",
+  "haven",
+  "foreign",
+  "wordcloud",
+  "feather",
+  "tibble",
+  "jsonlite",
+  "stringi",
+  "fuzzyjoin",
+  "arrow",
+  "stringdist",
+  "data.table",
+  "phonics",
+  "scales",
+  "knitr",
+  "writexl",
+  "stringr"
