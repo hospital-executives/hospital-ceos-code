@@ -15,13 +15,15 @@ params:
 rm(list = setdiff(ls(), c("params"))) # #to make compatible with R file
 
 # *** IMPORTING FILES ***
+# Add file names for all dataset outputs throughout the build pipeline
+
 file_entities_contacts_0517 <- c("himss_entities_contacts_0517_v1.feather")
 
 file_r_confirmed <- c("r_confirmed.feather")
 file_r_remaining <- c("r_remaining.feather")
 
-# file_py_confirmed <- c("py_confirmed.csv")
-# file_py_remaining <- c("py_remaining.csv")
+file_py_confirmed <- c("py_confirmed.csv")
+file_py_remaining <- c("py_remaining.csv")
 
 file_final_himss <- c("final_himss.feather")
 file_final_confirmed <- c("final_confirmed.dta")
@@ -29,118 +31,190 @@ file_final_confirmed <- c("final_confirmed.dta")
 ```
 
 ```{r setup, include=FALSE}
-# NO manual entry required. This automatically loads necessary libraries and detects file paths. 
+# NO manual entry required. This automatically loads necessary libraries and detects file paths.
 
-knitr::opts_chunk$set(echo = TRUE)
+# Install and load the here package, this will help auto detect the code directory and find the config.R script
+if (!requireNamespace("here", quietly = TRUE)) {
+  install.packages("here")
+}
+library(here)
 
-# Source the configuration script
-# Check if rstudioapi is installed and install if necessary
-if (!requireNamespace("rstudioapi", quietly = TRUE)) {
-  install.packages("rstudioapi")
+# Optionally set the root directory manually (if needed)
+# here::i_am("build_code/config.R")
+
+# Construct the path to config.R
+config_path <- here("build_code", "config.R")
+
+# Print the config_path for debugging
+print(paste("Config path:", config_path))
+
+# Check if the config.R file exists
+if (!file.exists(config_path)) {
+  stop("The config.R file does not exist at the path: ", config_path)
 }
 
-library(rstudioapi)
-
-# Detect the path to the current script's directory dynamically
-# script_directory <- dirname(rstudioapi::getActiveDocumentContext()$path)
-
-# Detect the path to the current script's directory dynamically
-# Updated for compatability with makefile
-if (rstudioapi::isAvailable()) {
-  script_directory <- dirname(rstudioapi::getActiveDocumentContext()$path)
-} else {
-  # Provide a fallback path or set a default
-  script_directory <- params$code_dir
-}
-
-# Construct the path to the config.R file
-config_path <- file.path(script_directory, "config.R")
-
-# Source the config file dynamically
+# Source the config file
 source(config_path)
 
-#Now all necessary libraries are loaded, and file paths are set
+# Now all necessary libraries are loaded, and file paths are set
 
-#clean up
-rm(script_directory, config_path)
+# Clean up
+rm(config_path)
+
 ```
 
 ```{r load data}
 
 entities_contacts_0517 <- read_feather(paste0(derived_data,"/",file_entities_contacts_0517))
 
-r_confirmed <- read_feather(paste0(derived_data,"/",file_r_confirmed))
-r_remaining <- read_feather(paste0(derived_data,"/",file_r_remaining))
+r_confirmed <- read_feather(paste0(auxiliary_data,"/",file_r_confirmed))
+r_remaining <- read_feather(paste0(auxiliary_data,"/",file_r_remaining))
 
-# py_confirmed <- read_csv(paste0(derived_data,"/",file_py_confirmed))
-# py_remaining <- read_csv(paste0(derived_data,"/",file_py_remaining))
+py_confirmed <- read_csv(paste0(auxiliary_data,"/",file_py_confirmed))
+py_remaining <- read_csv(paste0(auxiliary_data,"/",file_py_remaining))
 
 final_himss <- read_feather(paste0(derived_data,"/",file_final_himss))
 final_confirmed <- read_dta(paste0(derived_data,"/",file_final_confirmed))
 ```
 
-```{r function to count obs by entity_type}
+
+```{r function to count obs for each df}
+
 count_hospital_rds <- function(df, col) {
-  # Count obs containing "Hospital" or "RDS"
-  hospital_rds_count <- df %>%
-    filter(str_detect({{ col }}, "Hospital|RDS")) %>%
-    count()
-
-  # Count obs not containing "Hospital" or "RDS"
-  non_hospital_rds_count <- df %>%
-    filter(!str_detect({{ col }}, "Hospital|RDS")) %>%
-    count()
-
-  # Return the counts as a list
+  # Ensure the data frame is ungrouped
+  df <- df %>% ungroup()
+  
+  # Create a grouping variable 'hospital_group' based on the presence of "Hospital" or "RDS" in the specified column
+  df <- df %>%
+    mutate(
+      hospital_group = if_else(
+        str_detect({{ col }}, "Hospital|RDS"),
+        "Hospital/RDS",
+        "Non-Hospital/RDS",
+        missing = "Non-Hospital/RDS"  # Handle NA values by assigning them to "Non-Hospital/RDS"
+      )
+    )
+  
+  # Group by 'hospital_group' and summarize counts
+  summary_counts <- df %>%
+    group_by(hospital_group) %>%
+    summarise(
+      total_obs = n(),
+      unique_contact_uniqueids = n_distinct(contact_uniqueid)
+    ) %>%
+    ungroup()
+  
+  # Get total count of observations in the entire data frame
+  total_count <- nrow(df)
+  
+  # Return the summary_counts data frame and total_count
   list(
-    hospital_rds = hospital_rds_count$n,
-    non_hospital_rds = non_hospital_rds_count$n,
-    total_count = nrow(df)
+    summary_counts = summary_counts,
+    total_count = total_count
   )
 }
 
 ```
 
 ```{r apply function to all dataframes}
-# List of all dataframes to process
+# List of all data frames to process
 dfs <- list(
   entities_contacts_0517 = entities_contacts_0517,
   r_confirmed = r_confirmed,
   # r_remaining = r_remaining,
   py_confirmed = py_confirmed,
-  py_remaining = py_remaining,
+  # py_remaining = py_remaining,
   final_himss = final_himss
 )
 
-# Apply the count_hospital_rds function to all dataframes
+# Apply the updated count_hospital_rds function to all data frames
 results <- map(dfs, ~count_hospital_rds(.x, entity_type))
 
-# Extract just the hospital counts and convert to a dataframe for plotting
-hospital_counts <- tibble(
-  dataframe = names(dfs),
-  hospital_rds_count = map_dbl(results, "hospital_rds")
-)
+# Extract and combine the summary counts from each data frame
+summary_counts_list <- map2(results, names(results), ~mutate(.x$summary_counts, dataframe = .y))
 
-# View the result
-hospital_counts
+# Combine all summary counts into a single data frame
+combined_summary_counts <- bind_rows(summary_counts_list)
 
+# View the combined summary counts
+print(combined_summary_counts)
 
 ```
-```{r plot the counts}
 
-# Create a horizontal bar chart with value labels, extended axis, and reduced font size for the labels
-ggplot(hospital_counts, aes(x = reorder(dataframe, -hospital_rds_count), y = hospital_rds_count)) +
-  geom_bar(stat = "identity") +
-  coord_flip() + # Flip the axes for horizontal bars
-  geom_text(aes(label = hospital_rds_count), hjust = -0.01, size = 3) + # Reduce font size for labels
-  scale_y_continuous(labels = label_number(), expand = expansion(mult = c(0, 0.1))) + # Extend the axis slightly
+
+```{r plot the counts}
+# Reshape the data to long format
+combined_summary_counts_long <- combined_summary_counts %>%
+  pivot_longer(
+    cols = c(total_obs, unique_contact_uniqueids),
+    names_to = "count_type",
+    values_to = "count"
+  )
+
+# Recode count_type for better labels
+combined_summary_counts_long <- combined_summary_counts_long %>%
+  mutate(
+    count_type = recode(
+      count_type,
+      total_obs = "Total Observations",
+      unique_contact_uniqueids = "Unique # of Contacts"
+    )
+  )
+
+# Remove NA values in 'count'
+combined_summary_counts_long <- combined_summary_counts_long %>%
+  filter(!is.na(count))
+
+# Define a custom function to format numbers
+format_count <- function(x) {
+  ifelse(
+    x >= 1e6, paste0(round(x / 1e6, 1), "M"),
+    ifelse(
+      x >= 1e3, paste0(round(x / 1e3, 1), "K"),
+      as.character(x)
+    )
+  )
+}
+
+# Updated plot code applying custom formatting only to axis labels
+ggplot(combined_summary_counts_long, aes(x = reorder(dataframe, count), y = count)) +
+  geom_bar(stat = "identity", fill = "#1f77b4") +
+  coord_flip(clip = "off") +
+  geom_text(aes(label = comma(count)), hjust = -0.1, size = 2.5) +
+  scale_y_continuous(labels = format_count, expand = expansion(mult = c(0, 0.2))) +
   labs(
-    title = "Hospital Counts by Dataframe",
+    title = "Build Pipeline Filtering Funnel",
     x = "Dataframe",
-    y = "Hospital Count"
+    y = "Count"
+  ) +
+  facet_grid(
+    count_type ~ hospital_group,
+    scales = "free_y"
   ) +
   theme_minimal() +
-  theme(plot.margin = unit(c(1, 1, 1, 1), "cm")) # Adjust margin to fit the labels
+  theme(
+    plot.margin = unit(c(1, 3, 1, 1), "cm"),  # Adjust margins as needed
+    panel.spacing = unit(2, "lines"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line.x = element_line(color = "black"),
+    axis.line.y = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    # Adjust facet label text
+    strip.text.y = element_text(
+      size = 10,
+      angle = 0,        # Keep labels horizontal
+      hjust = 1,        # Right-align the text
+      face = "bold",
+      margin = margin(l = 10)
+    ),
+    strip.text.x = element_text(size = 10),
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 8)
+  )
+
 
 ```
 

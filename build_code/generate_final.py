@@ -2,11 +2,11 @@ import os
 import sys
 import json
 import pandas as pd
-import numpy as np
-from itertools import combinations
 import re
+from datetime import datetime
 
 user_path = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data"
+current_date = datetime.now().strftime("%m-%d")
 
 #### SET VARIABLES ####
 if len(sys.argv) == 7:
@@ -23,7 +23,8 @@ else:
     remainder_path =  os.path.join(user_path, "derived/py_remaining.csv")
     json_path =  os.path.join(user_path, "derived/py_graph_components.json")
     final_himss_path = os.path.join(user_path, "derived/final_himss.feather")
-    final_confirmed_path = os.path.join(user_path, "derived/final_confirmed.dta")
+    final_confirmed_path = os.path.join(user_path, "derived", 
+                                        f"final_confirmed_{current_date}.dta")
     himss_path = os.path.join(user_path, 
     "derived/himss_entities_contacts_0517_v1.feather")
 
@@ -93,10 +94,9 @@ new_himss['old_first_component'] = pd.to_numeric(new_himss['old_first_component'
  errors='coerce')
 new_himss['new_contact_uniqueid'] = new_himss['new_contact_uniqueid'].astype(str)
 
-new_himss.to_feather(final_himss_path)
 
 #### GENERATE FINAL CLEAN DF WITH FLAGS ####
-new_cleaned = new_himss[new_himss['confirmed']]
+new_cleaned = new_himss.copy()
 himss = pd.read_feather(himss_path)
 
 himss['id'] == himss['id'].astype(float)
@@ -148,13 +148,15 @@ final_df['contact_uniqueid'] = final_df['new_contact_uniqueid']
 final_df = final_df.drop('old_contact_uniqueid', axis=1)
 final_df = final_df.drop('new_contact_uniqueid', axis=1)
 
+final_df['modified_firstname'] = final_df['firstname'] != final_df['old_firstname']
+final_df['modified_lastname'] = final_df['lastname'] != final_df['old_lastname']
+
 def convert_to_str_or_none(value):
     if isinstance(value, str):
         return value
     elif pd.isnull(value):
         return None
     else:
-        # Convert other types to string
         return str(value)
 
 # Apply the function to all object columns
@@ -162,4 +164,6 @@ object_columns = final_df.select_dtypes(include=['object']).columns.tolist()
 for col in object_columns:
     final_df[col] = final_df[col].apply(convert_to_str_or_none)
 
-final_df.to_stata(final_confirmed_path, write_index=False, version=118)
+final_df.to_feather(final_himss_path)
+# final_dta = final_df[final_df['confirmed']]
+# final_dta.to_stata(final_confirmed_path, write_index=False, version=118)

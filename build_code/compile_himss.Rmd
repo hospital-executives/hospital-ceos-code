@@ -142,6 +142,7 @@ for (prefix in file_prefixes) {
         mutate(year = year) %>%  # Add the year as a new column
         rename_with(tolower)
 
+      #add a comment
       # In some years the same fields data storage type changed. Dynamically adjust data types for combination: Convert numeric and logical columns to character.
       # df <- df %>%
       #   mutate(across(where(is.numeric), ~if_else(is.na(.), as.character(.), as.character(.)))) %>%
@@ -526,6 +527,69 @@ xwalk_completeness <- haentity %>%
 
 ```
 
+```{r Create Ambar dataset}
+#Create downscoped entities dataset that includes all records from AHA data, regardles sof match
+
+# **Step 1: Downselect haentity to specified columns and save as haentity_reduced**
+haentity_reduced <- haentity %>%
+  filter(entity_type == "Hospital") %>% 
+  select(
+    himss_entityid,
+    entity_uniqueid,
+    system_id,
+    ahaid = ahanumber,       # Rename 'ahanumber' to 'ahaid'
+    hospn,
+    medicarenumber,
+    year
+  ) 
+
+# **Step 2: Identify unmatched AHA records**
+unmatched_aha <- aha_data %>%
+  # Use anti_join with correct column mappings
+  anti_join(haentity_reduced, by = c("ahanumber" = "ahaid", "year"))
+
+# **Prepare unmatched AHA records**
+unmatched_aha_prepared <- unmatched_aha %>%
+  select(
+    ahaid = ahanumber,      # Rename 'ahanumber' to 'ahaid'
+    medicarenumber = mcrnum,
+    year
+  ) %>%
+  mutate(
+    himss_entityid = NA_character_,
+    entity_uniqueid = NA_character_,
+    system_id = NA_character_
+  ) %>%
+  select(
+    himss_entityid,
+    entity_uniqueid,
+    system_id,
+    ahaid,
+    medicarenumber,
+    year
+  )
+
+# **Step 3: Combine haentity_reduced with unmatched AHA records to create full_himss_aha_entities**
+full_himss_aha_entities <- bind_rows(haentity_reduced, unmatched_aha_prepared)
+
+# **Step 4: Verify the results**
+total_records <- nrow(full_himss_aha_entities)
+matched_records <- nrow(haentity_reduced)
+unmatched_records <- nrow(unmatched_aha_prepared)
+
+message("Total records in final output: ", total_records)
+message("Matched records from haentity: ", matched_records)
+message("Unmatched AHA records added: ", unmatched_records)
+
+# **Step 5: Export full_himss_aha_entities to a .dta file**
+
+# Set the file path for the output file
+output_file_path <- file.path(derived_data, "full_himss_aha_entities.dta")
+
+# Export to .dta file
+write_dta(full_himss_aha_entities, output_file_path)
+```
+
 # Fix swapped names
 
 ```{r fix swapped names}
@@ -675,6 +739,7 @@ gender_saluations %>%
 # 30% of contacts still don't have gender. For them, either salutation was missing, or they had a title like Doctor.
 
 ```
+
 ```{r gender based on first name}
 ############################  PART 1 - SALUTATIONS ############################
 # use salutations from data that are consistent at the person level and at the level of the firstname       
