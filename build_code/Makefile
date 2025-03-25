@@ -90,7 +90,7 @@ FUZZY_STAMP := $(STAMP_DIR)/fuzzy.stamp
 FINAL_STAMP := $(STAMP_DIR)/final.stamp
 
 # Stamp Dependencies
-all: '$(FINAL_STAMP)'
+all: $(FINAL_STAMP)
 
 # Step 1: Compile HIMSS data
 compile_himss: $(COMPILE_STAMP)
