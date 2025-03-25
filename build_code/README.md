@@ -34,3 +34,7 @@ R packages required (you can also open "config.R" and it will prompt you to inst
   "knitr",
   "writexl",
   "stringr"
+
+Python packages required can be found in helper_scripts/py_requirements.txt and are handled in clean_data.py.
+
+If errors related to missing columns, files, etc. persist, check that the files are up to date from Dropbox.
