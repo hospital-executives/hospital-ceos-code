@@ -1,5 +1,7 @@
 This folder contains the code to create the cleaned HIMSS files.
 
+Make sure your _data folder is up to date before re-running the Makefile.
+
 From the root of this directory, you should be able to run 'make' in terminal
 and completely regenerate the two final products:
 1) final_himss.feather, from which we can build our data for machine learning 
