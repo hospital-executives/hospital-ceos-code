@@ -89,81 +89,91 @@ PAIRS_STAMP := $(STAMP_DIR)/pairs.stamp
 FUZZY_STAMP := $(STAMP_DIR)/fuzzy.stamp
 FINAL_STAMP := $(STAMP_DIR)/final.stamp
 
+# Define error message
+define safe_run
+	@$(1) || { \
+		echo 'You may be getting this error if you are selectively syncing files from Dropbox.'; \
+		echo ' Double check all relevant files called in this script'; \
+		echo ' are “Available Offline” in Dropbox.'; \
+		exit 1; \
+	}
+endef
+
 # Stamp Dependencies
 all: $(FINAL_STAMP)
 
 # Step 1: Compile HIMSS data
 compile_himss: $(COMPILE_STAMP)
 $(COMPILE_STAMP):
-	Rscript compile_himss.R $(CODE_DIR)
+	$(call safe_run,Rscript compile_himss.R $(CODE_DIR))
 	touch $(COMPILE_STAMP)
 
 # Step 2: Manual assignment
 manual_assignment: $(MANUAL_STAMP)
 $(MANUAL_STAMP): $(COMPILE_STAMP)
-	Rscript clean_data.R $(CODE_DIR) '$(R_USER_DIR)' '$(HIMSS_R)'
+	$(call safe_run,Rscript clean_data.R $(CODE_DIR) '$(R_USER_DIR)' '$(HIMSS_R)'')
 	touch $(MANUAL_STAMP)
 
 # Step 3: Clean data
 clean_py : $(CLEAN_PY_STAMP)
-$(CLEAN_PY_STAMP): #$(MANUAL_STAMP)
-	python3 clean_data.py $(CODE_DIR) $(CONFIRMED_R) $(REMAINING_R) \
+$(CLEAN_PY_STAMP): $(MANUAL_STAMP)
+	$(call safe_run,python3 clean_data.py $(CODE_DIR) $(CONFIRMED_R) $(REMAINING_R) \
 	$(HIMSS_ENTITIES_CONTACTS) $(CONFIRMED_1) $(REMAINING_1) \
-	$(HIMSS_1) $(HIMSS_NICKNAMES)
+	$(HIMSS_1) $(HIMSS_NICKNAMES))
 	touch $(CLEAN_PY_STAMP)
 
 # Step 4: Update gender
 update_gender: $(GENDER_STAMP)
 $(GENDER_STAMP): $(CLEAN_PY_STAMP)
-	python3 helper_scripts/update_gender.py $(CONFIRMED_1) $(UPDATED_GENDER) \
-	$(DATA_DIR) $(R_GENDER)
+	$(call safe_run,python3 helper_scripts/update_gender.py $(CONFIRMED_1) \
+	$(UPDATED_GENDER) $(DATA_DIR) $(R_GENDER))
 	touch $(GENDER_STAMP)
 
 # Step 5: Generate Jaro
 update_jaro : $(JARO_STAMP)
 $(JARO_STAMP): $(GENDER_STAMP)
-	python3 helper_scripts/jaro_algo.py $(CODE_DIR) $(CONFIRMED_R) \
-	$(UPDATED_GENDER) $(JARO)
+	$(call safe_run,python3 helper_scripts/jaro_algo.py $(CODE_DIR) \
+	$(CONFIRMED_R) $(UPDATED_GENDER) $(JARO))
 	touch $(JARO_STAMP)
 
 # Step 6: Generate digraphs
 make_digraphs: $(DIGRAPHS_STAMP)
 $(DIGRAPHS_STAMP): $(JARO_STAMP)
-	python3 helper_scripts/generate_digraphs.py $(HIMSS_1) $(HIMSS_NICKNAMES) \
-	$(DIGRAPHNAME) $(DIGRAPHMETA) $(SUPP_DIR)
+	$(call safe_run,python3 helper_scripts/generate_digraphs.py $(HIMSS_1) \
+	$(HIMSS_NICKNAMES) $(DIGRAPHNAME) $(DIGRAPHMETA) $(SUPP_DIR))
 	touch $(DIGRAPHS_STAMP)
 
 # Step 7: Generate blocks
 make_blocks: $(BLOCKS_STAMP)
 $(BLOCKS_STAMP): $(DIGRAPHS_STAMP)
-	python3 generate_blocks.py $(HIMSS_ENTITIES_CONTACTS) $(CONFIRMED_1) \
-	$(REMAINING_1) $(UPDATED_GENDER) $(HIMSS_1) $(CONFIRMED_2) \
-	$(REMAINING_2) $(DATA_DIR)
+	$(call safe_run,python3 generate_blocks.py $(HIMSS_ENTITIES_CONTACTS) \
+	$(CONFIRMED_1) $(REMAINING_1) $(UPDATED_GENDER) $(HIMSS_1) $(CONFIRMED_2) \
+	$(REMAINING_2) $(DATA_DIR))
 	touch $(BLOCKS_STAMP)
 
 # Step 8: Generate pairwise comparisons
 pairs: $(PAIRS_STAMP)
 $(PAIRS_STAMP): $(BLOCKS_STAMP)
-	python3 generate_pairs.py  $(CONFIRMED_2) $(REMAINING_2) \
+	$(call safe_run,python3 generate_pairs.py  $(CONFIRMED_2) $(REMAINING_2) \
 	$(COMP_PAIRS) $(META_PAIRS) $(CLEAN_META_PAIRS) \
 	$(COMP_CLEANED) $(META_CLEANED) \
-	$(DATA_DIR) $(CODE_DIR)
+	$(DATA_DIR) $(CODE_DIR))
 	touch $(PAIRS_STAMP)
 
 fuzzy: $(FUZZY_STAMP)
 $(FUZZY_STAMP): $(PAIRS_STAMP)
-	python3 new_fuzzy_match.py $(CONFIRMED_2) $(REMAINING_2) \
+	$(call safe_run,python3 new_fuzzy_match.py $(CONFIRMED_2) $(REMAINING_2) \
 	$(COMP_PAIRS) $(META_PAIRS) $(CLEAN_META_PAIRS) $(COMP_CLEANED) $(META_CLEANED) \
 	$(PY_CLEANED) $(PY_REMAINING) $(GRAPH_COMPS) \
-	$(DATA_DIR) $(CODE_DIR)
+	$(DATA_DIR) $(CODE_DIR))
 	touch $(FUZZY_STAMP)
 
 # Step 9: Generate final HIMSS dataset and cleaned dta with flags
 # make_final: $(FINAL_STAMP)
 $(FINAL_STAMP): $(FUZZY_STAMP)
-	python3 generate_final.py $(PY_CLEANED) $(PY_REMAINING) \
+	$(call safe_run,python3 generate_final.py $(PY_CLEANED) $(PY_REMAINING) \
 	$(GRAPH_COMPS) $(FINAL_HIMSS) $(FINAL_CONFIRMED) \
-	$(HIMSS_ENTITIES_CONTACTS)
+	$(HIMSS_ENTITIES_CONTACTS))
 	touch $(FINAL_STAMP)
 
 
