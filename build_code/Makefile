@@ -89,37 +89,19 @@ PAIRS_STAMP := $(STAMP_DIR)/pairs.stamp
 FUZZY_STAMP := $(STAMP_DIR)/fuzzy.stamp
 FINAL_STAMP := $(STAMP_DIR)/final.stamp
 
-# Other
-PANDOC_PATH := /Applications/RStudio.app/Contents/Resources/app/quarto/bin/tools/x86_64
-
-print-pandoc:
-	@echo "PANDOC_PATH = $(PANDOC_PATH)"
-
-debug: 
-	@echo "R_PATH = $(R_USER_DIR)"
-	@echo "CODE = $(CODE_DIR)"
-	@echo "HIMSS = $(HIMSS_R)"
-
 # Stamp Dependencies
 all: '$(FINAL_STAMP)'
 
 # Step 1: Compile HIMSS data
 compile_himss: $(COMPILE_STAMP)
 $(COMPILE_STAMP):
-	export RSTUDIO_PANDOC=$(PANDOC_PATH); \
-	Rscript -e "rmarkdown::render('compile_himss.Rmd', \
-	params = list(code_dir = '$(CODE_DIR)/', r_gender = '$(R_GENDER)'))"
+	Rscript compile_himss.R $(CODE_DIR)
 	touch $(COMPILE_STAMP)
 
 # Step 2: Manual assignment
 manual_assignment: $(MANUAL_STAMP)
 $(MANUAL_STAMP): $(COMPILE_STAMP)
-	export RSTUDIO_PANDOC=$(PANDOC_PATH); \
-	Rscript -e "rmarkdown::render('clean_data.Rmd', \
-	params = list(code_dir = '$(CODE_DIR)', \
-	code_path = '$(CODE_DIR)', \
-	data_path = '$(R_USER_DIR)', \
-	himss_entity_contacts = '$(HIMSS_R)'))"
+	Rscript clean_data.R $(CODE_DIR) '$(R_USER_DIR)' '$(HIMSS_R)'
 	touch $(MANUAL_STAMP)
 
 # Step 3: Clean data
