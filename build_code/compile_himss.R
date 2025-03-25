@@ -5,6 +5,55 @@ args <- commandArgs(trailingOnly = TRUE)
 code_dir <- args[1]
 cat(code_dir)
 
+##### SET UP FILE PATHS ######
+get_script_directory <- function() {
+  # Try to get the path of the current Rmd file during rendering
+  if (!is.null(knitr::current_input())) {
+    script_directory <- dirname(normalizePath(knitr::current_input()))
+    return(script_directory)
+  }
+  
+  # Fallback to params$code_dir if provided
+  if (!is.null(code_dir) && code_dir != "None") {
+    return(code_dir)
+  }
+  
+  # Try to get the script path when running via Rscript
+  args <- commandArgs(trailingOnly = FALSE)
+  file_arg_index <- grep("--file=", args)
+  if (length(file_arg_index) > 0) {
+    # Running via Rscript
+    file_arg <- args[file_arg_index]
+    script_path <- normalizePath(sub("--file=", "", file_arg))
+    return(dirname(script_path))
+  } else if (interactive()) {
+    # Running interactively in RStudio
+    if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
+      script_path <- rstudioapi::getActiveDocumentContext()$path
+      if (nzchar(script_path)) {
+        return(dirname(normalizePath(script_path)))
+      } else {
+        stop("Cannot determine script directory: No active document found in RStudio.")
+      }
+    } else {
+      stop("Cannot determine script directory: Not running in RStudio or rstudioapi not available.")
+    }
+  } else {
+    # Fallback to current working directory
+    script_directory <- getwd()
+    return(script_directory)
+  }
+}
+
+# Detect the script directory
+script_directory <- get_script_directory()
+
+# Construct the path to the config.R file
+config_path <- file.path(script_directory, "config.R")
+
+# Source the config file dynamically
+source(config_path)
+
 ######## SET UP ########
 #rm(list = ls()) # #to make compatible with R file
 
@@ -65,58 +114,7 @@ file_path_ssa_directory <- c("/names")
 file_name_wgnd2.0 <- c("wgnd2_short.csv")
 
 
-##### SET UP FILE PATHS ######
-get_script_directory <- function() {
-  # Try to get the path of the current Rmd file during rendering
-  if (!is.null(knitr::current_input())) {
-    script_directory <- dirname(normalizePath(knitr::current_input()))
-    return(script_directory)
-  }
-  
-  # Fallback to params$code_dir if provided
-  if (!is.null(code_dir) && code_dir != "None") {
-    return(code_dir)
-  }
-  
-  # Try to get the script path when running via Rscript
-  args <- commandArgs(trailingOnly = FALSE)
-  file_arg_index <- grep("--file=", args)
-  if (length(file_arg_index) > 0) {
-    # Running via Rscript
-    file_arg <- args[file_arg_index]
-    script_path <- normalizePath(sub("--file=", "", file_arg))
-    return(dirname(script_path))
-  } else if (interactive()) {
-    # Running interactively in RStudio
-    if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
-      script_path <- rstudioapi::getActiveDocumentContext()$path
-      if (nzchar(script_path)) {
-        return(dirname(normalizePath(script_path)))
-      } else {
-        stop("Cannot determine script directory: No active document found in RStudio.")
-      }
-    } else {
-      stop("Cannot determine script directory: Not running in RStudio or rstudioapi not available.")
-    }
-  } else {
-    # Fallback to current working directory
-    script_directory <- getwd()
-    return(script_directory)
-  }
-}
 
-# Detect the script directory
-script_directory <- get_script_directory()
-
-# Construct the path to the config.R file
-config_path <- file.path(script_directory, "config.R")
-
-# Source the config file dynamically
-source(config_path)
-
-#Now all necessary libraries are loaded, and file paths are set
-#clean up
-rm(script_directory, config_path)
 
 
 

@@ -1,27 +1,5 @@
 #######  Config script for hospital ceo's project ####### 
 
-#######  load libraries
-library(tidyverse)
-library(readr)
-library(readxl)
-library(tools)
-library(haven) # to read new .dta files
-library(foreign) #to read old .dta files
-library(wordcloud)
-library(feather)
-library(tibble)
-library(jsonlite) # to find the dropbox directory
-library(stringi) # to fix encoding for AHA data
-library(fuzzyjoin) # for AHA data fuzzy join
-library(arrow) # for gender assignment code
-library(stringdist) # for gender assignment code
-library(data.table) # for gender assignment code
-library(phonics) # for gender assignment code
-library(scales) # improved plotting
-library(knitr)
-library(writexl)
-library(stringr)
-
 # Define required packages
 required_packages <- c(
   "tidyverse",
@@ -31,7 +9,6 @@ required_packages <- c(
   "haven",
   "foreign",
   "wordcloud",
-  "feather",
   "tibble",
   "jsonlite",
   "stringi",
@@ -60,15 +37,75 @@ nicknames_dictionaries <- "/nicknames dictionaries"
 
 # Function to check and install missing packages
 install_if_missing <- function(packages) {
-  new_packages <- packages[!(packages %in% installed.packages()[, "Package"])]
-  if (length(new_packages)) {
-    install.packages(new_packages, dependencies = TRUE)
+  installed <- installed.packages()[, "Package"]
+  
+  # Separate arrow and data.table from the rest
+  special_packages <- c("arrow", "data.table")
+  general_packages <- setdiff(packages, special_packages)
+  
+  # Install general packages
+  new_general <- general_packages[!(general_packages %in% installed)]
+  if (length(new_general)) {
+    message("Installing general packages: ", paste(new_general, collapse = ", "))
+    install.packages(new_general, dependencies = TRUE)
   }
-  invisible(lapply(packages, library, character.only = TRUE))
+  
+  # Handle data.table (install from source if needed)
+  if (!"data.table" %in% installed) {
+    message("Installing 'data.table' from source (recommended for latest version)...")
+    tryCatch({
+      install.packages("data.table", type = "source", dependencies = TRUE)
+    }, error = function(e) {
+      warning("Failed to install 'data.table': ", conditionMessage(e))
+    })
+  }
+  
+  # Handle arrow (warn if system deps might be missing)
+  if (!"arrow" %in% installed) {
+    message("Installing 'arrow' — if it fails, check system dependencies:")
+    message("  https://arrow.apache.org/docs/r/articles/install.html")
+    tryCatch({
+      install.packages("arrow", dependencies = TRUE)
+    }, error = function(e) {
+      warning("Failed to install 'arrow': ", conditionMessage(e))
+    })
+  }
+  
+  # Load all packages
+  lapply(packages, function(pkg) {
+    success <- require(pkg, character.only = TRUE, quietly = TRUE)
+    if (!success) {
+      warning(sprintf("Package '%s' failed to load. You may need to install it manually.", pkg))
+    }
+  })
+  
+  invisible()
 }
+
 
 # Install and load required packages
 install_if_missing(required_packages)
+
+#######  load libraries
+library(tidyverse)
+library(readr)
+library(readxl)
+library(tools)
+library(haven) # to read new .dta files
+library(foreign) #to read old .dta files
+library(wordcloud)
+library(tibble)
+library(jsonlite) # to find the dropbox directory
+library(stringi) # to fix encoding for AHA data
+library(fuzzyjoin) # for AHA data fuzzy join
+library(arrow) # for gender assignment code
+library(stringdist) # for gender assignment code
+library(data.table) # for gender assignment code
+library(phonics) # for gender assignment code
+library(scales) # improved plotting
+library(knitr)
+library(writexl)
+library(stringr)
 
 
 ####### Now, automatically set-up all file paths for the project.

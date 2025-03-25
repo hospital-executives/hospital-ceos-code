@@ -106,8 +106,8 @@ $(MANUAL_STAMP): $(COMPILE_STAMP)
 
 # Step 3: Clean data
 clean_py : $(CLEAN_PY_STAMP)
-$(CLEAN_PY_STAMP): $(MANUAL_STAMP)
-	python3 clean_data.py $(CONFIRMED_R) $(REMAINING_R) \
+$(CLEAN_PY_STAMP): #$(MANUAL_STAMP)
+	python3 clean_data.py $(CODE_DIR) $(CONFIRMED_R) $(REMAINING_R) \
 	$(HIMSS_ENTITIES_CONTACTS) $(CONFIRMED_1) $(REMAINING_1) \
 	$(HIMSS_1) $(HIMSS_NICKNAMES)
 	touch $(CLEAN_PY_STAMP)
@@ -159,7 +159,7 @@ $(FUZZY_STAMP): $(PAIRS_STAMP)
 	touch $(FUZZY_STAMP)
 
 # Step 9: Generate final HIMSS dataset and cleaned dta with flags
-make_final: $(FINAL_STAMP)
+# make_final: $(FINAL_STAMP)
 $(FINAL_STAMP): $(FUZZY_STAMP)
 	python3 generate_final.py $(PY_CLEANED) $(PY_REMAINING) \
 	$(GRAPH_COMPS) $(FINAL_HIMSS) $(FINAL_CONFIRMED) \

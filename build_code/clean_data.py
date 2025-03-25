@@ -2,6 +2,7 @@
 import subprocess
 import sys
 import os
+# import pkg_resources
 
 # Automate package installation
 def install(package):
@@ -16,37 +17,27 @@ def install(package):
         except subprocess.CalledProcessError as e:
             print(f"Failed to install {package} using both pip and pip3. Please check your Python and pip installation.")
 
-# list packages
-required_packages = ['pandas', 'numpy', 'Levenshtein', 'matplotlib','metaphone',
-                     'seaborn', 'pyarrow', 'matplotlib', 'jellyfish', 'joblib']  
-
-# import packages
-for package in required_packages:
-    try:
-        __import__(package)  # Try to import the package
-    except ImportError:
-        install(package)
-
-import pandas as pd
 
 # specify data path 
 data_path = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data"
 # TAKE ARGS FROM MAKEFILE
 # Get arguments from the command line
-if len(sys.argv) == 8:
+if len(sys.argv) == 9:
     # If arguments are provided, get them from the command line
-    confirmed_r = sys.argv[1]
-    remaining_r = sys.argv[2]
-    himss_entities_contacts = sys.argv[3]
-    confirmed_1 = sys.argv[4]
-    remaining_1 = sys.argv[5]
-    himss_1 = sys.argv[6]
-    nicknames_path = sys.argv[7]
+    code_dir = sys.argv[1]
+    confirmed_r = sys.argv[2]
+    remaining_r = sys.argv[3]
+    himss_entities_contacts = sys.argv[4]
+    confirmed_1 = sys.argv[5]
+    remaining_1 = sys.argv[6]
+    himss_1 = sys.argv[7]
+    nicknames_path = sys.argv[8]
 else:
     print('WARNING: Not using Makefile Input')
     # Otherwise, use default file paths
-    confirmed_r = os.path.join(data_path, "derived/r_confirmed.feather")
-    remaining_r =  os.path.join(data_path, "derived/r_remaining.feather")
+    code_dir = '/Users/loaner/hospital-ceos-code/build_code'
+    confirmed_r = os.path.join(data_path, "derived/auxiliary/r_confirmed.feather")
+    remaining_r =  os.path.join(data_path, "derived/auxiliary/r_remaining.feather")
     himss_entities_contacts = os.path.join(data_path, 
     "derived/himss_entities_contacts_0517_v1.feather")
     confirmed_1 = os.path.join(data_path, "derived/auxiliary/confirmed_1.csv")
@@ -54,11 +45,25 @@ else:
     himss_1 = os.path.join(data_path, "derived/auxiliary/himss_1.csv")
     nicknames_path = os.path.join(data_path, "derived/auxiliary/himss_nicknames.csv")
 
+# install packages
+required_path = os.path.join(code_dir, "helper_scripts/py_requirements.txt")
+print(f"PATH: {required_path}")
+
+with open(required_path, 'r') as f:
+    required = {pkg.strip() for pkg in f if pkg.strip() and not pkg.startswith('#')}
+
+# import packages
+for package in required:
+    try:
+        __import__(package)  # Try to import the package
+    except ImportError:
+        install(package)
+
+import pandas as pd
 #code_path = sys.argv[1]
 #data_path = sys.argv[2]
 #code_path = '/Users/loaner/hospital-ceos-code/'
 #user_path = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/"
-
 cleaned_r_path = str(confirmed_r)
 remaining_r_path = str(remaining_r)
 himss_path = str(himss_entities_contacts)
