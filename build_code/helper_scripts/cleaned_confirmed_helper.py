@@ -398,7 +398,7 @@ def clean_results_pt2(remaining, G, dropped_sets, new_himss):
     for df in [dropped1, dropped2]:
         dropped_sets.update(zip(df['contact_id1'], df['contact_id2']))
 
-    return dropped_sets, remaining
+    return remaining, dropped_sets
 
 def clean_results_pt3(remaining, dropped_sets, user_path, new_himss):
     # CREATE STATE DF
@@ -435,13 +435,14 @@ def clean_results_pt3(remaining, dropped_sets, user_path, new_himss):
     )
 
     # Filter remaining DataFrame and update dropped sets
-    to_drop = remaining[(remaining['total_distance'] > 1000) & (remaining['diff_state_years_count'] > 1)]
-    remaining2 = remaining[~((remaining['total_distance'] > 1000) & (remaining['diff_state_years_count'] > 1))]
+    to_drop = remaining[(remaining['total_distance'] > 1000) & 
+                        (remaining['diff_state_years_count'] > 1)]
+    remaining2 = remaining[~((remaining['total_distance'] > 1000) & 
+                             (remaining['diff_state_years_count'] > 1))]
 
     dropped_sets.update(zip(to_drop['contact_id1'], to_drop['contact_id2']))
 
     return dropped_sets, remaining2
-
 
 def clean_results_pt4(confirmed_graph, remaining, new_himss):
     
@@ -573,10 +574,10 @@ def clean_results_pt5(dropped_sets,remaining, new_himss, user_path):
         
         # Create tuples of jobs held in different years (earlier year first, later year second)
         job_tuples = set()  # Use a set to ensure uniqueness
-        for i in range(len(combined_titles)):
-            for j in range(i+1, len(combined_titles)):
-                year_i, title_i = combined_titles[i]
-                year_j, title_j = combined_titles[j]
+        for i in range(len(titles_id1)):
+            for j in range(len(titles_id2)):
+                year_i, title_i = titles_id1[i]
+                year_j, title_j = titles_id2[j]
                 if year_j > year_i:  # Add (title_i, title_j)
                     job_tuples.add((title_i, title_j))
                 elif year_i > year_j:  # Add (title_j, title_i)
@@ -1126,11 +1127,306 @@ def clean_results_pt9(remaining_input,confirmed_graph,
     dropped_comp.update(zip(dropped3['contact_id1'], dropped3['contact_id2']))
     dropped_comp.update(zip(dropped4['contact_id1'], dropped4['contact_id2']))
 
+    def has_head(job_list):
+        return any('Head of Facility' in job for job in job_list)
+
+    dropped5 = remaining4[
+        ((remaining4['min_same_probability'].isna()) |
+        (remaining4['min_same_probability'] < .025)) & 
+        ((remaining4['min_diff_probability'].isna()) |
+        (remaining4['min_diff_probability'] < .025)) & 
+        (remaining4['shared_titles_flag'] == 0) #&
+        #~(remaining4['unique_job_tuples'].apply(has_head))
+    ]
+
+    remaining5 = remaining4[
+       ~(((remaining4['min_same_probability'].isna()) |
+        (remaining4['min_same_probability'] < .025)) & 
+        ((remaining4['min_diff_probability'].isna()) |
+        (remaining4['min_diff_probability'] < .025)) & 
+        (remaining4['shared_titles_flag'] == 0)) # &
+        # ~(remaining4['unique_job_tuples'].apply(has_head)))
+    ]
+
+    dropped_comp.update(zip(dropped5['contact_id1'], dropped5['contact_id2']))
+
+
+    id_years_dict = new_himss.groupby('contact_uniqueid')['year'].apply(set).to_dict()
+    def intersection_length(row):
+        set1 = id_years_dict.get(row["contact_id1"], set())  # Get years for contact_id1
+        set2 = id_years_dict.get(row["contact_id2"], set())  # Get years for contact_id2
+        return len(set1 & set2)  # Compute intersection and return its length
+
+    # Apply function to DataFrame
+    remaining5["years_overlap"] = remaining5.apply(intersection_length, axis=1)
+
+    remaining6 = remaining5[~((remaining5['years_overlap'] > 1) & 
+        ((remaining5['min_same_probability'].isna()) |
+        (remaining5['min_same_probability'] < .05)) & 
+        (remaining5['shared_titles'].apply(len) == 0))]
+    dropped6 = remaining5[((remaining5['years_overlap'] > 1) & 
+        ((remaining5['min_same_probability'].isna()) |
+        (remaining5['min_same_probability'] < .05)) & 
+        (remaining5['shared_titles'].apply(len) == 0))]
+
+    dropped_comp.update(zip(dropped6['contact_id1'], dropped6['contact_id2']))
+
+    def big_state(state_list):
+        """Returns True if 'CA' or 'NY' is in the list, otherwise False."""
+        return any(state in {"CA", "NY", "TX", "FL", "PA", "IL"} 
+                   for state in state_list)
+
+    remaining6["big_state"] = remaining6["shared_states"].apply(big_state)
+
+    same1 = remaining6[
+        (remaining6['firstname_jw_distance'] >= 0.9) & 
+        (remaining6['lastname_jw_distance'] >= 0.9) & 
+        (remaining6['shared_titles_flag'] == 1) & 
+        (remaining6['shared_states'].apply(len) >0) & 
+        ~(remaining6['big_state'])
+        ]
+    add_to_graph_from_df(confirmed_graph, same1)
+    remaining7 = remaining6[
+        ~((remaining6['firstname_jw_distance'] >= 0.9) & 
+        (remaining6['lastname_jw_distance'] >= 0.9) & 
+        (remaining6['shared_titles_flag'] == 1) & 
+        (remaining6['shared_states'].apply(len) >0) & 
+        ~(remaining6['big_state']))
+        ]
+    
+    dropped7 = remaining7[(remaining7['shared_titles_flag'] == 0) & 
+    (remaining7['both_male']) & 
+    (remaining7['lastname_jw_distance'] <.7) & 
+    ((remaining7['min_same_probability'].isna()) |
+            (remaining7['min_same_probability'] < .1)) & 
+            ((remaining7['min_diff_probability'].isna()) |
+            (remaining7['min_diff_probability'] < .1))]
+    dropped_comp.update(zip(dropped7['contact_id1'], dropped7['contact_id2']))
+    remaining8 = remaining7[~((remaining7['shared_titles_flag'] == 0) & 
+    (remaining7['both_male']) & 
+    (remaining7['lastname_jw_distance'] <.7) & 
+    ((remaining7['min_same_probability'].isna()) |
+            (remaining7['min_same_probability'] < .1)) & 
+            ((remaining7['min_diff_probability'].isna()) |
+            (remaining7['min_diff_probability'] < .1)))]
+
+    dropped8 = remaining8[(remaining8['years_overlap'] >= 4) & 
+        ((remaining8['min_same_probability'].isna()) |
+                    (remaining8['min_same_probability'] < .1)) & 
+                    ((remaining8['min_diff_probability'].isna()) |
+                    (remaining8['min_diff_probability'] < .1)) & 
+                    (remaining8['shared_titles_flag'] == 0)
+        ]
+    dropped_comp.update(zip(dropped8['contact_id1'], dropped8['contact_id2']))
+    remaining9 = remaining8[~((remaining8['years_overlap'] >= 4) & 
+        ((remaining8['min_same_probability'].isna()) |
+                    (remaining8['min_same_probability'] < .1)) & 
+                    ((remaining8['min_diff_probability'].isna()) |
+                    (remaining8['min_diff_probability'] < .1)) & 
+                    (remaining8['shared_titles_flag'] == 0))
+        ]
+
+    dropped9 = remaining9[
+        (remaining9['total_distance'] >= 500) & 
+        (remaining9['years_overlap'] >=4) & 
+        (remaining9['shared_states'].apply(len) == 0) & 
+        (remaining9['shared_system_ids_flag'] == 0)
+        ]
+    remaining10 = remaining9[
+        ~((remaining9['total_distance'] >= 500) & 
+        (remaining9['years_overlap'] >=4) & 
+        (remaining9['shared_states'].apply(len) == 0) & 
+        (remaining9['shared_system_ids_flag'] == 0))
+        ]
+    dropped_comp.update(zip(dropped9['contact_id1'], dropped9['contact_id2']))
+
+    dropped10 = remaining10[
+        ((remaining10['min_same_probability'].isna()) |
+            (remaining10['min_same_probability'] < .05)) & 
+            ((remaining10['min_diff_probability'].isna()) |
+            (remaining10['min_diff_probability'] < .05)) & 
+            (remaining10['shared_titles_flag'] == 0) & 
+            (remaining10['firstname_jw_distance'] > .9) & 
+            (remaining10['lastname_jw_distance'] > .9) & 
+            (remaining10['shared_states'].apply(len) == 0) & 
+            ~(remaining10['unique_job_tuples'].apply(has_head))
+    ]
+    remaining11 = remaining10[
+        ~(((remaining10['min_same_probability'].isna()) |
+            (remaining10['min_same_probability'] < .05)) & 
+            ((remaining10['min_diff_probability'].isna()) |
+            (remaining10['min_diff_probability'] < .05)) & 
+            (remaining10['shared_titles_flag'] == 0) & 
+            (remaining10['firstname_jw_distance'] > .9) & 
+            (remaining10['lastname_jw_distance'] > .9) & 
+            (remaining10['shared_states'].apply(len) == 0) & 
+            ~(remaining10['unique_job_tuples'].apply(has_head)))
+    ]
+    dropped_comp.update(zip(dropped10['contact_id1'], dropped10['contact_id2']))
+
+    dropped11 = remaining11[
+        (remaining11['min_same_probability'] < .1) & 
+        (remaining11['min_diff_probability'] < .1) & 
+        (remaining11['shared_states'].apply(len) == 0) & 
+        (remaining11['shared_titles_flag'] == 0)
+    ]
+
+    remaining12 = remaining11[
+       ~((remaining11['min_same_probability'] < .1) & 
+        (remaining11['min_diff_probability'] < .1) & 
+        (remaining11['shared_states'].apply(len) == 0) & 
+        (remaining11['shared_titles_flag'] == 0))
+    ]
+    dropped_comp.update(zip(dropped11['contact_id1'], dropped11['contact_id2']))
+
+    dropped12 = remaining12[
+        (remaining12['firstname_lev_distance'] + 
+        remaining12['lastname_lev_distance'] <= 1) & 
+        (remaining12['shared_states'].apply(len) > 0) & 
+        (remaining12['shared_titles'].apply(len)  == 1) & 
+        ~(remaining12['shared_titles'].apply(has_head))
+    ]
+
+    remaining13 = remaining12[
+        ~((remaining12['firstname_lev_distance'] + 
+        remaining12['lastname_lev_distance'] <= 1) & 
+        (remaining12['shared_states'].apply(len) > 0) & 
+        (remaining12['shared_titles'].apply(len)  == 1) & 
+        ~(remaining12['shared_titles'].apply(has_head)))
+    ]
+
+    dropped_comp.update(zip(dropped12['contact_id1'], dropped12['contact_id2']))
+
+    remaining13 = check_ids_in_graph(remaining13, confirmed_graph)
+
+    big_dropped = remaining13[((remaining13['contact_id1_count'] <= 2) & 
+        ~(remaining13['contact_id2_in_graph'])) |
+        ((remaining13['contact_id2_count'] <= 2) & 
+        ~(remaining13['contact_id1_in_graph']))]
+    dropped_comp.update(zip(big_dropped['contact_id1'], big_dropped['contact_id2']))
+    remaining14 = remaining13[~(((remaining13['contact_id1_count'] <= 2) & 
+        ~(remaining13['contact_id2_in_graph'])) |
+        ((remaining13['contact_id2_count'] <= 2) & 
+        ~(remaining13['contact_id1_in_graph'])))]
+
+    remaining14['contact_id1_single_year'] = remaining14['contact_id1']\
+        .apply(lambda x: len(id_years_dict.get(x, {})) == 1).astype(int)
+    remaining14['contact_id2_single_year'] = remaining14['contact_id2']\
+        .apply(lambda x: len(id_years_dict.get(x, {})) == 1).astype(int)
+    dropped13 = remaining14[
+        ((remaining14['contact_id1_single_year'] == 1) |
+        (remaining14['contact_id2_single_year'] == 1) ) 
+    ]
+    remaining15 = remaining14[
+       ~( ((remaining14['contact_id1_single_year'] == 1) |
+        (remaining14['contact_id2_single_year'] == 1) ) 
+        ) 
+    ]
+    dropped_comp.update(zip(dropped13['contact_id1'], dropped13['contact_id2']))
+
+    dropped14 = remaining15[
+        (remaining15['frequent_lastname_flag']) & 
+        ((remaining15['min_diff_probability'] <= 0.1) |
+        (remaining15['min_diff_probability'].isna())) & 
+        ((remaining15['min_same_probability'] <= 0.1) |
+        (remaining15['min_same_probability'].isna())) & 
+        (remaining15['shared_titles_flag'] == 0) & 
+        (remaining15['shared_states'].apply(len) == 0) & 
+        (remaining15['shared_system_ids_flag'] == 0)
+    ]
+    remaining16 = remaining15[
+        ~((remaining15['frequent_lastname_flag']) & 
+        ((remaining15['min_diff_probability'] <= 0.1) |
+        (remaining15['min_diff_probability'].isna())) & 
+        ((remaining15['min_same_probability'] <= 0.1) |
+        (remaining15['min_same_probability'].isna())) & 
+        (remaining15['shared_titles_flag'] == 0) & 
+        (remaining15['shared_states'].apply(len) == 0) & 
+        (remaining15['shared_system_ids_flag'] == 0))
+    ]
+
+    dropped_comp.update(zip(dropped14['contact_id1'], dropped14['contact_id2']))
+
+    dropped15 = remaining16[
+        (remaining16['min_diff_probability'] <= 0.05) & 
+        (remaining16['min_same_probability'] <.2) & 
+        (remaining16['shared_states'].apply(len) == 0) & 
+        (remaining16['shared_titles_flag'] == 0)
+    ]
+    remaining17 = remaining16[
+        ~((remaining16['min_diff_probability'] <= 0.05) & 
+        (remaining16['min_same_probability'] <.2) & 
+        (remaining16['shared_states'].apply(len) == 0) & 
+        (remaining16['shared_titles_flag'] == 0))
+    ]
+    dropped_comp.update(zip(dropped15['contact_id1'], dropped15['contact_id2']))
+
     update_confirmed_from_dropped(confirmed_graph, dropped_comp,
                                                         contact_count_dict)
     
-    return remaining4, dropped_comp
+    return remaining17, dropped_comp
 
+def clean_results_pt10(confirmed_graph, remaining, dropped, new_himss):
+    firstname_counts = new_himss['firstname'].value_counts().to_dict()
+    lastname_counts = new_himss['lastname'].value_counts().to_dict()
+
+    contact_to_firstname = dict(zip(new_himss['contact_uniqueid'], 
+                                    new_himss['firstname']))
+    contact_to_lastname = dict(zip(new_himss['contact_uniqueid'], 
+                                    new_himss['lastname']))
+    
+    remaining['firstname_id1'] = remaining['contact_id1'].map(contact_to_firstname)
+    remaining['firstname_id2'] = remaining['contact_id2'].map(contact_to_firstname)
+    remaining['firstname_count_id1'] = remaining['firstname_id1'].map(firstname_counts)
+    remaining['firstname_count_id2'] = remaining['firstname_id2'].map(firstname_counts)
+
+    remaining['lastname_id1'] = remaining['contact_id1'].map(contact_to_lastname)
+    remaining['lastname_id2'] = remaining['contact_id2'].map(contact_to_lastname)
+    remaining['lastname_count_id1'] = remaining['lastname_id1'].map(lastname_counts)
+    remaining['lastname_count_id2'] = remaining['lastname_id1'].map(lastname_counts)
+
+    # implement rule
+    same = remaining[
+    (remaining['firstname_jw_distance'] >=0.9) & 
+    (remaining['lastname_jw_distance'] >=0.95) & 
+    (remaining['shared_titles_flag'] == 1) & 
+    (remaining['firstname_count_id1'] <= 500) & 
+    (remaining['firstname_count_id2'] <= 500) & 
+     (remaining['lastname_count_id1'] <= 75) & 
+    (remaining['lastname_count_id2'] <= 75)]
+
+    add_to_graph_from_df(confirmed_graph, same)
+    dropped.update(zip(same['contact_id1'], same['contact_id2']))
+
+    new_remaining = remaining[~(
+         (remaining['firstname_jw_distance'] >=0.9) & 
+    (remaining['lastname_jw_distance'] >=0.95) & 
+    (remaining['shared_titles_flag'] == 1) & 
+    (remaining['firstname_count_id1'] <= 500) & 
+    (remaining['firstname_count_id2'] <= 500) & 
+     (remaining['lastname_count_id1'] <= 75) & 
+    (remaining['lastname_count_id2'] <= 75))]
+
+    same2 = new_remaining[(
+         ((new_remaining['name_in_same_row_firstname']) | 
+         (new_remaining['firstname_jw_distance'] >=0.9) ) & 
+    (new_remaining['lastname_jw_distance'] >=0.95) & 
+    (new_remaining['shared_titles_flag'] == 1) & 
+     (new_remaining['lastname_count_id1'] <= 50) & 
+    (new_remaining['lastname_count_id2'] <= 50))]
+    add_to_graph_from_df(confirmed_graph, same2)
+    dropped.update(zip(same2['contact_id1'], same2['contact_id2']))
+
+    final_remaining = new_remaining[~((
+         ((new_remaining['name_in_same_row_firstname']) | 
+         (new_remaining['firstname_jw_distance'] >=0.9) ) & 
+    (new_remaining['lastname_jw_distance'] >=0.95) & 
+    (new_remaining['shared_titles_flag'] == 1) & 
+     (new_remaining['lastname_count_id1'] <= 50) & 
+    (new_remaining['lastname_count_id2'] <= 50)))]
+
+
+    return final_remaining, dropped
 
 
 def update_confirmed_from_dropped(G, cleaned_dropped, contact_count_dict):
