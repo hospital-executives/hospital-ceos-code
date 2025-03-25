@@ -47,8 +47,6 @@ else:
 
 # install packages
 required_path = os.path.join(code_dir, "helper_scripts/py_requirements.txt")
-print(f"PATH: {required_path}")
-
 with open(required_path, 'r') as f:
     required = {pkg.strip() for pkg in f if pkg.strip() and not pkg.startswith('#')}
 
