@@ -165,5 +165,5 @@ for col in object_columns:
     final_df[col] = final_df[col].apply(convert_to_str_or_none)
 
 final_df.to_feather(final_himss_path)
-# final_dta = final_df[final_df['confirmed']]
-# final_dta.to_stata(final_confirmed_path, write_index=False, version=118)
+final_dta = final_df[final_df['confirmed']]
+final_dta.to_stata(final_confirmed_path, write_index=False, version=118)
