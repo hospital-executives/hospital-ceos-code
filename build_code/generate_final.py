@@ -5,7 +5,7 @@ import pandas as pd
 import re
 from datetime import datetime
 
-user_path = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data"
+user_path = "/Users/maggieshi/Dropbox/hospital_ceos/_data"
 current_date = datetime.now().strftime("%m-%d")
 
 #### SET VARIABLES ####
@@ -19,12 +19,11 @@ if len(sys.argv) == 7:
 
 else: 
     print('WARNING: not using Makefile inputs')
-    confirmed_path =  os.path.join(user_path, "derived/py_confirmed.csv")
-    remainder_path =  os.path.join(user_path, "derived/py_remaining.csv")
-    json_path =  os.path.join(user_path, "derived/py_graph_components.json")
+    confirmed_path =  os.path.join(user_path, "derived/auxiliary/py_confirmed.csv")
+    remainder_path =  os.path.join(user_path, "derived/auxiliary/py_remaining.csv")
+    json_path =  os.path.join(user_path, "derived/auxiliary/py_graph_components.json")
     final_himss_path = os.path.join(user_path, "derived/final_himss.feather")
-    final_confirmed_path = os.path.join(user_path, "derived", 
-                                        f"final_confirmed_{current_date}.dta")
+    final_confirmed_path = os.path.join(user_path, "derived/final_confirmed.dta")
     himss_path = os.path.join(user_path, 
     "derived/himss_entities_contacts_0517_v1.feather")
 
@@ -165,5 +164,25 @@ for col in object_columns:
     final_df[col] = final_df[col].apply(convert_to_str_or_none)
 
 final_df.to_feather(final_himss_path)
-# final_dta = final_df[final_df['confirmed']]
-# final_dta.to_stata(final_confirmed_path, write_index=False, version=118)
+final_dta = final_df[final_df['confirmed']]
+final_dta.to_stata(final_confirmed_path, write_index=False, version=118)
+
+
+######
+# CHATGPT SOLUTION BELOW
+######
+
+import shutil
+
+# Save to a local temp file
+temp_path = "/Users/maggieshi/Desktop/final_himss.feather"
+final_df.to_feather(temp_path)
+
+# Then move to Dropbox
+shutil.move(temp_path, final_himss_path)
+
+# doing the same thing witwh dta here, but 
+final_dta = final_df[final_df['confirmed']]
+final_dta.to_stata("/Users/maggieshi/Desktop/final_himss.dta", write_index=False, version=118)
+
+shutil.move("/Users/maggieshi/Desktop/final_himss.dta", final_confirmed_path)

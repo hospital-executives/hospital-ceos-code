@@ -1,0 +1,247 @@
+---
+title: "Generate Sample"
+output: html_document
+date: "2025-03-17"
+params:
+  code_dir: "None" # #to make compatible with R file
+  code_path: "None"  # Add this line
+  data_path: "None"  # Add this line
+---
+This RMD generates the sample 
+
+```{r set sample characteristics}
+selected_seed <- NA
+sample_dict <- list(
+  "CEO:  Chief Executive Officer" = 2,
+  "COO:  Chief Operating Officer" = 3,
+  "CFO:  Chief Financial Officer" = 1,
+  "CIO:  Chief Information Officer" = 2,
+  "Chief Medical Officer" = 2,
+  "Chief Nursing Head" = 4,
+  "Chief Compliance Officer" = 1,
+  "Chief Experience/Patient Engagement Officer" = 0,
+  "Marketing Head" = 0
+)
+```
+
+
+```{r setup}
+get_script_directory <- function() {
+  # Check if rstudioapi is available and RStudio is running
+  if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
+    # Running in RStudio
+    script_directory <- dirname(rstudioapi::getActiveDocumentContext()$path)
+  } else {
+    # Not running in RStudio, try to get the script path via commandArgs
+    cmdArgs <- commandArgs(trailingOnly = FALSE)
+    fileArgName <- "--file="
+    scriptPath <- NULL
+    for (arg in cmdArgs) {
+      if (startsWith(arg, fileArgName)) {
+        scriptPath <- substring(arg, nchar(fileArgName) + 1)
+        break
+      }
+    }
+    if (!is.null(scriptPath)) {
+      script_directory <- dirname(normalizePath(scriptPath))
+    } else {
+      # Cannot determine script directory
+      stop("Cannot determine the script directory.")
+    }
+  }
+  
+  return(dirname(script_directory))
+}
+
+# Get the script directory
+script_directory <- get_script_directory()
+config_path <- file.path(script_directory, "config.R")
+
+# Check if config.R exists
+if (!file.exists(config_path)) {
+  stop("config.R not found at path: ", config_path)
+}
+
+# Source the config file
+source(config_path)
+
+# Define code_path and data_path using variables from config.R
+code_path <- if (params$code_path != "None") params$code_path else code_directory
+data_path <- if (params$data_path != "None") params$data_path else derived_data
+
+# Clean up
+rm(config_path)
+```
+
+```{r load data}
+df <- read_dta(paste0(derived_data, '/archive_2_13/final_confirmed_01-26.dta'))
+```
+
+```{r format data}
+check_titles <-  function(df, sample_dict) {
+  # Get unique titles from the data
+  available_titles <- unique(df$title_standardized)
+
+  # Check if any title in sample_dict is not in df$title
+  invalid_titles <- setdiff(names(sample_dict), available_titles)
+
+  # Raise an error if invalid titles exist
+  if (length(invalid_titles) > 0) {
+    stop(paste("Error: The following titles are not present in the dataset:", paste(invalid_titles, collapse = ", ")))
+  }}
+
+check_titles(df, sample_dict)
+
+valid_titles <- names(sample_dict)[sample_dict > 0]
+
+# create title indicators
+df_indicators <- df %>%
+  mutate(value = 1) %>%
+  distinct(contact_uniqueid, title_standardized, .keep_all = TRUE) %>%
+  pivot_wider(names_from = title_standardized, 
+              values_from = value, values_fill = 0) %>%
+  rename_with(~ paste0("has_", .), -contact_uniqueid) %>%
+  select(contact_uniqueid, all_of(paste0("has_", valid_titles))) %>%
+   group_by(contact_uniqueid) %>%
+  summarise(across(starts_with("has_"), max))
+```
+
+```{r generate sample}
+
+sample_ids_by_title <- function(df, sample_dict, seed = selected_seed) {
+  seed_to_use <- ifelse(is.na(selected_seed), 42, selected_seed)
+  set.seed(seed_to_use)
+  
+  sampled_ids <- list()
+  used_ids <- c()  # Track already sampled IDs
+  
+  for (title in valid_titles) {
+    col_name <- paste0("has_", title)  # Corresponding column in df
+    
+    # Get IDs where the indicator is 1 and not already used
+    eligible_ids <- setdiff(df$contact_uniqueid[df[[col_name]] == 1], used_ids)
+    
+    # Sample without replacement, ensuring unique selection
+    sample_size <- min(length(eligible_ids), sample_dict[[title]])
+    
+    if (sample_size > 0) {
+      sampled <- sample(eligible_ids, sample_size, replace = FALSE)
+      sampled_ids[[title]] <- sampled
+      used_ids <- c(used_ids, sampled)  # Add sampled IDs to exclusion list
+    } else {
+      sampled_ids[[title]] <- c()  # Empty if no valid IDs left
+    }
+  }
+  
+  return(sampled_ids)
+}
+
+# Apply the sampling function
+sampled_results <- sample_ids_by_title(df_indicators, sample_dict)
+
+```
+
+```{r make csvs}
+extract_sampled_data <- function(df, sampled_results) {
+  sampled_dfs <- list()
+  
+  for (title in names(sampled_results)) {
+    sampled_ids <- sampled_results[[title]]
+    
+    # Filter the original dataset for the sampled IDs
+    sampled_dfs[[title]] <- df %>%
+      filter(contact_uniqueid %in% sampled_ids) %>%
+      select(contact_uniqueid,firstname,lastname, year, title_standardized, title, entity_name, entity_state)
+  }
+  
+  return(sampled_dfs)
+}
+
+# Apply function
+sampled_dataframes <- extract_sampled_data(df, sampled_results)
+
+```
+
+```{r fill missing years and format for export}
+years <- unique(df$year)
+
+
+# Function to fill missing years and add `is_imputed` column
+fill_missing_years <- function(sub_df, years) {
+  complete_data <- list()
+  
+  for (id in unique(sub_df$contact_uniqueid)) {
+    id_data <- sub_df %>% filter(contact_uniqueid == id)
+
+    # Initialize `is_imputed` for original rows
+    id_data <- id_data %>% mutate(missing_himss = 0)  # Original data gets `0`
+
+    # Get first available firstname/lastname
+    first_firstname <- id_data$firstname[1]
+    first_lastname <- id_data$lastname[1]
+    
+    # Identify missing years for this ID
+    existing_years <- id_data$year
+    missing_years <- setdiff(years, existing_years)
+    
+    # Create missing rows with first available firstname/lastname, filling other columns with NA
+    if (length(missing_years) > 0) {
+      missing_rows <- data.frame(
+        contact_uniqueid = id,
+        year = missing_years,
+        firstname = first_firstname,
+        lastname = first_lastname,
+        missing_himss = 1  # Mark as imputed
+      )
+      
+      # Add NA for other columns
+      other_cols <- setdiff(names(sub_df), c("contact_uniqueid", "year", "firstname", "lastname", "missing_himss"))
+      missing_rows[other_cols] <- NA
+      
+      # Combine existing and missing data
+      id_data <- bind_rows(id_data, missing_rows)
+    }
+    
+    complete_data[[as.character(id)]] <- id_data
+  }
+  
+  # Return combined data frame sorted by ID and Year
+  return(bind_rows(complete_data) %>% arrange(contact_uniqueid, year))
+}
+
+# Apply to each subset in sampled_dataframes
+sampled_dataframes_filled <- lapply(sampled_dataframes, fill_missing_years, years = years)
+
+# add columns to be filled out
+new_columns <- c("confirm_position", "confirm_hospital", 
+                 "updated_position", "updated_hospital", "source")
+
+# Function to add NA columns to each dataframe
+add_na_columns <- function(df, column_names) {
+  # Use mutate to create new columns filled with NA
+  df <- df %>%
+    mutate(!!!setNames(rep(list(NA), length(column_names)), column_names))
+  
+  return(df)
+}
+
+# Apply function to all sampled_dataframes_filled
+sampled_dataframes_filled <- lapply(sampled_dataframes_filled, add_na_columns, column_names = new_columns)
+
+```
+
+```{r export to excel}
+output_file <- "/himss_check.xlsx"
+
+clean_sheet_name <- function(name) {
+  name <- str_replace_all(name, "[:\\[\\]\\*\\?/\\\\]", "")  # Remove invalid characters
+  name <- str_trim(name)  # Trim leading/trailing spaces
+  return(name)
+}
+
+# Clean names in the list
+names(sampled_dataframes_filled) <- sapply(names(sampled_dataframes_filled), clean_sheet_name)
+
+write_xlsx(sampled_dataframes_filled, path = paste0(data_path, output_file))
+```
+
