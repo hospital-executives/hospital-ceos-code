@@ -4,8 +4,9 @@ import json
 import pandas as pd
 import re
 from datetime import datetime
+import shutil
 
-user_path = "/Users/maggieshi/Dropbox/hospital_ceos/_data"
+user_path = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data"
 current_date = datetime.now().strftime("%m-%d")
 
 #### SET VARIABLES ####
@@ -163,26 +164,16 @@ object_columns = final_df.select_dtypes(include=['object']).columns.tolist()
 for col in object_columns:
     final_df[col] = final_df[col].apply(convert_to_str_or_none)
 
-final_df.to_feather(final_himss_path)
+# Save dfs
+desktop_himss_path = os.path.expanduser("~/Desktop/final_himss.feather")
+desktop_dta_path = os.path.expanduser("~/Desktop/final_himss.dta")
+
+# save feather to desktop then move to dropbox
+final_df.to_feather(desktop_himss_path)
+shutil.move(desktop_himss_path, final_himss_path)
+
+# save dta to desktop then move to dropbox
 final_dta = final_df[final_df['confirmed']]
-final_dta.to_stata(final_confirmed_path, write_index=False, version=118)
+final_dta.to_stata(desktop_dta_path, write_index=False, version=118)
+shutil.move(desktop_dta_path, final_confirmed_path)
 
-
-######
-# CHATGPT SOLUTION BELOW
-######
-
-import shutil
-
-# Save to a local temp file
-temp_path = "/Users/maggieshi/Desktop/final_himss.feather"
-final_df.to_feather(temp_path)
-
-# Then move to Dropbox
-shutil.move(temp_path, final_himss_path)
-
-# doing the same thing witwh dta here, but 
-final_dta = final_df[final_df['confirmed']]
-final_dta.to_stata("/Users/maggieshi/Desktop/final_himss.dta", write_index=False, version=118)
-
-shutil.move("/Users/maggieshi/Desktop/final_himss.dta", final_confirmed_path)
