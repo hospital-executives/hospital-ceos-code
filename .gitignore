@@ -4,3 +4,4 @@ config_stata.do
 build_code/.DS_Store
 *.html
 __pycache__/
+**/.Rhistory
