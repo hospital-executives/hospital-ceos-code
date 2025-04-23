@@ -1,5 +1,5 @@
 ###########
-# Exploratory analysis: identifying hospital CEO moves
+# Exploratory analysis: identifying hospital CEO promotions
 # Author: Maggie Shi
 # Last edited: 4/3/2025
 ###########
@@ -8,127 +8,304 @@ library(dplyr)
 library(stringr)
 library(haven)
 library(purrr)
+library(feather)
+library(tidyr)
+library(knitr)
 
 # Load data
-df <- read_dta("/Users/mengdishi/Dropbox/hospital_ceos/_data/derived/final_confirmed.dta")  
+df <- read_dta("/Users/maggieshi/Dropbox/hospital_ceos/_data/derived/final_confirmed.dta")  
+#df_feather <- read_feather("/Users/maggieshi/Dropbox/hospital_ceos/_data/derived/final_himss.feather")
 
 # Sort 
 df <- df %>%
   arrange(contact_uniqueid, year)
 
-# Create variables
+# Create key indicators:
+# - CEO flag
+# - Whether entity is a hospital
+# - Whether individual is CEO at a hospital
+# - Whether individual is in the hospital C-suite
+# - Whether individual has MD credentials
 df <- df %>%
   mutate(
     CEO = str_detect(title_standardized, "CEO:"),
     hospital = entity_type %in% c("Hospital", "Single Hospital Health System"),
-    hospital_CEO = CEO & hospital
+    hospital_CEO = CEO & hospital,
+    hospital_c_suite = c_suite & hospital,
+    md = str_detect(credentials, "MD")
   ) %>%
   group_by(contact_uniqueid) %>%
   mutate(
-    ever_hospital_CEO = any(hospital_CEO)
+    ever_hospital_CEO = any(hospital_CEO), 
+    ever_hospital_csuite = any(c_suite), 
+    ever_MD = any(md)
   ) %>%
   ungroup()
 
 # Filter to individuals who have ever been a CEO
+# remove "CIO Reports to" as a role
 df <- df %>%
-  filter(ever_hospital_CEO)
+  filter(ever_hospital_CEO & title_standardized != "CIO Reports to")
+
 
 ###########
-# Identify across-location moves
-# Defined as: 
-# 1. being observed in an entity in year t that you have *never* been observed in before
-# 2. there is no overlap between the entities in year t and the entities in t -1
+# STEP 1: Identify *first-time* CEO promotions 
+# Definition: first year a person is observed with CEO title
 ###########
 
-# Aggregate locations per contact-year
-df_loc <- df %>%
+# Create a dataset with one row per person-year, listing all titles
+roles_by_year <- df %>%
   group_by(contact_uniqueid, year) %>%
-  summarize(locations = list(unique(entity_uniqueid)), .groups = "drop") %>%
+  summarize(roles_this_year = list(unique(title_standardized)), .groups = "drop") %>%
   arrange(contact_uniqueid, year)
 
-# For each contact ID x year, collect list of all locations in the previous year as well as all prior locations 
-df_loc <- df_loc %>%
-  mutate(locations = map(locations, as.character)) %>%
+# For each person, identify their role history
+# - roles_prev_year = roles held in previous year
+# - roles_all_prior = all roles in prior years (cumulative)
+# - roles_gained = newly acquired roles this year
+# - roles_lost = roles dropped this year
+roles_by_year <- roles_by_year %>%
+  mutate(roles_this_year = map(roles_this_year, as.character)) %>%
   group_by(contact_uniqueid) %>%
   mutate(
-    prev_year_locations = lag(locations),
-    all_prior_locations = lag(accumulate(locations, union) %>% map(identity))
+    roles_prev_year = lag(roles_this_year),
+    roles_all_prior = lag(accumulate(roles_this_year, union) %>% map(identity)),
+    roles_gained = map2(roles_this_year, roles_prev_year, ~ setdiff(.x, .y)),
+    roles_lost   = map2(roles_prev_year, roles_this_year, ~ setdiff(.x, .y))
   ) %>%
   ungroup()
 
-#  Flag year-to-year moves
-df_loc <- df_loc %>%
+# Create an indicator for first-time CEO promotion
+# This occurs if the person gains the CEO role in a year that is not their first observation
+roles_by_year <- roles_by_year %>%
+  group_by(contact_uniqueid) %>%
+  arrange(year, .by_group = TRUE) %>%
+  mutate(gained_ceo = map_lgl(
+    roles_gained,
+    ~ "CEO:  Chief Executive Officer" %in% .x 
+  ) 
+  & row_number() != 1)
+
+###########
+# STEP 2: Distinguish between internal vs. external promotions to CEO
+# first, subset to CEO promotions that occur in year t
+# then define internal vs. external promotion:
+  # Internal: I am CEO at hospital A in year t and I was at hospital A in year t-1.
+  # External: I am CEO at hospital B in year t and I was not at hospital B in year t-1.
+
+# the _consec definition restricts moves defined by cases where we have observations in 2 consecutive years. the other definition does not make this restriction and just compares to the most recent year
+###########
+# Get all entities person worked at in a year (any role)
+all_entities_by_year <- df %>%
+  mutate(entity_uniqueid = as.character(entity_uniqueid)) %>%
+  group_by(contact_uniqueid, year) %>%
+  summarize(entities = list(unique(entity_uniqueid)), .groups = "drop")
+
+
+# Get CEO entities 
+ceo_entities_by_year <- df %>%
+  filter(title_standardized == "CEO:  Chief Executive Officer") %>%
+  mutate(entity_uniqueid = as.character(entity_uniqueid)) %>%
+  group_by(contact_uniqueid, year) %>%
+  summarize(ceo_entities = list(unique(entity_uniqueid)), .groups = "drop")
+
+
+# Join both sets of entities to roles_by_year and compute promotion type
+roles_by_year <- roles_by_year %>%
+  left_join(all_entities_by_year, by = c("contact_uniqueid", "year")) %>%
+  left_join(ceo_entities_by_year, by = c("contact_uniqueid", "year")) %>%
+  group_by(contact_uniqueid) %>%
+  arrange(year, .by_group = TRUE) %>%
   mutate(
-    move_year_to_year = pmap_lgl(
-      list(locations, prev_year_locations, all_prior_locations),
-      function(curr, prev, hist) {
-        if (is.null(prev) || is.null(hist)) {
-          return(FALSE)
-        }
-        all(!curr %in% hist) && length(intersect(curr, prev)) == 0
-      }
+    # Coerce everything to list-columns of character
+    entities = map(entities, ~ if (is.null(.x)) character(0) else as.character(.x)),
+    ceo_entities = map(ceo_entities, ~ if (is.null(.x)) character(0) else as.character(.x)),
+    
+    year_prev = lag(year),
+    entities_prev = lag(entities),
+    # FIXED: ensure accumulate returns a proper list-column
+    entities_prior_all = lag(accumulate(entities, union) %>% map(identity)), 
+    entities_prev = map(entities_prev, ~ if (is.null(.x)) character(0) else .x),
+    entities_prior_all = map(entities_prior_all, ~ if (is.null(.x)) character(0) else .x),
+    
+    # Definition 1: t-1 only
+    promotion_type_consec = case_when(
+      gained_ceo & year_prev == year - 1 & map2_lgl(ceo_entities, entities_prev, ~ any(.x %in% .y)) ~ "internal",
+      gained_ceo & year_prev == year - 1 & map2_lgl(ceo_entities, entities_prev, ~ !any(.x %in% .y)) ~ "external",
+      gained_ceo & year_prev != year - 1 ~ "missing year",
+      TRUE ~ NA_character_
+    ),
+    # Definition 2: any prior year
+    promotion_type = case_when(
+      gained_ceo  & map2_lgl(ceo_entities, entities_prev, ~ any(.x %in% .y)) ~ "internal",
+      gained_ceo  & map2_lgl(ceo_entities, entities_prev, ~ !any(.x %in% .y)) ~ "external",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  ungroup()
+
+
+# Tabulate each separately
+roles_by_year %>% filter(!is.na(promotion_type_consec)) %>% count(promotion_type_consec)
+roles_by_year %>% filter(!is.na(promotion_type)) %>% count(promotion_type)
+
+# Cross-tab to compare
+roles_by_year %>%
+  filter(!is.na(promotion_type_consec), !is.na(promotion_type)) %>%
+  count(promotion_type_consec, promotion_type)
+
+### What are the most common roles to be transitioning from?
+# internal promotion
+roles_by_year %>%
+  filter(gained_ceo & promotion_type == "internal") %>%
+  select( roles_prev_year) %>%
+  unnest(roles_prev_year) %>%
+  count(roles_prev_year, sort = TRUE)
+
+# external
+roles_by_year %>%
+  filter(gained_ceo & promotion_type == "external") %>%
+  select( roles_prev_year) %>%
+  unnest(roles_prev_year) %>%
+  count(roles_prev_year, sort = TRUE)
+
+
+###########
+# STEP 3: Identify CEO *moves* after initial promotion
+# Only for people who were already a CEO (not first time)
+# Classify move types:
+# - internal: new CEO role at previously worked (non-CEO) hospital
+# - lateral: new CEO role at new hospital, but keep existing CEO role
+# - external: drop old CEO role(s), become CEO at brand new hospital
+
+# the _consec definition restricts moves defined by cases where we have observations in 2 consecutive years. the other definition does not make this restriction and just compares to the most recent year
+###########
+
+roles_by_year <- roles_by_year %>%
+  group_by(contact_uniqueid) %>%
+  arrange(year, .by_group = TRUE) %>%
+  mutate(
+    row_in_person = row_number(),
+    
+    ceo_entities = map(ceo_entities, ~ if (is.null(.x)) character(0) else as.character(.x)),
+    entities = map(entities, ~ if (is.null(.x)) character(0) else as.character(.x)),
+    ceo_entities_prev = lag(ceo_entities),
+    entities_prev = lag(entities),
+    year_prev = lag(year),
+    
+    added_ceo_entities = map2(ceo_entities, ceo_entities_prev, ~ setdiff(.x, .y)),
+    
+    ceo_last_year = map_lgl(ceo_entities_prev, ~ length(.x) > 0),
+    ceo_this_year = map_lgl(ceo_entities, ~ length(.x) > 0)
+  )
+
+roles_by_year <- roles_by_year %>%
+  mutate(
+    move_type = case_when(
+      row_in_person > 1 & ceo_this_year & !gained_ceo & ceo_last_year &
+        map_lgl(added_ceo_entities, ~ length(.x) > 0) &  # must have added new CEO entities
+        map2_lgl(added_ceo_entities, entities_prev, ~ all(!.x %in% .y)) &
+        map2_lgl(ceo_entities, ceo_entities_prev, ~ !any(.x %in% .y)) ~ "external",
+      
+      row_in_person > 1 & ceo_this_year & !gained_ceo & ceo_last_year  &
+        map_lgl(added_ceo_entities, ~ length(.x) > 0) &
+        map2_lgl(added_ceo_entities, entities_prev, ~ all(.x %in% .y)) ~ "internal",
+      
+      row_in_person > 1 & ceo_this_year & !gained_ceo & ceo_last_year &
+        map_lgl(added_ceo_entities, ~ length(.x) > 0) &
+        map2_lgl(added_ceo_entities, entities_prev, ~ any(!.x %in% .y)) &
+        map2_lgl(ceo_entities, ceo_entities_prev, ~ any(.x %in% .y)) ~ "lateral",
+      
+      TRUE ~ NA_character_
+    ),
+    move_type_consec = case_when(
+      row_in_person > 1 & ceo_this_year & !gained_ceo & ceo_last_year & year_prev == year - 1 &
+        map_lgl(added_ceo_entities, ~ length(.x) > 0) &  # must have added new CEO entities
+        map2_lgl(added_ceo_entities, entities_prev, ~ all(!.x %in% .y)) &
+        map2_lgl(ceo_entities, ceo_entities_prev, ~ !any(.x %in% .y)) ~ "external",
+      
+      row_in_person > 1 & ceo_this_year & !gained_ceo & ceo_last_year & year_prev == year - 1 &
+        map_lgl(added_ceo_entities, ~ length(.x) > 0) &
+        map2_lgl(added_ceo_entities, entities_prev, ~ all(.x %in% .y)) ~ "internal",
+      
+      row_in_person > 1 & ceo_this_year & !gained_ceo & ceo_last_year & year_prev == year - 1 &
+        map_lgl(added_ceo_entities, ~ length(.x) > 0) &
+        map2_lgl(added_ceo_entities, entities_prev, ~ any(!.x %in% .y)) &
+        map2_lgl(ceo_entities, ceo_entities_prev, ~ any(.x %in% .y)) ~ "lateral",
+      
+      TRUE ~ NA_character_
     )
   )
 
-#  Merge back in 
-df_with_move_flag <- df %>%
-  left_join(df_loc %>% select(contact_uniqueid, year, move_year_to_year),
-            by = c("contact_uniqueid", "year"))
+### Tabulate types of moves
+roles_by_year %>%
+  filter(!is.na(move_type)) %>%
+  count(move_type)
 
-
-# Identify IDs who ever had a move
-movers <- df_with_move_flag %>%
-  group_by(contact_uniqueid) %>%
-  summarize(ever_moved = any(move_year_to_year, na.rm = TRUE)) %>%
-  filter(ever_moved) %>%
-  pull(contact_uniqueid)
-
-# Subset original data to just those individuals
-df_movers <- df_with_move_flag %>%
-  filter(contact_uniqueid %in% movers)
+roles_by_year %>%
+  filter(!is.na(move_type_consec)) %>%
+  count(move_type_consec)
 
 ###########
-# Among the movers, characterize what roles they gained vs. last relative to the previous year 
+# STEP 4: combine moves and promotions together and create summary stats table with definitions.
 ###########
-
-
-  # Step 2: Create a dataset with one row per person-year, listing all titles
-  roles_by_year <- df_movers %>%
-    group_by(contact_uniqueid, year) %>%
-    summarize(roles_this_year = list(unique(title_standardized)), .groups = "drop") %>%
-    arrange(contact_uniqueid, year)
-  
-  # Step 3: For each person, create lagged and cumulative role lists
-  roles_by_year <- roles_by_year %>%
-    mutate(roles_this_year = map(roles_this_year, as.character)) %>%
-    group_by(contact_uniqueid) %>%
-    mutate(
-      roles_prev_year = lag(roles_this_year),
-      roles_all_prior = lag(accumulate(roles_this_year, union) %>% map(identity)),
-      roles_gained = map2(roles_this_year, roles_prev_year, ~ setdiff(.x, .y)),
-      roles_lost   = map2(roles_prev_year, roles_this_year, ~ setdiff(.x, .y))
-    ) %>%
-    ungroup()
-
-# merge the roles back in
-df_movers <- df_movers %>%
-  left_join(roles_by_year, by = c("contact_uniqueid", "year"))
-
-# create variable for CEO across-entity move AND the person gained the CEO role
-df_movers <- df_movers %>%
-  mutate(ceo_promotion_in_move = move_year_to_year & map_lgl(
-    roles_gained,
-    ~ "CEO:  Chief Executive Officer" %in% .x
+roles_by_year <- roles_by_year %>%
+  mutate(
+    career_transition_type = case_when(
+      gained_ceo & promotion_type == "internal" ~ "internal promotion",
+      gained_ceo & promotion_type == "external" ~ "external promotion",
+      !gained_ceo & move_type == "internal" ~ "internal move",
+      !gained_ceo & move_type == "lateral" ~ "lateral move",
+      !gained_ceo & move_type == "external" ~ "external move",
+      TRUE ~ NA_character_
+    )
   )
-)
-
-## Observation:
-# sometimes an individual is listed as the CEO in the free-text title ("title") but not in "title_standardized." We will need to fix this
 
 
+summary_tab <- roles_by_year %>%
+  filter(!is.na(career_transition_type)) %>%
+  group_by(career_transition_type) %>%
+  summarize(
+    n_transitions = n(),
+    n_individuals = n_distinct(contact_uniqueid),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    total_ceos = n_distinct(roles_by_year$contact_uniqueid),
+    share_of_ceos = n_individuals / total_ceos,
+    
+    definition = case_when(
+      career_transition_type == "internal promotion" ~ "First time becoming CEO at a hospital previously worked at (non-CEO)",
+      career_transition_type == "external promotion" ~ "First time becoming CEO at a hospital never worked at before",
+      career_transition_type == "internal move" ~ "Already CEO; add CEO role at a hospital previously worked at (non-CEO)",
+      career_transition_type == "lateral move" ~ "Already CEO; add CEO role at a hospital never worked at before",
+      career_transition_type == "external move" ~ "Drop previous CEO roles; become CEO at a hospital never worked at before"
+    ),
+    
+    example = case_when(
+      career_transition_type == "internal promotion" ~ "Year t−1: CFO at Hospital B → Year t: CEO at Hospital B",
+      career_transition_type == "external promotion" ~ "Year t−1: No role at Hospital B → Year t: CEO at Hospital B",
+      career_transition_type == "internal move" ~ "Year t−1: CEO at Hospital A, CFO at Hospital B → Year t: CEO at A and B",
+      career_transition_type == "lateral move" ~ "Year t−1: CEO at Hospital A → Year t: CEO at A and B",
+      career_transition_type == "external move" ~ "Year t−1: CEO at Hospital A → Year t: CEO at Hospital B (no longer CEO at A)"
+    ),
+    
+    career_transition_type = factor(
+      career_transition_type,
+      levels = c("internal promotion", "external promotion",
+                 "internal move", "lateral move", "external move")
+    )
+  ) %>%
+  arrange(career_transition_type) %>%
+  select(
+    career_transition_type,
+    definition,
+    example,
+    n_transitions,
+    n_individuals,
+    share_of_ceos
+  )
 
-View(df_movers %>%
-  select(contact_uniqueid, firstname, lastname, year, entity_uniqueid, entity_name, entity_type, title_standardized, title, move_year_to_year, roles_gained, roles_lost, ceo_promotion_in_move) %>%
-  arrange(contact_uniqueid, year))
 
 
+kable(summary_tab, format = "markdown")
