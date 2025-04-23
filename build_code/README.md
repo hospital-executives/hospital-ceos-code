@@ -9,6 +9,8 @@ in the RCC
 2) final_confirmed.dta, from which Maggie and Ambar can conduct their data
 analysis
 
+final_himss.feather contains all valid (i.e., U.S. entities, non-missing individual names) observations from the initial HIMSS data. final_confirmed.dta contains only the observations for which we each contact_uniqueid in the dataset is a 1:1 match.
+
 This folder contains two subfolders:
 1) helper-scripts, which contains all helper files necessary to generate the
 aforementioned files
