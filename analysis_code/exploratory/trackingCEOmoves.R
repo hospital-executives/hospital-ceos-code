@@ -1,7 +1,7 @@
 ###########
 # Exploratory analysis: identifying hospital CEO promotions
 # Author: Maggie Shi
-# Last edited: 4/3/2025
+# Last edited: 4/25/2025
 ###########
 
 library(dplyr)
@@ -11,10 +11,16 @@ library(purrr)
 library(feather)
 library(tidyr)
 library(knitr)
+library(data.table)
 
 # Load data
-df <- read_dta("/Users/maggieshi/Dropbox/hospital_ceos/_data/derived/final_confirmed.dta")  
-#df_feather <- read_feather("/Users/maggieshi/Dropbox/hospital_ceos/_data/derived/final_himss.feather")
+dropbox_base <- switch(
+  Sys.info()[["user"]],
+  "maggieshi" = "/Users/maggieshi/Dropbox",
+  "mengdishi" = "/Users/mengdishi/Dropbox",
+  stop("Unrecognized user")
+)
+df <- read_dta(file.path(dropbox_base, "hospital_ceos/_data/derived/final_confirmed.dta"))
 
 # Sort 
 df <- df %>%
@@ -26,33 +32,53 @@ df <- df %>%
 # - Whether individual is CEO at a hospital
 # - Whether individual is in the hospital C-suite
 # - Whether individual has MD credentials
-df <- df %>%
-  mutate(
-    CEO = str_detect(title_standardized, "CEO:"),
-    hospital = entity_type %in% c("Hospital", "Single Hospital Health System"),
-    hospital_CEO = CEO & hospital,
-    hospital_c_suite = c_suite & hospital,
-    md = str_detect(credentials, "MD")
-  ) %>%
-  group_by(contact_uniqueid) %>%
-  mutate(
-    ever_hospital_CEO = any(hospital_CEO), 
-    ever_hospital_csuite = any(c_suite), 
-    ever_MD = any(md)
-  ) %>%
-  ungroup()
+df <- df %>% mutate(
+  CEO = str_detect(title_standardized, "CEO:"),
+  hospital = entity_type %in% c("Hospital", "Single Hospital Health System"), 
+  hospital_CEO = CEO & hospital,
+  hospital_c_suite = c_suite & hospital,
+  md = str_detect(credentials, "MD")
+)
+# Convert to data.table so that collapse can run faster 
+setDT(df)
+
+# Ensure the relevant variables are logical
+df[, hospital_CEO := hospital_CEO == 1]
+df[, c_suite := c_suite == 1]
+df[, md := md == 1]
+
+# Compute ever_* flags by group
+df[, `:=`(
+  ever_hospital_CEO = any(hospital_CEO),
+  ever_hospital_csuite = any(c_suite),
+  ever_MD = any(md)
+), by = contact_uniqueid]
+
 
 # Filter to individuals who have ever been a CEO
 # remove "CIO Reports to" as a role
 df <- df %>%
   filter(ever_hospital_CEO & title_standardized != "CIO Reports to")
 
+# convert back to tibble so we can use dplyr
+df <- as_tibble(df)
+
+# # create combined system ID, since entity_parentid is missing for single hospital systems and IDS/RHA
+#   # entity_parentid is only missing in IDS/RHA and Single Hospital Health Systems
+#   df %>%
+#     filter(is.na(system_id)) %>%
+#     count(entity_type)
+# 
+# df <- df %>%
+#   mutate(
+#     combined_parentid = if_else(!is.na(entity_parentid), entity_parentid, entity_uniqueid)
+#   )
+# 
 
 ###########
 # STEP 1: Identify *first-time* CEO promotions 
 # Definition: first year a person is observed with CEO title
 ###########
-
 # Create a dataset with one row per person-year, listing all titles
 roles_by_year <- df %>%
   group_by(contact_uniqueid, year) %>%
@@ -90,7 +116,7 @@ roles_by_year <- roles_by_year %>%
 # STEP 2: Distinguish between internal vs. external promotions to CEO
 # first, subset to CEO promotions that occur in year t
 # then define internal vs. external promotion:
-  # Internal: I am CEO at hospital A in year t and I was at hospital A in year t-1.
+  # Internal: I am CEO at hospital A in year t and I was at hospital A in year t-1 (not as CEO)
   # External: I am CEO at hospital B in year t and I was not at hospital B in year t-1.
 
 # the _consec definition restricts moves defined by cases where we have observations in 2 consecutive years. the other definition does not make this restriction and just compares to the most recent year
@@ -247,7 +273,7 @@ roles_by_year %>%
   count(move_type_consec)
 
 ###########
-# STEP 4: combine moves and promotions together and create summary stats table with definitions.
+# STEP 4: combine moves and promotions together 
 ###########
 roles_by_year <- roles_by_year %>%
   mutate(
@@ -261,7 +287,22 @@ roles_by_year <- roles_by_year %>%
     )
   )
 
+roles_by_year <- roles_by_year %>%
+  mutate(
+    career_transition_type_consec = case_when(
+      gained_ceo & promotion_type_consec == "internal" ~ "internal promotion",
+      gained_ceo & promotion_type_consec == "external" ~ "external promotion",
+      !gained_ceo & move_type_consec == "internal" ~ "internal move",
+      !gained_ceo & move_type_consec == "lateral" ~ "lateral move",
+      !gained_ceo & move_type_consec == "external" ~ "external move",
+      TRUE ~ NA_character_
+    )
+  )
 
+###########
+# STEP 5: create summary stats tables 
+###########
+# summarize total number of moves and promotions (allowing for non-consec years)
 summary_tab <- roles_by_year %>%
   filter(!is.na(career_transition_type)) %>%
   group_by(career_transition_type) %>%
@@ -307,5 +348,53 @@ summary_tab <- roles_by_year %>%
   )
 
 
-
 kable(summary_tab, format = "markdown")
+
+# summarize total number of moves and promotions (restricting only to moves/promotions observed in consecutive years)
+summary_tab_consec <- roles_by_year %>%
+  filter(!is.na(career_transition_type_consec)) %>%
+  group_by(career_transition_type_consec) %>%
+  summarize(
+    n_transitions = n(),
+    n_individuals = n_distinct(contact_uniqueid),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    total_ceos = n_distinct(roles_by_year$contact_uniqueid),
+    share_of_ceos = n_individuals / total_ceos,
+    
+    definition = case_when(
+      career_transition_type_consec == "internal promotion" ~ "First time becoming CEO at a hospital previously worked at (non-CEO)",
+      career_transition_type_consec == "external promotion" ~ "First time becoming CEO at a hospital never worked at before",
+      career_transition_type_consec == "internal move" ~ "Already CEO; add CEO role at a hospital previously worked at (non-CEO)",
+      career_transition_type_consec == "lateral move" ~ "Already CEO; add CEO role at a hospital never worked at before",
+      career_transition_type_consec == "external move" ~ "Drop previous CEO roles; become CEO at a hospital never worked at before"
+    ),
+    
+    example = case_when(
+      career_transition_type_consec == "internal promotion" ~ "Year t−1: CFO at Hospital B → Year t: CEO at Hospital B",
+      career_transition_type_consec == "external promotion" ~ "Year t−1: No role at Hospital B → Year t: CEO at Hospital B",
+      career_transition_type_consec == "internal move" ~ "Year t−1: CEO at Hospital A, CFO at Hospital B → Year t: CEO at A and B",
+      career_transition_type_consec == "lateral move" ~ "Year t−1: CEO at Hospital A → Year t: CEO at A and B",
+      career_transition_type_consec == "external move" ~ "Year t−1: CEO at Hospital A → Year t: CEO at Hospital B (no longer CEO at A)"
+    ),
+    
+    career_transition_type_consec = factor(
+      career_transition_type_consec,
+      levels = c("internal promotion", "external promotion",
+                 "internal move", "lateral move", "external move")
+    )
+  ) %>%
+  arrange(career_transition_type_consec) %>%
+  select(
+    career_transition_type_consec,
+    definition,
+    example,
+    n_transitions,
+    n_individuals,
+    share_of_ceos
+  )
+
+kable(summary_tab_consec, format = "markdown")
+
+
