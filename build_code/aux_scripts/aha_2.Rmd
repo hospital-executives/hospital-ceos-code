@@ -11,6 +11,98 @@ library(tidyr)
 library(tidyverse)
 library(purrr)      # for pmap_chr()
 library(stringr) 
+library(arrow)
+```
+
+```{r manual setup user entry req, include=FALSE}
+#User entry required!
+
+#clear environment
+rm(list = ls())
+
+# *** IMPORTING RAW HIMS ***
+# Define the range of years to import
+year_range <- 2005:2017 
+
+# Specify the prefixes of files you want to import. Only HAEntity for this AHA crosswalk exploration file. 
+file_prefixes <- c("HAEntity_")
+
+# *** IMPORTING AHA DATA ***
+file_name_aha_dta <- c("aha-raw-2000-20.dta")
+file_name_aha_csv <- c("AHA_2004_2017.csv")
+
+columns_to_keep_dta <- c( 
+  "ID", 
+  "YEAR", 
+  "MNAME", 
+  "HOSPN", 
+  "mcrnum",
+  # "MCRNUM",
+  "CBSANAME", 
+  "HRRNAME", 
+  "HSANAME", 
+  "MADMIN", 
+  "SYSID", 
+  "SYSNAME", 
+  "CNTRL", 
+  "SERV", 
+  "HOSPBD", 
+  "BDTOT", 
+  "ADMTOT", 
+  "IPDTOT", 
+  "MCRDC", 
+  "MCRIPD", 
+  "MCDDC", 
+  "MCDIPD", 
+  "BIRTHS", 
+  "FTEMD", 
+  "FTERN", 
+  "FTE",
+  "LAT",
+  "LONG",
+  "MLOCADDR", #street address
+  "MLOCCITY", #city
+  "MLOCZIP" #zip code
+   ) # Replace with your desired column names
+
+
+columns_to_keep_csv <- c( 
+  "ID", 
+  "YEAR", 
+  "MNAME", 
+  "HOSPN", 
+  # "mcrnum",
+  "MCRNUM",
+  "CBSANAME", 
+  "HRRNAME", 
+  "HSANAME", 
+  "MADMIN", 
+  "SYSID", 
+  "SYSNAME", 
+  "CNTRL", 
+  "SERV", 
+  "HOSPBD", 
+  "BDTOT", 
+  "ADMTOT", 
+  "IPDTOT", 
+  "MCRDC", 
+  "MCRIPD", 
+  "MCDDC", 
+  "MCDIPD", 
+  "BIRTHS", 
+  "FTEMD", 
+  "FTERN", 
+  "FTE",
+  "LAT",
+  "LONG",
+  "MLOCADDR", #street address
+  "MLOCCITY", #city
+  "MLOCZIP" #zip code
+   ) # Replace with your desired column names
+
+# *** IMPORTING AHA<>MCR CROSSWALK ***
+file_name_aha_mcr_xwalk1 <- c("aha-id-medicare-id-crosswalk.dta")
+file_name_aha_mcr_xwalk2 <- c("hospital_ownership.dta")
 ```
 
 
@@ -20,6 +112,7 @@ haentity <- read_feather("/Users/loaner/Desktop/github-archive/haentity2.feather
 
 ```{r first backfill}
 backfill <- haentity %>%
+  filter(haentitytypeid == "1") %>%
   mutate(
       medicarenumber_clean = str_remove_all(medicarenumber, "[A-Za-z]")
     ) %>%
@@ -32,12 +125,242 @@ backfill <- haentity %>%
   ungroup() %>%
   select(-unique_mcrnums, -known_mcrnum) 
 
+write.csv(backfill, '/Users/loaner/Desktop/github-archive/haentity_with_mcr.csv')
 # out of remaining missing, 242 observations are due to not being able
 # to backfill because there are non-unique (>400k are missing for other reasons)
 # in other words, this only gets us about 20% of the cases
 ```
 
-```{r pull and integrate crosswalks}
+```{r}
+# would need to export previous to python script and then load it
+xwalk <- read.csv('/Users/loaner/Desktop/github-archive/mcr_aha.csv')
+
+backfill_mini <- backfill %>%
+mutate(mcrnum =  as.numeric(mcrnum),
+       year = as.numeric(year)) %>%
+  select(entity_uniqueid,entity_name, entity_address, entity_zip, 
+         year, ahanumber , mcrnum) %>%
+  left_join(xwalk, by = c("mcrnum", "year"))
+
+backfill2 <- backfill_mini %>%
+  mutate(ahanumber = aha_xwalk) %>%
+  group_by(entity_uniqueid) %>%
+  mutate(
+    unique_ahas = n_distinct(ahanumber, na.rm = TRUE), #) %>%
+    known_aha = ifelse(ahanumber == 1, first(na.omit(ahanumber)), NA),
+    ahanumber = ifelse(is.na(ahanumber), known_aha, ahanumber)
+  ) %>%
+  ungroup() %>%
+  select(-unique_ahas, -known_aha) 
+cat(sum(is.na(backfill2$ahanumber)))
+
+backfill3 <- backfill2 %>%
+  arrange(entity_uniqueid, year) %>%
+  group_by(entity_uniqueid) %>%
+  mutate(
+    ahanumber_before = zoo::na.locf(ahanumber, na.rm = FALSE),
+    ahanumber_after  = zoo::na.locf(ahanumber, fromLast = TRUE, na.rm = FALSE),
+    ahanumber_filled = case_when(
+      is.na(ahanumber) & !is.na(ahanumber_before) & !is.na(ahanumber_after) &
+        ahanumber_before == ahanumber_after ~ ahanumber_before,
+      TRUE ~ ahanumber
+    )
+  ) %>%
+  select(-ahanumber_before, -ahanumber_after) %>%
+  ungroup()
+
+cat(sum(is.na(backfill3$ahanumber_filled)))
+```
+
+
+```{r}
+#rm(list = setdiff(ls(pattern = ".*"), "backfill2"))
+
+comp <- read_feather('/Users/loaner/Desktop/github-archive/temp_hospRCMpanel.feather')
+```
+
+
+```{r}
+# compare medicare fill ins
+r_analysis <- backfill3 %>% 
+  group_by(entity_uniqueid, year) %>% 
+  filter(n_distinct(ahanumber_filled) == 1) %>%
+  ungroup() %>%
+  select(entity_uniqueid, entity_name, entity_address,year, mcrnum, ahanumber_filled, entity_zip) %>%
+  rename(r_medicare = mcrnum) %>%
+  mutate(year = as.numeric(year),
+         entity_uniqueid = as.numeric(entity_uniqueid)) %>% 
+  distinct(entity_uniqueid, entity_name, entity_address, entity_zip, year, r_medicare, ahanumber_filled)
+stata_analysis <- comp %>% select(name, address1 ,year, medicarenumber, uniqueid, ahanumber) %>%
+  rename(stata_medicare = medicarenumber,
+         entity_name = name,
+         entity_address = address1,
+         entity_uniqueid = uniqueid) %>%
+  distinct(entity_uniqueid, entity_name, entity_address, year, stata_medicare, ahanumber) %>%
+  mutate(ahanumber = str_remove_all(ahanumber, "[A-Za-z]"))
+
+missing_in_r <- comp %>% # TO DO - ONLY TWELVE
+  select(entity_uniqueid, year) %>%
+   mutate(year = as.numeric(year),
+         entity_uniqueid = as.numeric(entity_uniqueid)) %>%
+  distinct() %>%
+  anti_join(
+    backfill3 %>% 
+      select(entity_uniqueid, year) %>% 
+       mutate(year = as.numeric(year),
+         entity_uniqueid = as.numeric(entity_uniqueid)) %>%
+      distinct(),
+    by = c("entity_uniqueid", "year")
+  )
+
+comparison <- left_join(
+  r_analysis,
+  stata_analysis,
+  by = c("entity_name", "entity_address", "year", "entity_uniqueid")
+) %>%
+  mutate(
+  medicare_match = case_when(
+    is.na(r_medicare) & is.na(stata_medicare) ~ "both NA",
+    r_medicare == stata_medicare ~ "match",
+    is.na(r_medicare) & !is.na(stata_medicare) ~ "Stata",
+    !is.na(r_medicare) & is.na(stata_medicare) ~ "R",
+    TRUE ~ "mismatch"
+  ),
+  aha_match = case_when(
+    is.na(ahanumber_filled) & (ahanumber == "") ~ "both NA",
+    ahanumber_filled == ahanumber ~ "match",
+    is.na(ahanumber_filled) & !is.na(ahanumber) ~ "Stata",
+    !is.na(ahanumber_filled) & ahanumber == "" ~ "R",
+    TRUE ~ "mismatch"
+  )
+)
+
+cat("Number Matched: ", sum(comparison$medicare_match == 'match'))
+cat("Number Unmatched: ", sum(comparison$medicare_match == 'both NA'))
+cat("Number R: ", sum(comparison$medicare_match == 'R'))
+cat("Number Stata: ", sum(comparison$medicare_match == 'Stata'))
+cat("Mismatch: " , sum(comparison$r_medicare != comparison$stata_medicare, na.rm = TRUE))
+
+cat("Number Matched: ", sum(comparison$aha_match == 'match'))
+cat("Number Unmatched: ", sum(comparison$aha_match == 'both NA'))
+cat("Number R: ", sum(comparison$aha_match == 'R'))
+cat("Number Stata: ", sum(comparison$aha_match == 'Stata'))
+cat("Mismatch: " , sum(comparison$ahanumber_filled != comparison$ahanumber & 
+                         comparison$ahanumber!= "", na.rm = TRUE))
+
+# no mismatched MCR, 376 mismatched AHA
+#write.csv(r_analysis, '/Users/loaner/Desktop/github-archive/haentity_with_mcr.csv')
+```
+
+```{r debug mismatch}
+debug <- comparison %>% filter(ahanumber_filled != ahanumber  &
+                                 ahanumber!= "") 
+
+ahh <- haentity %>% filter(entity_uniqueid == '13990') %>% select(entity_zip)
+
+write.csv(debug[, c("r_medicare", "year")], "/Users/loaner/Desktop/github-archive/mismatch_pairs.csv", row.names = FALSE)
+
+# there are 4 entities that don't match:
+# Mercy Medical Center - West Lakes : my data confirms mine correct
+# Midland Memorial Hospital
+# Parkview Orthopedic Hospital
+# Desert View Regional Medical Center : my data confirms mine correct
+
+file_path <- paste0(supplemental_data,"/",file_name_aha_mcr_xwalk1)
+aha_xwalk1 <- read_dta(file_path)
+file_path <- paste0(supplemental_data,"/",file_name_aha_mcr_xwalk2)
+aha_xwalk2 <- read_dta(file_path)
+aha_xwalk3 <- aha_data_csv 
+
+#
+find1 <- aha_xwalk1 %>% filter(pn == 160083) %>% pull(id)
+find2 <- aha_xwalk2 %>% filter(mcrnum  == 160083) #%>% pull(ahaid)
+find3 <- aha_xwalk3 %>% filter(mcrnum  == 160083) %>% pull(ahanumber)
+cat('xwalk 1: ', unique(find1))
+cat('xwalk 2: ', unique(find2))
+cat('xwalk 3: ', unique(find3))
+
+find_r <- haentity %>% filter(entity_name == "Mercy Medical Center - West Lakes") %>%
+  select(entity_name, entity_address, year, medicarenumber, ahanumber)
+
+find_stata <- comp %>% filter(name == "Mercy Medical Center - West Lakes") %>%
+  select(name, address1, year, mcrnum, medicarenumber, ahanumber,`_merge_ellie_xwalk`)
+
+in_x_walk <- wide %>% filter(medicarenumber == 160083) 
+
+```
+
+
+
+
+
+```{r find ones in r that are missing in stata}
+missing_stata <- stata_analysis %>% filter(ahanumber == "" | is.na(ahanumber))
+check <- missing_stata %>%
+  left_join(r_analysis , by = c('entity_uniqueid', 'year', 'entity_name', 'entity_address'))
+cat(sum(!is.na(check$ahanumber_filled))/nrow(check))
+# R code fills in 25% of the aha numbers that are missing from Julia's code (the 2370)
+```
+
+```{r find ones in stata that are missing in r}
+# i would guess that these are due to multiple aha numbers to medicare numbers
+missing_r <- r_analysis %>% filter(is.na(ahanumber_filled))
+check <- missing_r %>%
+  left_join(stata_analysis , by = c('entity_uniqueid', 'year',
+                                    'entity_name', 'entity_address')) %>%
+  filter(ahanumber != "" & !is.na(ahanumber)) %>% 
+  mutate(missing_in_r = 1)
+
+missing_entity_ids <- check %>% pull(entity_uniqueid)
+
+check_missing <- r_analysis %>% filter(entity_uniqueid %in% missing_entity_ids) %>%
+  left_join(check)
+```
+
+```{r test merge on names}
+
+missing_mcr <- backfill %>%
+  filter(is.na(ahanumber)) %>% #, "Single Hospital Health System", #"IDS/RHA"))) %>%
+  mutate(entity_zip_five = str_extract(entity_zip, "^\\d{5}"),
+        hospname = str_to_lower(str_replace_all(entity_name, "[[:punct:]]", "")))
+
+zip_lookup <- aha_data_csv %>%
+  mutate(entity_zip_five = str_extract(mloczip, "^\\d{5}")) %>%
+  group_by(ahanumber) %>%
+  summarise(entity_zip_five = first(na.omit(entity_zip_five)), .groups = "drop")
+
+# Step 2: Join back to original data
+aha_mini <- aha_data_csv %>%
+  left_join(zip_lookup, by = "ahanumber") %>%
+  mutate(hospname = str_to_lower(str_replace_all(mname, "[[:punct:]]", "")),
+         year = paste0(year),
+         aha_entity_address = mlocaddr) %>% 
+  select(hospname, mname, mcrnum, ahanumber, entity_zip_five, year, aha_entity_address)
+
+merged <- missing_mcr %>%
+    select(year, entity_uniqueid, entity_name, entity_type,medicarenumber,
+           ahanumber, entity_address,entity_zip, entity_zip_five, hospname) %>%
+  rename(himss_aha = ahanumber,
+         mcloczip = entity_zip) %>%
+ # mutate(mname = entity_name) %>%
+  left_join(aha_mini ,
+            by = c('hospname', 'entity_zip_five', 'year'))
+```
+
+```{r test name filling}
+merged_mini <- merged %>%
+  mutate(year = as.numeric(year), entity_uniqueid = as.numeric(entity_uniqueid)) %>%
+  mutate(imputed_aha = str_remove_all(ahanumber, "[A-Za-z]")) %>%
+  select(-ahanumber) %>%
+  left_join(stata_analysis , by = c('entity_uniqueid', 'year', 'entity_name', 'entity_address')) %>%
+  mutate(ahanumber = ifelse(ahanumber == "", NA, ahanumber))
+
+sum(merged_mini$imputed_aha != merged_mini$ahanumber, na.rm = TRUE)
+
+view <- merged_mini %>% filter(imputed_aha != ahanumber)
+```
+
+```{r pull and integrate crosswalks - old}
 #Now pull in AHA<>MCR Crosswalk 
 supplemental_data = '/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/supplemental'
 file_path <- paste0(supplemental_data,"/",file_name_aha_mcr_xwalk1)
@@ -60,6 +383,27 @@ aha_xwalk2 <- read_dta(file_path) %>%
   unique()
 
 # xwalk3
+file_path <- paste0(supplemental_data,"/",file_name_aha_csv)
+# aha_data_csv <- read_csv(file_path)
+aha_data_csv <- read_csv(file_path, col_types = cols(.default = col_character()))
+
+
+# Use problems() function to identify parsing issues
+parsing_issues <- problems(aha_data_csv)
+
+# Check if any parsing issues were detected
+if (nrow(parsing_issues) > 0) {
+  print(parsing_issues)
+} else {
+  print("No parsing problems detected.")
+}
+
+aha_data_csv <- aha_data_csv %>% 
+  select(all_of(columns_to_keep_csv)) %>% 
+  rename_all(tolower) %>% 
+  rename(ahanumber = id) %>% 
+  mutate(ahanumber = as.character(ahanumber))
+
 aha_xwalk3 <- aha_data_csv %>%
   select(year, ahanumber, mcrnum) %>% 
   unique() %>% 
@@ -87,7 +431,7 @@ combined_dedup <- combined %>%
   group_by(year, ahanumber, source) %>%
   summarize(medicarenumber = first(na.omit(medicarenumber)), .groups = "drop")
 
-# Pivot wider safely
+# Pivot wider to get aha to medicare
 wide <- combined_dedup %>%
   pivot_wider(
     names_from = source,
@@ -118,108 +462,36 @@ clean_mapping <- wide %>%
   filter(!is.na(medicare_clean)) %>%
   select(year, ahanumber, medicarenumber = medicare_clean)
 
-```
+# get medicare to aha
+medicare_to_aha <- combined_dedup %>%
+  pivot_wider(
+    id_cols = c(year, medicarenumber),
+    names_from = source,
+    values_from = ahanumber,
+    names_prefix = "aha_"
+  ) 
 
-```{r}
-backfill_mini <- backfill %>%
-mutate(medicarenumber = sub("^0+", "", as.character(mcrnum))) %>%
-  select(entity_uniqueid,entity_name, entity_address, entity_zip, 
-         year, ahanumber , medicarenumber) %>%
-  rename(aha_himss = ahanumber) %>%
-  left_join(clean_mapping, by = c("medicarenumber", "year"))
+duplicates <- combined_dedup %>%
+  group_by(medicarenumber, year) %>%
+  summarise(n_unique_aha = n_distinct(ahanumber), .groups = "drop") %>%
+  filter(n_unique_aha > 1) 
+  
+check_duplicates <- medicare_to_aha %>%
+  semi_join(duplicates, by = c("medicarenumber", "year")) %>% 
+  filter(!is.na(medicarenumber))
 
-# need to address the 843 one medicare number to multiple aha numbers
-
-backfill2 <- backfill_mini %>%
-  group_by(entity_uniqueid) %>%
+deduplicated <- medicare_to_aha %>% 
+  anti_join(duplicates, by = c("medicarenumber", "year")) %>%
+  rowwise() %>%
   mutate(
-    unique_ahas = n_distinct(ahanumber, na.rm = TRUE), #) %>%
-    known_aha = ifelse(ahanumber == 1, first(na.omit(ahanumber)), NA),
-    ahanumber = ifelse(is.na(ahanumber), known_aha, ahanumber)
+    aha_unique_if_only_one = {
+      values <- c_across(starts_with("aha_"))
+      unique_vals <- na.omit(unique(values))
+      if (length(unique_vals) == 1) unique_vals else NA_real_
+    }
   ) %>%
-  ungroup() %>%
-  select(-unique_ahas, -known_aha) 
-# 503697 missing
-
-
-
-```
-
-```{r backfill 3}
-backfill3 <- backfill2 %>%
-  arrange(entity_uniqueid, year) %>%
-  group_by(entity_uniqueid) %>%
-  mutate(
-    ahanumber_before = zoo::na.locf(ahanumber, na.rm = FALSE),
-    ahanumber_after  = zoo::na.locf(ahanumber, fromLast = TRUE, na.rm = FALSE),
-    ahanumber_filled = case_when(
-      is.na(ahanumber) & !is.na(ahanumber_before) & !is.na(ahanumber_after) &
-        ahanumber_before == ahanumber_after ~ ahanumber_before,
-      TRUE ~ ahanumber
-    )
-  ) %>%
-  select(-ahanumber_before, -ahanumber_after) %>%
   ungroup()
 
-cat(sum(is.na(backfill3$ahanumber_filled))) # 503197
+final_medicare_to_aha_mapping <- deduplicated %>%
+  select(year, ahanumber = aha_unique_if_only_one, medicarenumber )
 ```
-
-
-```{r}
-rm(list = setdiff(ls(pattern = ".*"), "backfill2"))
-
-comp <- read_feather('/Users/loaner/Desktop/github-archive/temp_hospRCMpanel.feather')
-```
-
-```{r}
-# compare medicare fill ins
-r_analysis <- backfill3 %>% select(entity_uniqueid, entity_name, entity_address,year, medicarenumber) %>%
-  rename(r_medicare = medicarenumber) %>%
-  mutate(year = as.numeric(year),
-         entity_uniqueid = as.numeric(entity_uniqueid)) %>% 
-  distinct(entity_uniqueid, entity_name, entity_address,year, r_medicare)
-stata_analysis <- comp %>% select(name, address1 ,year, medicarenumber, uniqueid) %>%
-  rename(stata_medicare = medicarenumber,
-         entity_name = name,
-         entity_address = address1,
-         entity_uniqueid = uniqueid) %>%
-  distinct(entity_uniqueid, entity_name, entity_address,year, stata_medicare)
-
-missing_in_r <- comp %>% # will need to go back and handle separately
-  select(entity_uniqueid, year) %>%
-   mutate(year = as.numeric(year),
-         entity_uniqueid = as.numeric(entity_uniqueid)) %>%
-  distinct() %>%
-  anti_join(
-    backfill3 %>% 
-      select(entity_uniqueid, year) %>% 
-       mutate(year = as.numeric(year),
-         entity_uniqueid = as.numeric(entity_uniqueid)) %>%
-      distinct(),
-    by = c("entity_uniqueid", "year")
-  )
-
-comparison <- left_join(
-  r_analysis,
-  stata_analysis,
-  by = c("entity_name", "entity_address", "year", "entity_uniqueid")
-) %>%
-  mutate(
-  match_type = case_when(
-    is.na(r_medicare) & is.na(stata_medicare) ~ "both NA",
-    r_medicare == stata_medicare ~ "match",
-    is.na(r_medicare) & !is.na(stata_medicare) ~ "Stata",
-    !is.na(r_medicare) & is.na(stata_medicare) ~ "R",
-    TRUE ~ "mismatch"
-  )
-)
-
-cat("Number Matched: ", sum(comparison$match_type == 'match'))
-cat("Number Unmatched: ", sum(comparison$match_type == 'both NA'))
-cat("Number R: ", sum(comparison$match_type == 'R'))
-cat("Number Stata: ", sum(comparison$match_type == 'Stata'))
-
-
-
-```
-
