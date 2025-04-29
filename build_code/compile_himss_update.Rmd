@@ -365,28 +365,17 @@ combined_contacts <- haentitycontact %>%
   select(-surveyid.y, -surveyid.x)
 ```
 
+```{r}
+# write haentity to feather
+write_feather(haentity, paste0(auxiliary_data, "/haentity.feather"))
+system2("python", args = c("mcr_aha_xwalk.py", data_file_path))
+haentity_xwalk <- read.csv(paste0(auxiliary_data, "/xwalk.csv"))
+```
+
 ## Targeted fixes and enhancements
 
 # Adding in AHA data
-```{r load AHA data and crosswalk}
-# See AHA Crosswalk Comparison Code for a deeper dive into the AHA data, the completeness of the Medicare Number in the HIMSS data, and how this crosswalk was selected.
-
-#### Pull in AHA<>MCR Crosswalk 
-# set file path using manual input at beginning of script
-file_path <- paste0(supplemental_data,"/",file_name_aha_mcr_xwalk)
-
-aha_xwalk <- read_dta(file_path) %>%
-  rename(ahanumber = ahaid,
-         medicarenumber = mcrnum) %>%
-  mutate(year = as.character(year)) %>% 
-  select(ahanumber, medicarenumber, year) %>%
-  unique()
-
-aha_xwalk <- aha_xwalk %>% 
-  group_by(year, medicarenumber) %>%
-  #sometimes 2 AHA numbers per MCR number, select one
-  summarize(ahanumber = max(ahanumber, na.rm = TRUE), .groups = 'drop')
-
+```{r load AHA data }
 #### load AHA data
 
 # set file path using manual input at beginning of script
@@ -435,18 +424,24 @@ aha_data <- aha_data %>%
 #### STEP 1: Use crosswalk to pull in AHA numbers for hospitals ####
 # Have to separate NAs, they mess up the join
 # Create two NA datasets, 1 for hospitals 1 for all others
+haentity_not_hosp <- haentity %>%
+  #filter(is.na(medicarenumber))%>% 
+  filter(haentitytypeid != "1")
+         
+haentity_updated <- haentity %>% filter(haentitytypeid == "1")
+
+
+
 haentity_isna_hosp <- haentity %>%
   filter(is.na(medicarenumber)) %>% 
   filter(entity_type == "Hospital")
 
-haentity_isna_not_hosp <- haentity %>%
-  filter(is.na(medicarenumber))%>% 
-  filter(entity_type != "Hospital")
+) # this is not handled by pyscript
 
 # Handle the rows with non-NA medicarenumber
 haentity_not_na <- haentity %>%
   filter(!is.na(medicarenumber)) %>%
-  left_join(aha_xwalk, by = c("medicarenumber", "year")) %>%
+  left_join(aha_xwalk, by = c("medicarenumber", "year")) %>% # this is what you need to change
   mutate(ahanumber = coalesce(ahanumber.y, ahanumber.x)) %>%
   select(-ahanumber.x, -ahanumber.y)
 

@@ -430,6 +430,7 @@ def zip_distance(hospitals, x_walk_2_data):
     target_df['latitude'] = pd.to_numeric(target_df['latitude'], errors='coerce')
     target_df['longitude'] = pd.to_numeric(target_df['longitude'], errors='coerce')
 
+    missing_lat_long = target_df[target_df[['latitude', 'longitude']].isna().any(axis=1)]
     target_df = target_df.dropna(subset=['latitude', 'longitude'])
     target_coords = np.radians(target_df[['latitude', 'longitude']].to_numpy())
 
@@ -472,4 +473,6 @@ def zip_distance(hospitals, x_walk_2_data):
         if dist <= match_threshold_km and pd.isna(target_df.loc[i, 'filled_aha']):
             target_df.loc[i, 'filled_aha'] = ref_df.iloc[idx]['ahaid']
 
-    return target_df
+    result = pd.concat([target_df, missing_lat_long], ignore_index=True)
+
+    return result

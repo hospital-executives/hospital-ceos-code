@@ -5,8 +5,8 @@ import sys
 import os
 
 ## load data
-if len(sys.argv) == 2: 
-    data_path = sys.argv[1]
+if '--from_r' in sys.argv:
+    data_path = sys.argv[sys.argv.index('--from_r') + 1]
 else:
     print("WARNING - NOT USING R INPUT")
     data_path = "/Users/loaner/Dropbox/hospital_ceos/_data"
@@ -19,7 +19,7 @@ haentity_path = os.path.join(data_path, "derived/auxiliary/haentity.feather")
 haentity = pd.read_feather(haentity_path)
 haentity['mcrnum'] = haentity['medicarenumber'].apply(hlp.clean_and_convert)
 xwalk_path = os.path.join(data_path, "supplemental/hospital_ownership.dta")
-x_walk_2_data = pd.read_stata('supplemental/hospital_ownership.dta')
+x_walk_2_data = pd.read_stata(xwalk_path)
 
 # CLEAN DFS
 df1, hospitals = hlp.process_dfs(x_walk_2_data, haentity)
@@ -183,4 +183,6 @@ pre_filled = hospitals[hospitals['filled_aha'].notna()]
 
 combined_df = pd.concat([pre_filled, filled_na], ignore_index=True)
 combined_df['missing_aha'] = combined_df['filled_aha'].isna().astype(int)
-combined_df.to_csv('/Users/loaner/Desktop/github-archive/py_aha.csv')
+
+export_path = os.path.join(data_path, "derived/auxiliary/xwalk.csv")
+combined_df.to_csv(export_path)
