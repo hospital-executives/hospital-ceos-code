@@ -75,7 +75,8 @@ GRAPH_COMPS := $(AUX_DIR)/py_graph_components.json
 
 # Final output
 FINAL_HIMSS := $(DERIVED_DIR)/final_himss.feather
-FINAL_CONFIRMED := $(DERIVED_DIR)/final_confirmed.dta
+FINAL_CONFIRMED_FEATHER := $(DERIVED_DIR)/final_confirmed.feather
+FINAL_CONFIRMED_DTA := $(DERIVED_DIR)/final_confirmed.dta
 
 # Define Stamps
 COMPILE_STAMP := $(STAMP_DIR)/compile.stamp
@@ -169,11 +170,11 @@ $(FUZZY_STAMP): $(PAIRS_STAMP)
 	touch $(FUZZY_STAMP)
 
 # Step 9: Generate final HIMSS dataset and cleaned dta with flags
-# make_final: $(FINAL_STAMP)
+make_final: $(FINAL_STAMP)
 $(FINAL_STAMP): $(FUZZY_STAMP)
 	$(call safe_run,python3 generate_final.py $(PY_CLEANED) $(PY_REMAINING) \
-	$(GRAPH_COMPS) $(FINAL_HIMSS) $(FINAL_CONFIRMED) \
-	$(HIMSS_ENTITIES_CONTACTS))
+	$(GRAPH_COMPS) $(FINAL_HIMSS) $(FINAL_CONFIRMED_DTA) \
+	$(FINAL_CONFIRMED_FEATHER) $(HIMSS_ENTITIES_CONTACTS))
 	touch $(FINAL_STAMP)
 
 

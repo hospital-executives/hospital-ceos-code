@@ -6,17 +6,18 @@ import re
 from datetime import datetime
 import shutil
 
-user_path = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data"
+user_path = "/Users/loaner/Dropbox/hospital_ceos/_data"
 current_date = datetime.now().strftime("%m-%d")
 
 #### SET VARIABLES ####
-if len(sys.argv) == 7:
+if len(sys.argv) == 8:
     confirmed_path = sys.argv[1]
     remainder_path = sys.argv[2]
     json_path = sys.argv[3]
     final_himss_path = sys.argv[4]
-    final_confirmed_path = sys.argv[5]
-    himss_path = sys.argv[6]
+    final_confirmed_dta_path = sys.argv[5]
+    final_confirmed_feather_path = sys.argv[6]
+    himss_path = sys.argv[7]
 
 else: 
     print('WARNING: not using Makefile inputs')
@@ -24,7 +25,8 @@ else:
     remainder_path =  os.path.join(user_path, "derived/auxiliary/py_remaining.csv")
     json_path =  os.path.join(user_path, "derived/auxiliary/py_graph_components.json")
     final_himss_path = os.path.join(user_path, "derived/final_himss.feather")
-    final_confirmed_path = os.path.join(user_path, "derived/final_confirmed.dta")
+    final_confirmed_dta_path = os.path.join(user_path, "derived/final_confirmed.dta")
+    final_confirmed_feather_path = os.path.join(user_path, "derived/final_confirmed.feather")
     himss_path = os.path.join(user_path, 
     "derived/himss_entities_contacts_0517_v1.feather")
 
@@ -167,6 +169,7 @@ for col in object_columns:
 # Save dfs
 desktop_himss_path = os.path.expanduser("~/Desktop/final_himss.feather")
 desktop_dta_path = os.path.expanduser("~/Desktop/final_himss.dta")
+desktop_feather_path = os.path.expanduser("~/Desktop/final_himss.feather")
 
 # save feather to desktop then move to dropbox
 final_df.to_feather(desktop_himss_path)
@@ -175,5 +178,8 @@ shutil.move(desktop_himss_path, final_himss_path)
 # save dta to desktop then move to dropbox
 final_dta = final_df[final_df['confirmed']]
 final_dta.to_stata(desktop_dta_path, write_index=False, version=118)
-shutil.move(desktop_dta_path, final_confirmed_path)
+shutil.move(desktop_dta_path, final_confirmed_dta_path)
 
+# save final confirmed to fether as well 
+final_dta.to_feather(desktop_feather_path)
+shutil.move(desktop_feather_path, final_confirmed_feather_path)
