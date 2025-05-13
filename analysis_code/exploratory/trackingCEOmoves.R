@@ -13,6 +13,8 @@ library(tidyr)
 library(knitr)
 library(data.table)
 
+# this is an example of a change
+
 # Load data
 dropbox_base <- switch(
   Sys.info()[["user"]],
