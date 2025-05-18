@@ -1,0 +1,513 @@
+---
+title: "Merge Summary Statistics"
+output: html_document
+date: "2025-05-07"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r sum stats}
+cat(sum(is.na(haentity_hosp$ahanumber)))
+aha_data <- aha_data %>%
+   mutate(ahanumber = str_remove_all(ahanumber, "[A-Za-z]"),
+          ahanumber = as.numeric(ahanumber),
+          year = as.numeric(year))
+
+total_merged <- haentity_hosp %>%
+  left_join(aha_data, by = c("ahanumber", "year")) %>%
+  filter(!is.na(ahanumber)) 
+
+```
+
+```{r}
+library(dplyr)
+
+# Add tags to each dataset
+ha_tagged <- haentity_hosp %>%
+  mutate(source_ha = TRUE)
+
+aha_tagged <- aha_data %>%
+  mutate(source_aha = TRUE)
+
+# Full join to get all possible matches
+merged_all_original <- full_join(ha_tagged, aha_tagged, by = c("ahanumber", "year"))
+
+# Add category for merge result
+merge_stats <- merged_all %>%
+  mutate(merge_status = case_when(
+    source_ha == TRUE & source_aha == TRUE ~ "both",
+    source_ha == TRUE & is.na(source_aha) ~ "haentity_hosp only",
+    is.na(source_ha) & source_aha == TRUE ~ "aha_data only"
+  )) %>%
+  count(merge_status)
+
+merge_stats_by_year <- merged_all %>%
+  mutate(merge_status = case_when(
+    source_ha == TRUE & source_aha == TRUE ~ "Both",
+    source_ha == TRUE & is.na(source_aha) ~ "haentity_hosp Only",
+    is.na(source_ha) & source_aha == TRUE ~ "aha_data Only"
+  )) %>%
+  count(year, merge_status)
+
+ggplot(merge_stats_by_year, aes(x = factor(year), y = n, fill = merge_status)) +
+  geom_col() +  # default is stacked
+  labs(title = "Merge Status by Year",
+       x = "Year",
+       y = "Number of Hospitals",
+       fill = "Merge Status") +
+  theme_minimal()
+```
+
+```{r percent of AHA}
+library(dplyr)
+
+# First, count AHA obs per year (denominator)
+aha_counts <- aha_data %>%
+  distinct(ahanumber, year) %>%  # avoid duplicates if needed
+  count(year, name = "n_aha")
+
+# Then, count AHA obs that appear in HIMSS (i.e., successful merge)
+aha_in_himss <- aha_data %>%
+  inner_join(haentity_hosp, by = c("ahanumber", "year")) %>%
+  distinct(ahanumber, year) %>%
+  count(year, name = "n_in_himss")
+
+# Merge and compute percentage
+percent_in_himss <- aha_counts %>%
+  left_join(aha_in_himss, by = "year") %>%
+  mutate(
+    n_in_himss = coalesce(n_in_himss, 0),
+    pct_in_himss = 100 * n_in_himss / n_aha
+  )
+
+```
+
+```{r breakdown for each type across different hospitals}
+library(dplyr)
+
+type_labels <- c(
+  "0" = "ALTC",
+  "1" = "Cancer",
+  "2" = "Childrens ALTC",
+  "3" = "Childrens chronic",
+  "4" = "Childrens general",
+  "5" = "Childrens orthopedic",
+  "6" = "Childrens other",
+  "7" = "Childrens other specialty",
+  "8" = "Childrens psychiatric",
+  "9" = "Childrens rehabilitation",
+  "10" = "Chronic",
+  "11" = "Dependency rehab",
+  "12" = "Facial",
+  "13" = "General",
+  "14" = "Heart",
+  "15" = "Intellectual disabilities",
+  "16" = "Obgyn",
+  "17" = "Orthopedic",
+  "18" = "Other",
+  "19" = "Other speciality",
+  "20" = "Psychiatric",
+  "21" = "Rehabilitation",
+  "22" = "Respiratory",
+  "23" = "Surgical"
+)
+
+
+aha_labeled <- aha_data %>%
+  left_join(
+    haentity_hosp %>%
+      select(ahanumber, year) %>%
+      mutate(in_himss = TRUE),  # Tag as present
+    by = c("ahanumber", "year")
+  ) %>%
+  mutate(in_himss = if_else(is.na(in_himss), "Not in HIMSS", "In HIMSS")) %>%
+  left_join(dta %>% select(year, ahaid_noletter, hospital_type) %>% 
+              mutate(ahanumber = as.numeric(ahaid_noletter)), by = c("year", "ahanumber")) %>% 
+      mutate(hospital_type_label = recode(as.character(hospital_type), !!!type_labels)) 
+
+
+
+# Note: because `ahanumber` exists in both, disambiguate or just use `!is.na()` on right-hand side
+
+# Calculate counts by type and in_himss status
+counts <- aha_labeled %>%
+  count(hospital_type_label, in_himss, name = "n")
+
+# Total per type to get percent
+totals <- counts %>%
+  group_by(hospital_type_label) %>%
+  summarise(total = sum(n), .groups = "drop")
+
+# Merge and compute percent
+percent_by_type <- counts %>%
+  left_join(totals, by = "hospital_type_label") %>%
+  mutate(percent = 100 * n / total)
+
+
+
+```
+
+```{r general breakdown by year}
+# Step 1: Filter for "General" hospitals only
+general_only <- aha_labeled %>%
+  filter(hospital_type_label == "General")
+
+# Step 2: Count by year and in_himss
+counts_by_year <- general_only %>%
+  count(year, in_himss, name = "n")
+
+# Step 3: Get totals per year
+totals_by_year <- counts_by_year %>%
+  group_by(year) %>%
+  summarise(total = sum(n), .groups = "drop")
+
+# Step 4: Merge and calculate percent
+percent_general_by_year <- counts_by_year %>%
+  left_join(totals_by_year, by = "year") %>%
+  mutate(percent = 100 * n / total) %>%
+  filter(in_himss == "In HIMSS")
+
+```
+
+
+```{r}
+aha_in_himss <- aha_data %>%
+  inner_join(haentity_hosp, by = c("ahanumber", "year")) %>%
+  left_join(dta %>% select(year, ahaid_noletter, hospital_type) %>% 
+              mutate(ahanumber = as.numeric(ahaid_noletter)), by = c("year", "ahanumber")) %>%
+  mutate(hospital_type_label = recode(as.character(hospital_type), !!!type_labels))
+
+# Step 2: Count type composition
+type_breakdown <- aha_in_himss %>%
+  count(hospital_type_label, name = "n") %>%
+  mutate(percent = 100 * n / sum(n)) %>%
+  arrange(desc(percent))
+
+aha_not_in_himss <- aha_data %>%
+  anti_join(haentity_hosp, by = c("ahanumber", "year")) %>%
+   left_join(dta %>% select(year, ahaid_noletter, hospital_type) %>% 
+              mutate(ahanumber = as.numeric(ahaid_noletter)), by = c("year", "ahanumber")) %>%
+  mutate(hospital_type_label = recode(as.character(hospital_type), !!!type_labels))
+
+# Step 2: Get breakdown
+type_breakdown_unmerged <- aha_not_in_himss %>%
+  distinct(mname, hospital_type_label) %>%
+  count(hospital_type_label, name = "n") %>%
+  mutate(percent = 100 * n / sum(n)) %>%
+  arrange(desc(percent))
+
+```
+
+
+```{r check contact_uniqueid}
+himss <- read_feather('/Users/loaner/Dropbox/hospital_ceos/_data/derived/himss_entities_contacts_0517_v1.feather')
+
+pre_2009 <- himss %>% filter(year < 2009) %>%
+  select(firstname,lastname, contact_uniqueid, year, title_standardized)
+
+pre_2009 %>%
+  filter()
+  group_by(year) %>%
+  summarise(
+    non_na_firstname = sum(!is.na(firstname)),
+    non_na_lastname = sum(!is.na(lastname)),
+    non_na_title = sum(!is.na(title_standardized))
+  )
+```
+```{r what hospitals aren't matching in 2005 but are matching in 2006 ?}
+in_2006 <- aha_data %>%
+  left_join(haentity_hosp, by = c("ahanumber", "year")) %>%
+  filter(year == 2006)
+
+not_in_2005 <- haentity_hosp %>%
+  anti_join(aha_data, by = c("ahanumber", "year")) %>% 
+  filter(year == 2005)
+
+hospitals_2006 <- haentity_hosp %>% filter(year == 2006) %>%
+  distinct(entity_uniqueid) %>% pull(entity_uniqueid)
+
+hospitals_2005 <- haentity_hosp %>% filter(year == 2005) %>%
+  distinct(entity_uniqueid) %>% pull(entity_uniqueid)
+
+hospitals_not_in_2005 <- haentity_hosp %>% 
+  filter(year == 2006) %>%
+  filter(entity_uniqueid %in% hospitals_2006 & 
+           !entity_uniqueid %in% hospitals_2005) %>%
+  distinct(entity_uniqueid, type)
+
+hospitals_not_in_2005 %>%
+  count(type, name = "n") %>%
+  mutate(percent = 100 * n / sum(n)) %>%
+  arrange(desc(n))
+```
+
+```{r test hospitals}
+haentity <- read_feather(paste0(auxiliary_data,"/haentity.feather"))
+
+## find missing in haentity hosp but not missing in haentity - 0
+missing_hosp <- haentity %>% filter(year == 2005) %>%
+  filter(entity_uniqueid %in% hospitals_2006 & 
+           !entity_uniqueid %in% hospitals_2005)
+
+## find missing 
+missing_ids <- haentity_hosp %>% 
+  filter(year == 2006) %>%
+  filter(entity_uniqueid %in% hospitals_2006 & 
+           !entity_uniqueid %in% hospitals_2005) %>% distinct(entity_name) %>%
+  pull(entity_name)
+test <- haentity_hosp %>% filter(entity_name %in% missing_ids) %>% 
+  filter(year == 2005) %>%
+  select(entity_uniqueid, year,entity_name, entity_address,cbsa, entity_city, medicarenumber,ahanumber)
+
+test2 <- himss %>% filter(entity_uniqueid == "30567") %>%
+   select(year,entity_name, entity_address,cbsa, entity_city, medicarenumber,ahanumber)
+
+test2 <- haentity_hosp %>% filter(entity_uniqueid == "35873") %>%
+   select(year,entity_name, entity_address,cbsa, entity_city, medicarenumber,ahanumber) %>%
+  left_join(aha_data, by = c('ahanumber', 'year'))
+
+verify <- not_in_2005 %>% filter(entity_uniqueid == "35873")
+
+idk <- merged_all %>% filter(entity_uniqueid == "35873" & year == 2005) %>%
+  mutate(merge_status = case_when(
+    source_ha == TRUE & source_aha == TRUE ~ "both",
+    source_ha == TRUE & is.na(source_aha) ~ "haentity_hosp only",
+    is.na(source_ha) & source_aha == TRUE ~ "aha_data only"
+  )) 
+
+```
+```{r 2005/2006 retry}
+ha_tagged <- haentity %>% filter(!is.na(ahanumber)) %>%
+  mutate(source_ha = TRUE) %>%
+   mutate(ahanumber = str_remove_all(ahanumber, "[A-Za-z]"),
+          ahanumber = as.numeric(ahanumber), 
+          year = as.numeric(year))
+
+aha_tagged <- aha_data %>%
+  mutate(source_aha = TRUE)
+
+# Full join to get all possible matches
+merged_all <- full_join(ha_tagged, aha_tagged, by = c("ahanumber", "year")) %>%
+  mutate(merge_status = case_when(
+    source_ha == TRUE & source_aha == TRUE ~ "both",
+    source_ha == TRUE & is.na(source_aha) ~ "haentity_hosp only",
+    is.na(source_ha) & source_aha == TRUE ~ "aha_data only"
+  )) 
+
+missing <- merged_all %>%
+  filter(year %in% c(2005, 2006)) %>%
+  select(ahanumber, entity_uniqueid, year, merge_status) %>%
+   pivot_wider(names_from = year, values_from = merge_status, names_prefix = "status_")
+
+result <- missing %>%
+  filter(
+    status_2005 == "aha_data only",
+    status_2006 %in% c("both", "haentity_hosp only")
+  ) 
+```
+
+
+```{r haentity_hosp only}
+ha_tagged <- haentity_hosp %>%
+  mutate(source_ha = TRUE)
+
+aha_tagged <- aha_data %>%
+  mutate(source_aha = TRUE)
+
+# Full join to get all possible matches
+merged_all <- full_join(ha_tagged, aha_tagged, by = c("ahanumber", "year"))
+
+# Add category for merge result
+merge_stats <- merged_all %>%
+  mutate(merge_status = case_when(
+    source_ha == TRUE & source_aha == TRUE ~ "both",
+    source_ha == TRUE & is.na(source_aha) ~ "haentity_hosp only",
+    is.na(source_ha) & source_aha == TRUE ~ "aha_data only"
+  )) 
+
+ha_only <- merge_stats %>%
+  filter(merge_status == "haentity_hosp only") %>%
+  distinct(year,entity_uniqueid,entity_state,type, entity_bedsize)
+
+summary_basic <- ha_only %>%
+  group_by(year) %>%
+  summarise(
+    n_entities = n_distinct(entity_uniqueid),
+    mean_bedsize = mean(entity_bedsize, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+top_states <- ha_only %>%
+  group_by(year, entity_state) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(year) %>%
+  slice_max(order_by = n, n = 3) %>%
+  summarise(
+    top_states = paste0(entity_state, " (", n, ")", collapse = ", "),
+    .groups = "drop"
+  )
+
+# Top 3 types with counts
+top_types <- ha_only %>%
+  group_by(year, type) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(year) %>%
+  slice_max(order_by = n, n = 3) %>%
+  summarise(
+    top_types = paste0(type, " (", n, ")", collapse = ", "),
+    .groups = "drop"
+  )
+
+# Combine all summaries
+summary_combined <- summary_basic %>%
+  left_join(top_states, by = "year") %>%
+  left_join(top_types, by = "year")
+
+
+```
+
+```{r 2005/2006 from merge}
+merged <- read_feather('/Users/loaner/Dropbox/hospital_ceos/_data/derived/final_confirmed_aha_update.feather')
+
+## how can something be in the AHA but not in HIMSS?
+## no AHA number assigned
+
+## AHA doesn't match himss
+
+# 1297 - this is only finding where it isnt a match based on my hosp match
+no_aha <- aha_data %>% left_join(haentity_hosp) %>%
+  group_by(mname) %>%
+  filter(
+    any(is.na(entity_uniqueid) & year == 2005) & 
+    any(!is.na(entity_uniqueid) & year == 2006)
+  ) %>%
+  ungroup()
+
+#n = nrow(no_aha)
+hm <- no_aha %>%
+  distinct(entity_uniqueid, ahanumber, year) %>%  # prevent duplicate entity/year matches
+  left_join(
+    dta %>%
+      select(ahaid, year, hospital_type) %>%
+      mutate(ahanumber = as.numeric(ahaid)),
+    by = c("ahanumber", "year")
+  ) %>%
+  mutate(hospital_type_label = recode(as.character(hospital_type), !!!type_labels)) %>%
+   group_by(entity_uniqueid) %>%
+  summarise(hospital_type_label = first(na.omit(hospital_type_label)), .groups = "drop")
+
+hm %>%
+  count(hospital_type_label, name = "n") %>%
+  mutate(percent = 100 * n / sum(n)) %>%
+  arrange(desc(n))
+
+## so of the hospitals that count as hospitals the ones that are missing are
+## predominately general hospitals
+```
+
+
+```{r 2005/2006 from merge}
+## now the question is if any inability to match is because of "hosp" vs not
+
+## step one - merge AHA with haentity 
+## problem - how to merge without aha/mcr number?
+## 
+
+df1 <- aha_data %>%
+  mutate(name = mname %>%
+      str_to_lower() %>%                            # lowercase
+      str_replace_all("[[:punct:]]", "") %>%        # remove punctuation
+      str_squish() ,                                 # remove extra whitespace
+         address = mlocaddr %>%
+      str_to_lower() %>%                            # lowercase
+      str_replace_all("[[:punct:]]", "") %>%        # remove punctuation
+      str_squish()
+  ) %>% select(ahanumber, name, address, year)
+
+df2 <- haentity %>%
+  mutate(name = entity_name %>%
+      str_to_lower() %>%                            # lowercase
+      str_replace_all("[[:punct:]]", "") %>%        # remove punctuation
+      str_squish() ,                                 # remove extra whitespace
+         address = entity_address %>%
+      str_to_lower() %>%                            # lowercase
+      str_replace_all("[[:punct:]]", "") %>%        # remove punctuation
+      str_squish()
+  ) %>% select(name, address, year, haentitytypeid) %>%
+  filter(haentitytypeid!= "1")
+
+df1_small <- df1 %>% slice(1:10000)
+df2_small <- df2 %>% slice(1:10000)
+
+matched <- stringdist_inner_join(
+  df1_small, df2_small,
+  by = c("name", "address"),  # fuzzy match on these
+  method = "jw",                            # Jaro-Winkler distance is good for names/addresses
+  max_dist = 0.15,                          # adjust this for strictness
+  distance_col = "dist"                    # optional: include a distance column
+) %>%
+  filter(year.x == year.y)
+
+df2_small_2 <- df2 %>% slice(10000:20000)
+matched2 <- stringdist_inner_join(
+  df1_small, df2_small_2,
+  by = c("name", "address"),  # fuzzy match on these
+  method = "jw",                            # Jaro-Winkler distance is good for names/addresses
+  max_dist = 0.15,                          # adjust this for strictness
+  distance_col = "dist"                    # optional: include a distance column
+) %>%
+  filter(year.x == year.y)
+
+```
+
+```{r}
+library(fuzzyjoin)
+library(dplyr)
+library(purrr)
+
+# Define batch size
+batch_size <- 500
+
+# Total rows in df1
+n <- nrow(df1)
+
+# Split df1 into a list of batches
+df1_batches <- split(df1, ceiling(seq_len(n) / batch_size))
+
+# Optionally pre-clean both name and address
+# df1 and df2 must have columns: name, address, year
+
+# Loop over df1 batches and join to full df2
+all_matches <- map_dfr(df1_batches, function(batch) {
+  stringdist_inner_join(
+    batch, df2,
+    by = c("name", "address"),
+    method = "jw",
+    max_dist = 0.15,
+    distance_col = "dist"
+  ) %>%
+    filter(year.x == year.y)
+})
+
+```
+
+```{r}
+write_feather(all_matches, "/Users/loaner/Desktop/github-archive/matches.feather")
+```
+
+```{r}
+cleaned_matches <- all_matches %>%
+  filter(address.dist == 0 | name.dist == 0) %>%
+  mutate(mname = name.x,
+         himss_name = name.y,
+         year = year.x) %>%
+  select(mname, himss_name, year, ahanumber)
+
+additional_matches <- aha_data %>% left_join(cleaned_matches) %>%
+  filter(!is.na(himss_name))
+```
+
