@@ -1,0 +1,122 @@
+---
+title: "merge aha"
+output: html_document
+date: "2025-05-08"
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(arrow)
+library(haven)
+```
+
+
+```{r load HIMSS}
+himss <- read_feather('/Users/loaner/Dropbox/hospital_ceos/_data/derived/final_confirmed.feather')
+```
+
+```{r load AHA data and crosswalk}
+# See AHA Crosswalk Comparison Code for a deeper dive into the AHA data, the completeness of the Medicare Number in the HIMSS data, and how this crosswalk was selected.
+
+#### Pull in AHA<>MCR Crosswalk 
+haentity_xwalk <- read.csv(paste0(auxiliary_data, "/xwalk.csv"))
+
+haentity_hosp <- haentity_xwalk  %>%
+  mutate(ahanumber = filled_aha) %>%
+  group_by(entity_uniqueid) %>%
+  mutate(
+    unique_ahas = n_distinct(ahanumber, na.rm = TRUE), #) %>%
+    known_aha = ifelse(ahanumber == 1, first(na.omit(ahanumber)), NA),
+    ahanumber = ifelse(is.na(ahanumber), known_aha, ahanumber)
+  ) %>%
+  ungroup() %>%
+  select(-unique_ahas, -known_aha) %>%
+  arrange(entity_uniqueid, year) %>%
+  group_by(entity_uniqueid) %>%
+  mutate(
+    ahanumber_before = zoo::na.locf(ahanumber, na.rm = FALSE),
+    ahanumber_after  = zoo::na.locf(ahanumber, fromLast = TRUE, na.rm = FALSE) ,
+    ahanumber_filled = case_when(
+  is.na(ahanumber) & !is.na(ahanumber_before) & !is.na(ahanumber_after) & ahanumber_before == ahanumber_after ~ ahanumber_before,
+  is.na(ahanumber) & !is.na(ahanumber_before) & is.na(ahanumber_after) ~ ahanumber_before,
+  is.na(ahanumber) & is.na(ahanumber_before) & !is.na(ahanumber_after) ~ ahanumber_after,
+  TRUE ~ ahanumber
+)
+  ) %>%
+  select(-ahanumber_before, -ahanumber_after) %>%
+  ungroup()
+
+#### load AHA data
+
+# set file path using manual input at beginning of script
+file_path <- paste0(supplemental_data,"/",file_name_aha)
+#import the CSV
+aha_data <- read_csv(file_path, col_types = cols(.default = col_character()))
+
+# Use problems() function to identify parsing issues
+parsing_issues <- problems(aha_data)
+
+# Check if any parsing issues were detected
+if (nrow(parsing_issues) > 0) {
+  print(parsing_issues)
+} else {
+  print("No parsing problems detected.")
+}
+
+aha_data <- aha_data %>%
+  select(all_of(columns_to_keep)) %>% 
+  rename_all(tolower) %>% 
+  rename(ahanumber = id,
+         latitude_aha = lat,
+         longitude_aha = long) %>% 
+  mutate(
+    # Convert to UTF-8
+    mloczip = stri_trans_general(mloczip, "latin-ascii"),
+    # cbsaname = stri_trans_general(cbsaname, "latin-ascii"),
+    mlocaddr = stri_trans_general(mlocaddr, "latin-ascii") %>% 
+      str_replace_all("-", " ") %>%  # Replace hyphens with a space
+      str_remove_all("[^[:alnum:],.\\s]") %>%  # Remove other punctuation except commas, periods, and spaces
+      str_to_lower() %>%
+      str_squish(),  # Remove extra spaces
+    mname = stri_trans_general(mname, "latin-ascii") %>% 
+      str_replace_all("-", " ") %>%  # Replace hyphens with a space
+      str_remove_all("[^[:alnum:],.\\s]") %>%  # Remove other punctuation except commas, periods, and spaces
+      str_to_lower() %>%
+      str_squish(),  # Remove extra spaces
+    # Extract first five digits of the zip code
+    mloczip_five = str_extract(mloczip, "^\\d{5}")
+  )
+
+
+```
+
+```{r}
+## remove AHA columns from HIMSS
+cols_to_remove <- which(names(himss) == "ahanumber"):which(names(himss) == "aha_entity_zip_five")
+himss_cleaned <- himss[, -cols_to_remove]
+
+## merge himss with haentity 
+himss_cleaned <- himss_cleaned %>%
+  left_join(haentity_hosp %>% select(entity_uniqueid, year, ahanumber), 
+            by = c("entity_uniqueid", "year"))
+
+aha_na <- himss_cleaned %>% filter(is.na(ahanumber))
+not_na <- himss_cleaned %>% filter(!is.na(ahanumber))
+
+aha_data <- aha_data %>%
+   mutate(ahanumber = str_remove_all(ahanumber, "[A-Za-z]"),
+          ahanumber = as.numeric(ahanumber),
+          year = as.numeric(year))
+  
+merged <- not_na %>% left_join(aha_data, 
+                               by = c("ahanumber", "year")) %>%
+  mutate(not_in_aha = if_else(is.na(mname) & is.na(mcrnum) & is.na(mloczip), 1L, 0L))
+
+aha_na <- aha_na %>% clean_names()
+merged <- merged %>% clean_names()
+final <- bind_rows(aha_na, merged)
+
+write_feather(final,'/Users/loaner/Dropbox/hospital_ceos/_data/derived/final_confirmed_aha_update.feather')
+write_dta(final,'/Users/loaner/Dropbox/hospital_ceos/_data/derived/final_confirmed_aha_update.dta')
+```
+
