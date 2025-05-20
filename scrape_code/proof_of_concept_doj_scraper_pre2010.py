@@ -11,6 +11,8 @@ def get_soup(url):
   response = requests.get(url)
   if response.status_code > 299:
     print(f'Something went wrong when fetching {url}. Status code: {response.status_code}.')
+    if response.status_code == 404:
+        return response.status_code
   return BeautifulSoup(response.text, 'html.parser')
 # Function for grabbing the title of article
 def get_title(soup):
@@ -35,8 +37,6 @@ def get_fulltext(soup):
     full_text = re.sub(r'\s+', ' ', full_text).replace('\xa0', ' ').strip() #Standarizes whitespaces and removes \xa0 segments
     full_text = full_text.encode('ascii', 'ignore').decode('ascii') # Removes all non ascii characters.
     return full_text
-
-
 
 urloriginal = 'https://www.justice.gov/archives/justice-news-archive'
 soup = get_soup(urloriginal)
@@ -70,14 +70,21 @@ for el in month_link_date[:30]:
                 article_links.append(url)
     for article in article_links:
         article_soup = get_soup(article)
-        print(f"Fetching {article}")
-        full_text = get_fulltext(article_soup)
-        date = get_date(article_soup)
-        title = get_title(article_soup)
-        doj_archive.append({"URL": article,
-                            "Title": title,
-                            "Date": date,
-                            "Full Text": full_text})
+        if article_soup == 404:
+            doj_archive.append({"URL": article,
+                               "Title": article_soup,
+                               "Date": article_soup,
+                               "Full Text": article_soup})
+        else:
+            print(f"Fetching {article}")
+            full_text = get_fulltext(article_soup)
+            date = get_date(article_soup)
+            title = get_title(article_soup)
+            doj_archive.append({"URL": article,
+                                "Title": title,
+                                "Date": date,
+                                "Full Text": full_text})
+
 
 filename = r"C:\Users\aggarw13\Dropbox\hospital_ceos\_data\scrape_output\dojarchivepre2010.csv" # Saves to a specific file. Note change path to your personal folders.
 df = pd.DataFrame(doj_archive)

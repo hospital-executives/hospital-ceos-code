@@ -18,6 +18,8 @@ def get_soup(url):
   response = requests.get(url, headers=headers)
   if response.status_code > 299:
     print(f'Something went wrong when fetching {url}. Status code: {response.status_code}.')
+    if response.status_code == 404:
+      return response.status_code
   return BeautifulSoup(response.text, 'html.parser')
 
 
@@ -91,17 +93,25 @@ while pagenum < 31:
   for link in link_data:
     print(f"Fetching {link}")
     linksoup = get_soup(link)
-    full_text = get_fulltext(linksoup)
-    date = get_date(linksoup)
-    title = get_title(linksoup)
-    topic = get_topic(linksoup)
-    region = get_region(linksoup)
-    doj_archive.append({"URL": link,
-                        "Title": title,
-                        "Date": date,
-                        "Topic": topic,
-                        "Agency": region,
-                        "Full Text": full_text})
+    if linksoup == 404:
+      doj_archive.append({"URL": link,
+                          "Title": linksoup,
+                          "Date": linksoup,
+                          "Topic": linksoup,
+                          "Agency": region,
+                          "Full Text": full_text})
+    else:
+      full_text = get_fulltext(linksoup)
+      date = get_date(linksoup)
+      title = get_title(linksoup)
+      topic = get_topic(linksoup)
+      region = get_region(linksoup)
+      doj_archive.append({"URL": link,
+                          "Title": title,
+                          "Date": date,
+                          "Topic": topic,
+                          "Agency": region,
+                          "Full Text": full_text})
   pagenum += 1
   url = urloriginal + "?page=" + str(pagenum)
 
