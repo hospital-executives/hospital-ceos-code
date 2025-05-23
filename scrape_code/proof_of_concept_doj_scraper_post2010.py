@@ -1,14 +1,12 @@
 #Importing packages
-
-
 import pandas as pd
 import requests
 import re
 from bs4 import BeautifulSoup
-from bs4 import NavigableString
 
 import logging
 
+# Creating log file
 logging.basicConfig(
     filename=r'C:\Users\aggarw13\Dropbox\Hospital Exec\post2010log.log', #Change path
     filemode='w',
