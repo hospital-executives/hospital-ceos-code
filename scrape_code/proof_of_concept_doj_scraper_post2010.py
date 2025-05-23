@@ -1,15 +1,25 @@
 #Importing packages
 
+
 import pandas as pd
 import requests
 import re
 from bs4 import BeautifulSoup
+from bs4 import NavigableString
 
+import logging
+
+logging.basicConfig(
+    filename=r'C:\Users\aggarw13\Dropbox\Hospital Exec\post2010log.log', #Change path
+    filemode='w',
+    level=logging.INFO,
+)
 #Mimicking browser
 
 headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
 }
+
 
 # Creating functions
 
@@ -18,8 +28,8 @@ def get_soup(url):
   response = requests.get(url, headers=headers)
   if response.status_code > 299:
     print(f'Something went wrong when fetching {url}. Status code: {response.status_code}.')
-    if response.status_code == 404:
-      return response.status_code
+    logging.error(f'Something went wrong when fetching {url}. Status code: {response.status_code}.')
+    return "error" + ' ' + str(response.status_code)
   return BeautifulSoup(response.text, 'html.parser')
 
 
@@ -36,8 +46,8 @@ def get_fulltext(soup):
   fulltext_div = soup.find('div', class_='field-formatter--text-default field-text-format--wysiwyg text-formatted field_body')
   if fulltext_div:
     fulltext_text = fulltext_div.get_text(separator=' ', strip=True)
-    fulltext_text = fulltext_text.replace('\xa0', ' ')
-    fulltext_text = fulltext_text.replace('\n', ' ')
+    fulltext_text = re.sub(r'\s+', ' ', fulltext_text).replace('\xa0', ' ').strip() #Standarizes whitespaces and removes \xa0 segments
+    fulltext_text = fulltext_text.replace('—', ' ').replace('–', ' ')  # Converts em and en dashes to spaces.
     fulltext_text = fulltext_text.encode('ascii', 'ignore').decode('ascii')
     return fulltext_text
   return None
@@ -75,14 +85,16 @@ urloriginal = 'https://www.justice.gov/archives/press-releases-archive'
 url = urloriginal
 pagenum = 0 # indicates the page number of the DOJ website.
 doj_archive = []
+errors = []
 
 # The outer loop iteratively loops over pages of the DOJ website, and saves links to press releases from each page of the archives.
 # The inner loop loops over the link to press releases associated with a page of the DOJ website, and saves their URL,
 # text, title, date, topic 'tags', and Attorney General office's region.
 
-while pagenum < 31:
+while pagenum < 1860:
 
   print(f"Fetching page number {pagenum}")
+  logging.info(f'Fetching page number {pagenum}')
   soup = get_soup(url)
   h2s = soup.find_all('h2')
   link_data = []
@@ -93,13 +105,16 @@ while pagenum < 31:
   for link in link_data:
     print(f"Fetching {link}")
     linksoup = get_soup(link)
-    if linksoup == 404:
-      doj_archive.append({"URL": link,
-                          "Title": linksoup,
-                          "Date": linksoup,
-                          "Topic": linksoup,
-                          "Agency": region,
-                          "Full Text": full_text})
+    if isinstance(linksoup, str): # Checks if errors occurred while scraping URL.
+      if linksoup.startswith("error"):
+        doj_archive.append({"URL": link,
+                            "Title": linksoup,
+                            "Date": linksoup,
+                            "Topic": linksoup,
+                            "Agency": linksoup,
+                            "Full Text": linksoup})
+        errors.append({"URL": article,
+                       "Error": article_soup})
     else:
       full_text = get_fulltext(linksoup)
       date = get_date(linksoup)
@@ -115,13 +130,20 @@ while pagenum < 31:
   pagenum += 1
   url = urloriginal + "?page=" + str(pagenum)
 
-filename = r"C:\Users\aggarw13\Dropbox\hospital_ceos\_data\scrape_output\dojarchivepost2010.csv" # Saves to a specific file. Note change path to your personal folders.
+filename = r"C:\Users\aggarw13\Dropbox\Hospital Exec\hospital_ceos\_data\scrape_output\dojarchivepost2010.csv" # Saves to a specific file. Note change path to your personal folders.
+errorfile = r"C:\Users\aggarw13\Dropbox\Hospital Exec\dojerrorspost2010.csv" #Note, change path.
 df = pd.DataFrame(doj_archive)
+df_error = pd.DataFrame(errors) # Creates errors dataframe
 
 # Exports info to csv file
 if not df.empty:
   df.to_csv(filename, index=False)
   print(f"Data saved to {filename}")
+#Exports info to csv file for errors.
+if not df_error.empty:
+    df_error.to_csv(errorfile, index=False)
+    print(f"Data saved to {errorfile}")
+
 
 
 
