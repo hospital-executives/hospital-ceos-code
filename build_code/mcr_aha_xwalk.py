@@ -53,10 +53,12 @@ hospitals['filled_aha'] = filled_values
 # SUBSET BY ZIP CODE AND MATCH BY SIMILAR ADDRESSSES
 # for each year, zip find all addresses, ahaid and pick the aha with the most
 # similar address
-match_with_mcr, match_wo_mcr = hlp.year_zip_add(df1, "address_clean", hospitals, "address_clean")
+match_with_mcr, match_wo_mcr = hlp.year_zip_add(df1, "address_clean", hospitals, 
+                                                "address_clean")
 hospitals['filled_aha'] = hospitals.apply(
     lambda row: (
-        match_with_mcr[(row['year'], row['zip'], row['mcrnum'], row['address_clean'])]
+        match_with_mcr[(row['year'], row['zip'], row['mcrnum'], 
+                        row['address_clean'])]
         if pd.isna(row['filled_aha']) and 
         (row['year'], row['zip'], row['mcrnum'], row['address_clean']) in 
         match_with_mcr
@@ -77,15 +79,19 @@ hospitals['filled_aha'] = hospitals.apply(
 ## 6364 obs missing AHA of which 2220 have valid medicare numbers
 
 ## MATCH ON NAME & ADDRESS
-cleaned_aha_name_address_dict = hlp.name_add(hospitals, x_walk_2_data, "address")
+cleaned_aha_name_address_dict = hlp.name_add(hospitals, x_walk_2_data, 
+                                             "address")
 
 hospitals['filled_aha'] = hospitals.apply(
     lambda row: (
         cleaned_aha_name_address_dict.get(
-            (str(row['entity_name']).lower().strip(), str(row['entity_address']).lower().strip())
+            (str(row['entity_name']).lower().strip(), str(row['entity_address']
+                                                          ).lower().strip())
         )
         if pd.isna(row['filled_aha']) and 
-           (str(row['entity_name']).lower().strip(), str(row['entity_address']).lower().strip()) in cleaned_aha_name_address_dict
+           (str(row['entity_name']).lower().strip(), 
+            str(row['entity_address']).lower().strip()) 
+            in cleaned_aha_name_address_dict
         else row['filled_aha']
     ),
     axis=1
@@ -97,10 +103,12 @@ zip_name_aha = hlp.zip_name(df1)
 hospitals['filled_aha'] = hospitals.apply(
     lambda row: (
         zip_name_aha.get(
-            (str(row['zip']), str(row['entity_name']).lower().strip(), int(row['year']))
+            (str(row['zip']), str(row['entity_name']).lower().strip(),
+              int(row['year']))
         )
         if pd.isna(row['filled_aha']) and 
-           (str(row['zip']), str(row['entity_name']).lower().strip(), int(row['year'])) in zip_name_aha
+           (str(row['zip']), str(row['entity_name']).lower().strip(), 
+            int(row['year'])) in zip_name_aha
         else row['filled_aha']
     ),
     axis=1
@@ -109,7 +117,8 @@ hospitals['filled_aha'] = hospitals.apply(
 ## USE NAME TO FIND CLOSE MATCH ON ADDRESS
 name_to_addresses = defaultdict(list)
 for _, row in df1.iterrows():
-    name_to_addresses[row['clean_name']].append((row['address_clean'], row['ahaid']))
+    name_to_addresses[row['clean_name']].append((row['address_clean'], 
+                                                 row['ahaid']))
 hospitals['filled_aha'] = hospitals.apply(
     lambda row: hlp.get_aha_from_address(row, name_to_addresses),
     axis=1
@@ -118,16 +127,21 @@ hospitals['filled_aha'] = hospitals.apply(
 ## USE JUST ADDRESS TO FIND AHA
 add_aha = hlp.add_only(df1,"address_clean")
 hospitals['filled_aha'] = hospitals.apply(
-    lambda row: hlp.fill_from_add_aha(row, add_aha) if pd.isna(row['filled_aha']) else row['filled_aha'],
+    lambda row: hlp.fill_from_add_aha(row, add_aha) if 
+    pd.isna(row['filled_aha']) else row['filled_aha'],
     axis=1
 )
 
 # 1996 OBS REMAINING / 3675 ROWS HERE
 ### PART TWO WITH SUPER CLEANED ADDRESS
-match_with_mcr, match_wo_mcr = hlp.year_zip_add(df1, "address_clean_std", hospitals, "address_clean_std")
+match_with_mcr, match_wo_mcr = hlp.year_zip_add(df1,
+                                                 "address_clean_std",
+                                                   hospitals, 
+                                                   "address_clean_std")
 hospitals['filled_aha'] = hospitals.apply(
     lambda row: (
-        match_with_mcr[(row['year'], row['zip'], row['mcrnum'], row['address_clean_std'])]
+        match_with_mcr[(row['year'], row['zip'], row['mcrnum'], 
+                        row['address_clean_std'])]
         if pd.isna(row['filled_aha']) and 
         (row['year'], row['zip'], row['mcrnum'], row['address_clean_std']) in 
         match_with_mcr
@@ -146,15 +160,19 @@ hospitals['filled_aha'] = hospitals.apply(
     axis=1
 )
 ## MATCH ON NAME & ADDRESS
-cleaned_aha_name_address_dict = hlp.name_add(hospitals, x_walk_2_data, "address_clean_std")
+cleaned_aha_name_address_dict = hlp.name_add(hospitals, x_walk_2_data, 
+                                             "address_clean_std")
 
 hospitals['filled_aha'] = hospitals.apply(
     lambda row: (
         cleaned_aha_name_address_dict.get(
-            (str(row['entity_name']).lower().strip(), str(row['address_clean_std']).lower().strip())
+            (str(row['entity_name']).lower().strip(), 
+             str(row['address_clean_std']).lower().strip())
         )
         if pd.isna(row['filled_aha']) and 
-           (str(row['entity_name']).lower().strip(), str(row['address_clean_std']).lower().strip()) in cleaned_aha_name_address_dict
+           (str(row['entity_name']).lower().strip(), 
+            str(row['address_clean_std']).lower().strip()) 
+            in cleaned_aha_name_address_dict
         else row['filled_aha']
     ),
     axis=1
@@ -163,7 +181,8 @@ hospitals['filled_aha'] = hospitals.apply(
 ## USE NAME TO FIND CLOSE MATCH ON ADDRESS
 name_to_addresses = defaultdict(list)
 for _, row in df1.iterrows():
-    name_to_addresses[row['clean_name']].append((row['address_clean_std'], row['ahaid']))
+    name_to_addresses[row['clean_name']].append((row['address_clean_std'], 
+                                                 row['ahaid']))
 hospitals['filled_aha'] = hospitals.apply(
     lambda row: hlp.get_aha_from_address(row, name_to_addresses),
     axis=1
@@ -172,17 +191,19 @@ hospitals['filled_aha'] = hospitals.apply(
 ## USE JUST ADDRESS TO FIND AHA
 add_aha = hlp.add_only(df1,"address_clean_std")
 hospitals['filled_aha'] = hospitals.apply(
-    lambda row: hlp.fill_from_add_aha(row, add_aha) if pd.isna(row['filled_aha']) else row['filled_aha'],
+    lambda row: hlp.fill_from_add_aha(row, add_aha) if 
+    pd.isna(row['filled_aha']) else row['filled_aha'],
     axis=1
 )
 
 ## USE ZIP CODE DISTANCES
-filled_na = hlp.zip_distance(hospitals, x_walk_2_data)
+
+filled_na = hlp.zip_distance_updated(hospitals, x_walk_2_data, data_path)
 pre_filled = hospitals[hospitals['filled_aha'].notna()]
 
 
 combined_df = pd.concat([pre_filled, filled_na], ignore_index=True)
 combined_df['missing_aha'] = combined_df['filled_aha'].isna().astype(int)
 
-export_path = os.path.join(data_path, "derived/auxiliary/xwalk.csv")
+export_path = os.path.join(data_path, "derived/auxiliary/xwalk_updated.csv")
 combined_df.to_csv(export_path)

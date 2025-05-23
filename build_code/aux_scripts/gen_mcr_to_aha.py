@@ -7,7 +7,7 @@ from rapidfuzz import process, fuzz
 # load data
 x_walk_1_data = pd.read_stata('/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/supplemental/aha-id-medicare-id-crosswalk.dta')
 x_walk_2_data = pd.read_stata('/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/supplemental/hospital_ownership.dta')
-aha_data_csv = pd.read_csv('/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/supplemental/AHA_2004_2017.csv', encoding='latin1')
+aha_data_csv = pd.read_csv('/Users/loaner/Dropbox/hospital_ceos/_data/supplemental/AHA_2004_2017.csv', encoding='latin1')
 
 def clean_and_convert(val):
     """Try to convert a string to a number. If not, strip letters and retry."""
