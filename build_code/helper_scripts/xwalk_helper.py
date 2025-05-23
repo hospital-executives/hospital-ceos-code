@@ -478,6 +478,7 @@ def zip_distance(hospitals, x_walk_2_data):
     return result
 
 def zip_distance_updated(hospitals, x_walk_2_data, data_path):
+
     census = set(zip(
         hospitals.loc[
             hospitals['filled_aha'].isna() & 
@@ -596,3 +597,134 @@ def zip_distance_updated(hospitals, x_walk_2_data, data_path):
     result = pd.concat([target_df, missing_lat_long], ignore_index=True)
 
     return result
+
+def load_census(data_path):
+
+    ## load census data
+    dfs = []
+
+    for i in range(1, 6):
+        df = pd.read_csv(
+        f"{data_path}/supplemental/census_adds/census_results_{i}.csv",
+        header=None,
+        engine="python",
+        on_bad_lines="skip"
+        )
+    # df = df.reindex(columns=range(5))  # force 5 columns
+        dfs.append(df)
+
+    ## format census data
+    combined_census = pd.concat(dfs, ignore_index=True)
+    df_clean = combined_census.dropna(subset=[4, 5])
+    df_clean = df_clean[(df_clean[4].str.strip() != '') & (df_clean[5].str.strip() != '')]
+
+    # Split column 4 into address, city, state, zip
+    address_parts = df_clean[4].str.split(',', n=3, expand=True)
+    address_parts.columns = ['address', 'city', 'state', 'zip']
+    address_parts = address_parts.apply(lambda col: col.str.strip())
+
+    # Split column 5 into latitude and longitude
+    latlon_parts = df_clean[5].str.split(',', n=1, expand=True)
+    latlon_parts.columns = ['latitude', 'longitude']
+    latlon_parts = latlon_parts.apply(lambda col: col.str.strip())  # clean quotes/spaces
+
+    # Convert latitude and longitude to float (safely)
+    latlon_parts = latlon_parts.apply(pd.to_numeric, errors='coerce')
+
+    # Drop any rows where conversion failed
+    latlon_parts = latlon_parts.dropna()
+
+    # Align the address parts to match the cleaned latlon index
+    address_parts = address_parts.loc[latlon_parts.index]
+
+    # Combine into final DataFrame
+    coord_df = pd.concat([address_parts, latlon_parts], axis=1)
+
+    return coord_df
+
+def load_neonatim(data_path):
+    raw_file = pd.read_csv(
+        f'{data_path}/derived/auxiliary/geocoded_addresses_census.csv')
+    
+    df_renamed = raw_file.rename(columns={"0": 'address', "1": 'zipcode', 
+                                          "2": 'latitude', "3": 'longitude'})
+
+    # Step 2: Convert latitude and longitude to numeric (coerce errors to NaN)
+    df_renamed['latitude'] = pd.to_numeric(df_renamed['latitude'], 
+                                           errors='coerce')
+    df_renamed['longitude'] = pd.to_numeric(df_renamed['longitude'], 
+                                            errors='coerce')
+
+    # Step 3: Drop rows where latitude or longitude is NaN
+    cleaned_df = df_renamed.dropna(subset=['latitude', 'longitude'])
+    cleaned_df['address_clean'] = cleaned_df['address'].astype(str).str.lower().str.strip()
+
+    result = cleaned_df[['address', 'zipcode', 'latitude', 'longitude']].drop_duplicates()
+
+    return result
+
+def match_census_adds(missing_adds, cleaned_census):
+    missing_adds = missing_adds.copy()
+    cleaned_census = cleaned_census.copy()
+
+    # Step 2: Uppercase address fields
+    missing_adds['address_clean_upper'] = missing_adds['address_clean'].str.upper()
+    missing_adds['address_clean_std_upper'] = missing_adds['address_clean_std'].str.upper()
+    cleaned_census['address_upper'] = cleaned_census['address'].str.upper()
+
+    # Step 3: First attempt — match on address_clean_upper and entity_zip_five
+    merge1 = missing_adds.merge(
+        cleaned_census[['address_upper', 'zip', 'latitude', 'longitude']],
+        how='left',
+        left_on=['address_clean_upper', 'entity_zip_five'],
+        right_on=['address_upper', 'zip']
+    ).drop_duplicates()
+
+    # Step 4: Find unmatched rows and try address_clean_std_upper
+    unmatched = merge1[merge1['latitude'].isna()].copy()
+
+    # Second merge on standardized address
+    merge2 = unmatched.drop(columns=['latitude', 'longitude', 'address_upper']).merge(
+        cleaned_census[['address_upper', 'zip', 'latitude', 'longitude']],
+        how='left',
+        left_on=['address_clean_std_upper', 'entity_zip_five'],
+        right_on=['address_upper', 'zip']
+    ).drop_duplicates()
+
+    # Step 5: Fill missing values from second match
+    final = merge1.copy()
+    final.loc[final['latitude'].isna(), 'latitude'] = merge2['latitude'].values
+    final.loc[final['longitude'].isna(), 'longitude'] = merge2['longitude'].values
+
+    # Step 6: Drop helper columns if desired
+    final = final.drop(columns=['address_clean_upper', 'address_clean_std_upper', 'address_upper'])
+
+    filled = final[final['latitude'].notna() & final['longitude'].notna()]
+    unfilled = final[final['latitude'].isna() | final['longitude'].isna()]
+
+    return filled,unfilled
+
+def match_api_adds(unfilled_census, cleaned_api):
+
+    cleaned_api_dedup = cleaned_api.drop_duplicates(subset=['address', 'zipcode'])
+
+    merged = unfilled_census.merge(
+    cleaned_api_dedup[['address', 'zipcode', 'latitude', 'longitude']],
+    how='left',
+    left_on=['address_clean', 'entity_zip'],
+    right_on=['address', 'zipcode'],
+    suffixes=('', '_api')
+    ).drop(columns=['address', 'zipcode'])
+
+    # Step 2: Fill missing lat/lon from cleaned_api
+    merged['latitude'] = merged['latitude'].combine_first(merged['latitude_api'])
+    merged['longitude'] = merged['longitude'].combine_first(merged['longitude_api'])
+
+    # Step 3: Drop helper columns from API if desired
+    merged = merged.drop(columns=['latitude_api', 
+                                  'longitude_api'])
+    
+    filled_result = merged[merged['latitude'].notna() & merged['longitude'].notna()].drop_duplicates()
+    unfilled_result = merged[merged['latitude'].isna() | merged['longitude'].isna()].drop_duplicates()
+    
+    return filled_result,unfilled_result

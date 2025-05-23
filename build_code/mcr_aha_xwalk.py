@@ -197,6 +197,20 @@ hospitals['filled_aha'] = hospitals.apply(
 )
 
 ## USE ZIP CODE DISTANCES
+missing_loc_df = hospitals[(hospitals['filled_aha'].isna()) & 
+          (~hospitals['latitude'].notna() | ~hospitals['longitude'].notna())]
+missing_adds = missing_loc_df[['entity_address', 'entity_zip', 
+                               'entity_zip_five', 'entity_city', 
+                               'entity_state', 'address_clean', 
+                               'address_clean_std']].drop_duplicates()
+
+###### LOAD GEOCODED DFS
+cleaned_census = hlp.load_census(data_path)
+cleaned_api = hlp.load_neonatim(data_path)
+
+filled_census, unfilled_census = hlp.match_census_adds(missing_adds, cleaned_census)
+filled_api, unfilled_api = hlp.match_api_adds(unfilled_census, cleaned_api)
+
 
 filled_na = hlp.zip_distance_updated(hospitals, x_walk_2_data, data_path)
 pre_filled = hospitals[hospitals['filled_aha'].notna()]
