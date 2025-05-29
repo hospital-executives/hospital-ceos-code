@@ -14,7 +14,7 @@ library(knitr)
 library(data.table)
 
 # this is an example of a change
-
+# here is an example of another change
 # Load data
 dropbox_base <- switch(
   Sys.info()[["user"]],
