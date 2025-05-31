@@ -111,8 +111,8 @@ while pagenum < 1860:
                             "Topic": linksoup,
                             "Agency": linksoup,
                             "Full Text": linksoup})
-        errors.append({"URL": article,
-                       "Error": article_soup})
+        errors.append({"URL": link,
+                       "Error": linksoup})
     else:
       full_text = get_fulltext(linksoup)
       date = get_date(linksoup)
