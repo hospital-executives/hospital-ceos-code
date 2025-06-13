@@ -19,7 +19,7 @@ Goal: 			Master do-file for Hospital CEOs analysis.
 	if "`c(username)'" == "juliaparis" {
 		glob dropbox "/Users/juliaparis/Library/CloudStorage/Dropbox/hospital_ceos"
 		glob github "/Users/juliaparis/GitHub/hospital-ceos-code"
-		glob overleaf "/Users/juliaparis/Dropbox/Apps/Overleaf/Hospital CEOs"
+		glob overleaf "/Users/juliaparis/Library/CloudStorage/Dropbox/Apps/Overleaf/Hospital CEOs"
 	} // can add other users and file locations
 
 * RUN PROGRAMS _________________________________________________________________	
@@ -29,5 +29,8 @@ Goal: 			Master do-file for Hospital CEOs analysis.
 	
 * Merge in M&A data
 	do "${github}/analysis_code/02_add_mergers_acq.do"
+	
+* Harmonize system ID variables
+	do "${github}/analysis_code/03_harmonize_sysid.do"
 
 

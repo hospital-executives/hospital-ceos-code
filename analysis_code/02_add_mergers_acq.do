@@ -7,10 +7,40 @@ Goal: 			Merge M&A data into hospital-level dataset
 
 *******************************************************************************/
 
+* SETUP ________________________________________________________________________ 
+
 * check setup is complete
 	check_setup
 	
-* Load data
+* write program to export merge results
+	cap program drop export_merge
+	program export_merge 
+	
+		syntax , Filename(string) Target(string)
+		
+		* write merge results
+		tempname f
+		file open `f' using "${overleaf}/notes/M&A Merge/figures/`filename'.tex", write replace
+		file write `f' "\begin{tabular}{lr}" _n
+		file write `f' "Group & Count \\" _n
+		file write `f' "\hline" _n
+
+		quietly levelsof `target', local(vals)
+		foreach v of local vals {
+			count if `target' == `v'
+			local n = r(N)
+			local label : label (`target') `v'
+			file write `f' "`label' & `n' \\" _n
+		}
+
+		file write `f' "\end{tabular}" _n
+		file close `f'
+		
+	end
+	
+* PREPARE FOR MERGE  ___________________________________________________________
+
+* load data
 	use "${dbdata}/derived/himss_aha_hospitals_0529.dta", clear
 	
 	duplicates report
@@ -19,15 +49,35 @@ Goal: 			Merge M&A data into hospital-level dataset
 
 	* test merge variable
 	codebook medicarenumber
+		* seems like the data have inconsistent medicarenumber formats; occasionally missing leading zeroes.
+		* this will add leading zeroes to short observations
+// 		gen ccn_6 = substr("000000" + medicarenumber, -6, .)
+// 		replace ccn_6 = "" if ccn_6 == "000000"
+// 		replace medicarenumber = ccn_6 if length(medicarenumber) < 6
+// 		drop ccn_6
+	* only results in one more merged obs from 2014
+	* all the other times we see this issue are in 2005
+	
 	* missing for 5,375/63,866 observations
 	tab year
 	tab year if !missing(medicarenumber)
 	tab year if !missing(medicarenumber) | !missing(mcrnum_y)
 	
+	preserve
+		gen count_aha_all = 1 
+		gen count_aha_withmcrnum = 1 if !missing(medicarenumber) | !missing(mcrnum_y)
+		collapse (rawsum) count_aha_all count_aha_withmcrnum, by(year)
+		tempfile ccn_aha_counts
+		save `ccn_aha_counts'
+	restore
+	
+	rename system_id system_id_aha
+	
 * Prepare M&A data for merge	
 	preserve 
 		use "${dbdata}/supplemental/strategic_ma_db_v2/strategic_ma_db_v2.dta", clear
 		rename medicare_ccn_str medicarenumber
+		rename (system_id system_id_yr system_id_qtr) (system_id_ma system_id_yr_ma system_id_qtr_ma)
 		
 		* collapse quarterly data to annual data
 		foreach var in bankruptcy system_exit system_split merger_of_equals target {
@@ -37,7 +87,7 @@ Goal: 			Merge M&A data into hospital-level dataset
 		}
 		
 		* keep the last observation in the year
-		bysort medicarenumber year (year_qtr): keep if _n == _N
+		bysort medicarenumber year (year_qtr month): keep if _n == _N
 		
 		* ensure that data are now unique by CCN-year 
 		bysort medicarenumber year: gen dup = _N
@@ -49,23 +99,33 @@ Goal: 			Merge M&A data into hospital-level dataset
 		
 		tempfile ma_data
 		save `ma_data'
+		
+		* make a graph with counts by year
+		gen count_ma = 1
+		collapse (rawsum) count_ma, by(year)
+		merge 1:1 year using `ccn_aha_counts'
+		keep if inrange(year,2010,2017)
+		graph bar count_ma count_aha_all count_aha_withmcrnum, over(year) ///
+			legend(position(bottom) label(1 "M&A Data") label(2 "All AHA/HIMSS") label(3 "AHA/HIMSS With Non-Missing CCN")) ///
+			title("Count of Observations by Year") ///
+			blabel(bar, size(vsmall))
+		graph export "${overleaf}/notes/M&A Merge/figures/counts_aha_ma_byyear.pdf", as(pdf) name("Graph") replace
 	restore
 
+* MERGE ________________________________________________________________________	
+	
 	merge m:1 medicarenumber year using `ma_data'
-	* just going to keep 2010-2017 while figuring out the merge
+	* keep overlapping date ranges
 	keep if inrange(year,2010,2017)
 	
 	tab _merge 
 	tab _merge if !missing(medicarenumber)
 	tab _merge if !missing(medicarenumber) | !missing(mcrnum_y)
 	
-	* the M&A data spans 2010-2017
-	* approx 4,500-4,700 obs per year. 
-	
-	* the AHA data is missing 5,375 obs of medicarenumber
-	* in the years 2010-2017, AHA has approx 5,000 observations annually
-		* 4,600-4,900 with non-missing CCN
-			* increases over sample
+	* format and export merge results
+	label define mergelab 1 "Unmerged from AHA/HIMSS" 2 "Unmerged from M\&A" 3 "Merged"
+	label values _merge mergelab
+	export_merge, filename(merge1_tab) target(_merge)
 	
 	* unmerged observations from AHA/HIMSS that are NOT MISSING CCN: 4,136
 	* unmerged observations from AHA/HIMSS that are MISSING CCN: 2,259
@@ -88,23 +148,6 @@ Goal: 			Merge M&A data into hospital-level dataset
 	br if type == "Critical Access" & _merge==1 & !missing(medicarenumber)
 	tab year if type == "Critical Access" & _merge==1 & !missing(medicarenumber)
 		* almost all observations are from 2010 - they are in the AHA data but not the M&A data
-		* check individual CCNs:
-			* 670104 only exists in 2010
-			* 530019 " "
-			* 530022 " "
-			* 530029 " "
-			* 670081 exists in one dataset in some years and the other dataset in other years
-			* 020004 just 2010
-			* 020014 just 2010
-			* 030040 ""
-			* 030060 just 2010
-			* 030099 just 2010
-			* 030067 falls out of M&A data in 2013 but not AHA
-			* 040024 just 2010
-			* 040053 just 2010
-			* 040066 ""
-			* 040105 just 2010
-			* 040107 just 2010
 	* in 2017, a lot of CCNs have F's in them. check what the correct CCN is (look at other CCNs with the same AHAID/HIMSS entity?)
 		* I'm noticing that these seem to be army hospitals (ACH - army community hospital; AMC - army medical center)
 		* F =FEDERAL?
@@ -134,7 +177,7 @@ Goal: 			Merge M&A data into hospital-level dataset
 	preserve
 		keep if _merge == 2
 		drop _merge
-		keep fac_name year medicarenumber year_qtr medicare_ccn hrrcode month source_completed bankruptcy system_exit system_split merger_of_equals target notes system_id system_id_qtr system_id_yr
+		keep fac_name year medicarenumber year_qtr medicare_ccn hrrcode month source_completed bankruptcy system_exit system_split merger_of_equals target notes system_id_ma system_id_qtr_ma system_id_yr
 		destring medicarenumber, gen(mcrnum_y)
 		tempfile unmerged1
 		save `unmerged1'
@@ -149,7 +192,7 @@ Goal: 			Merge M&A data into hospital-level dataset
 	restore
 		
 	keep if _merge ==1
-	drop fac_name year_qtr medicare_ccn hrrcode month source_completed bankruptcy system_exit system_split merger_of_equals target notes system_id system_id_qtr system_id_yr
+	drop fac_name year_qtr medicare_ccn hrrcode month source_completed bankruptcy system_exit system_split merger_of_equals target notes system_id_ma system_id_qtr_ma system_id_yr
 	merge m:1 mcrnum_y year using `unmerged1', gen(_merge2)
 	gen merge_status = "Secondary Merge" if _merge2 == 3
 	replace merge_status = "Unmerged from AHA/HIMSS" if _merge2 == 1
@@ -158,16 +201,24 @@ Goal: 			Merge M&A data into hospital-level dataset
 	
 	tab merge_status
 	tab merge_status if !missing(medicarenumber) | !missing(mcrnum_y)
+	
+	* format and export merge results
+	encode merge_status, gen(enc_merge_status)
+	label define enc_merge_status 4 "Unmmerged From M\&A", modify
+	export_merge, filename(merge2_tab) target(enc_merge_status)
+	
+	* resolved the 2010 issue:
+	tab year if type == "Critical Access" & merge_status=="Unmerged from AHA/HIMSS" & !missing(medicarenumber)
 
 * merge quality checks	
 	br _merge year medicarenumber entity_name mcrnum_x cleaned_mcr mcrnum_y fac_name medicare_ccn merge_status type 				
-		
+	/*
 * Pull in Ellie dataset	for merge #3 __ no new matches ___ delete eventually ___
 	* pull unmerged from M&A into own file
 	preserve
 		keep if merge_status == "Unmerged from M&A"
 		drop _merge
-		keep fac_name year medicarenumber year_qtr medicare_ccn hrrcode month source_completed bankruptcy system_exit system_split merger_of_equals target notes system_id system_id_qtr system_id_yr
+		keep fac_name year medicarenumber year_qtr medicare_ccn hrrcode month source_completed bankruptcy system_exit system_split merger_of_equals target notes system_id_ma system_id_qtr_ma system_id_yr
 		gen mcrnum_ellie = medicarenumber
 		tempfile unmerged2
 		save `unmerged2'
@@ -175,6 +226,7 @@ Goal: 			Merge M&A data into hospital-level dataset
 
 	* prepare for merge
 	drop if merge_status == "Unmerged from M&A"
+	*/
 	tostring ahanumber, gen(ahaid_noletter)	
 	preserve
 		use "${dbdata}/supplemental/hospital_ownership.dta", clear
@@ -183,11 +235,12 @@ Goal: 			Merge M&A data into hospital-level dataset
 		tempfile ellie_xwalk
 		save `ellie_xwalk'
 	restore
+
 	
 	* merge Ellie's xwalk
-	merge m:1 ahaid_noletter year using `ellie_xwalk', gen(_merge_ellie_xwalk) keepusing(ahaid sysid_final mcrnum) keep(1 3)
-	drop _merge_ellie_xwalk
+	merge m:1 ahaid_noletter year using `ellie_xwalk', gen(_merge_ellie_xwalk) keepusing(ahaid sysid_final mcrnum sysid_final_partial_sysname) keep(1 3)
 	rename mcrnum mcrnum_ellie
+/*
 	destring mcrnum_ellie, gen(mcrnum_ellie_destr)
 	gen same_ccn = mcrnum_ellie_destr == mcrnum_y
 	* only different for 385 obs (0.9%), of which 294 have a missing mcrnum_y
@@ -200,7 +253,7 @@ Goal: 			Merge M&A data into hospital-level dataset
 	restore
 	
 	keep if merge_status == "Unmerged from AHA/HIMSS"
-	drop fac_name year_qtr medicare_ccn hrrcode month source_completed bankruptcy system_exit system_split merger_of_equals target notes system_id system_id_qtr system_id_yr
+	drop fac_name year_qtr medicare_ccn hrrcode month source_completed bankruptcy system_exit system_split merger_of_equals target notes system_id_ma system_id_qtr_ma system_id_yr
 	merge m:1 mcrnum_ellie year using `unmerged2', gen(_merge3)
 	replace merge_status = "Unmerged from M&A" if _merge3 == 2
 	append using `merged2'
@@ -247,7 +300,7 @@ merge m:1 medicarenumber using "${dbdata}/derived/temp/alt_CCNs_medicarenumber.d
 		preserve
 			keep if merge_status == "Unmerged from M&A"
 			drop _merge
-			keep fac_name year medicarenumber year_qtr medicare_ccn hrrcode month source_completed bankruptcy system_exit system_split merger_of_equals target notes system_id system_id_qtr system_id_yr 
+			keep fac_name year medicarenumber year_qtr medicare_ccn hrrcode month source_completed bankruptcy system_exit system_split merger_of_equals target notes system_id_ma system_id_qtr_ma system_id_yr_ma 
 			gen alt_mcrnum_y`num' = medicare_ccn
 			tempfile unmerged3a_`num'
 			save `unmerged3a_`num''
@@ -261,7 +314,7 @@ merge m:1 medicarenumber using "${dbdata}/derived/temp/alt_CCNs_medicarenumber.d
 		restore
 		
 		keep if merge_status == "Unmerged from AHA/HIMSS" & !missing(alt_mcrnum_y`num')
-		drop fac_name year_qtr medicare_ccn hrrcode month source_completed bankruptcy system_exit system_split merger_of_equals target notes system_id system_id_qtr system_id_yr
+		drop fac_name year_qtr medicare_ccn hrrcode month source_completed bankruptcy system_exit system_split merger_of_equals target notes system_id_ma system_id_qtr_ma system_id_yr
 		merge m:1 alt_mcrnum_y`num' year using `unmerged3a_`num'', gen(_merge4a_`num') keep(1 3)
 		replace merge_status = "Unmerged from M&A" if _merge4a_`num' == 2
 		replace merge_status = "Final Merges" if _merge4a_`num' == 3
@@ -277,7 +330,7 @@ merge m:1 mcrnum_y using "${dbdata}/derived/temp/alt_CCNs_mcrnum_y.dta", gen(_me
 		preserve
 			keep if merge_status == "Unmerged from M&A"
 			drop _merge
-			keep fac_name year medicarenumber year_qtr medicare_ccn hrrcode month source_completed bankruptcy system_exit system_split merger_of_equals target notes system_id system_id_qtr system_id_yr 
+			keep fac_name year medicarenumber year_qtr medicare_ccn hrrcode month source_completed bankruptcy system_exit system_split merger_of_equals target notes system_id_ma system_id_qtr_ma system_id_yr_ma 
 			gen alt_medicarenumber`num' = medicarenumber
 			tempfile unmerged3b_`num'
 			save `unmerged3b_`num''
@@ -291,68 +344,53 @@ merge m:1 mcrnum_y using "${dbdata}/derived/temp/alt_CCNs_mcrnum_y.dta", gen(_me
 		restore
 
 		keep if merge_status == "Unmerged from AHA/HIMSS" & !missing(alt_medicarenumber`num')
-		drop fac_name year_qtr medicare_ccn hrrcode month source_completed bankruptcy system_exit system_split merger_of_equals target notes system_id system_id_qtr system_id_yr
+		drop fac_name year_qtr medicare_ccn hrrcode month source_completed bankruptcy system_exit system_split merger_of_equals target notes system_id_ma system_id_qtr_ma system_id_yr
 		merge m:1 alt_medicarenumber`num' year using `unmerged3b_`num'', gen(_merge4b_`num') keep(1 3)
 		replace merge_status = "Unmerged from M&A" if _merge4b_`num' == 2
 		replace merge_status = "Final Merges" if _merge4b_`num' == 3
 		append using `merged3b_`num''
-	}
+	} 
+*/
+
+* need to add variable cleaning and renaming
+* save merged file
+	preserve
+		drop if merge_status == "Unmerged from M&A"
+		save "${dbdata}/derived/temp/merged_ma_nonharmonized.dta", replace
+	restore
+
+* narrow down
+	keep fac_name year medicarenumber year_qtr medicare_ccn hrrcode month source_completed bankruptcy sysid_final_partial_sysname system_exit system_split merger_of_equals target notes system_id_ma system_id_aha system_id_qtr_ma system_id_yr_ma merge_status type ahanumber ahaid_noletter entity_uniqueid x himss_entityid surveyid entity_parentid entityno entity_name haentitytypeid entity_type medicarenumber yearopened ownershipstatus county mcrnum_x cleaned_mcr address_clean zip clean_name ahanumber_filled mcrnum_y mname hospn sysid sysname sysid_final
+
+	sort medicarenumber year (mcrnum_y)
+
+	br ahanumber himss_entityid entity_uniqueid medicarenumber entity_name year mcrnum_y type sysid_final_partial_sysname sysid sysid_final system_id_ma system_id_aha medicare_ccn fac_name merge_status system_id_qtr_ma system_id_yr_ma bankruptcy system_exit system_split merger_of_equals target if (inlist(type,"General Medical & Surgical","Critical Access","General Medical") | merge_status!="Unmerged from AHA/HIMSS") & (!missing(medicarenumber) | !missing(mcrnum_y))
 	
 	
 * MERGE QUALITY INSPECTIONS ____________________________________________________
 
 exit // so that real code doesn't run into this		
-		
-* reasons that general hosps may be unmerged:
-	* not actually general hosps? 
-	* these all have "long-term care" or "geriatric" in the title despite being called general medical
-	_merge	year	medicarenumber	entity_name	mcrnum_x	cleaned_mcr	mcrnum_y	fac_name	medicare_ccn	merge_status	type
-Master only (1)	2012	112005	wesley woods long term care hospital	112005	112005	112005			Unmerged from AHA/HIMSS	General Medical
-Master only (1)	2013	112005	wesley woods long term care hospital	112005	112005	112005			Unmerged from AHA/HIMSS	General Medical
-Master only (1)	2014	112005	emory wesley woods geriatric hospital	112005	112005	112005			Unmerged from AHA/HIMSS	General Medical
-Master only (1)	2015	112005	emory wesley woods geriatric hospital	112005	112005	112005			Unmerged from AHA/HIMSS	General Medical
-Master only (1)	2016	112005	emory wesley woods geriatric hospital	112005	112005	112005			Unmerged from AHA/HIMSS	General Medical
 
-see also: levindale hebrew geriatric center hospital, CCN 
+gen unmerg_ma = merge_status == "Unmerged from M&A"
+bysort medicarenumber: egen ever_unmerg_ma = max(unmerg_ma)
+br ahanumber himss_entityid entity_uniqueid medicarenumber entity_name year mcrnum_y type sysid sysid_final system_id_mamedicare_ccn fac_name merge_status system_id_qtr_ma system_id_yr_ma bankruptcy system_exit system_split merger_of_equals target if ever_unmerg_ma == 1
 
-		
-* once I have loaded the AHA/HIMSS data: _______________________________________
 
-* never in AHA it seems
-_merge	year	medicarenumber	entity_name	mcrnum_x	cleaned_mcr	mcrnum_y	fac_name	medicare_ccn	merge_status	type
-.	2010	140145				140145	ST JOSEPHS HOSPITAL	140145	Unmerged from M&A	
-.	2011	140145				140145	ST JOSEPHS HOSPITAL	140145	Unmerged from M&A	
-.	2012	140145				140145	ST JOSEPHS HOSPITAL	140145	Unmerged from M&A	
-.	2013	140145				140145	ST JOSEPHS HOSPITAL	140145	Unmerged from M&A	
-.	2014	140145				140145	ST JOSEPHS HOSPITAL	140145	Unmerged from M&A	
-.	2015	140145				140145	ST JOSEPHS HOSPITAL	140145	Unmerged from M&A	
-.	2016	140145				140145	ST JOSEPHS HOSPITAL	140145	Unmerged from M&A	
-.	2017	140145				140145	ST JOSEPHS HOSPITAL	140145	Unmerged from M&A	
-* never in the AHA data - have nothing with the corresponding ZIP 
-* https://www.ahd.com/free_profile/140145/HSHS_St_Joseph_s_Hospital_Breese/Breese/Illinois/
-		
-* missing years
-_merge	year	medicarenumber	entity_name	mcrnum_x	cleaned_mcr	mcrnum_y	fac_name	medicare_ccn	merge_status	type
-.	2010	150057				150057	ST FRANCIS HOSPITAL MOORESVILLE	150057	Unmerged from M&A	
-.	2011	150057				150057	FRANCISCAN ST FRANCIS HEALTH - MOORESVILLE	150057	Unmerged from M&A	
-Matched (3)	2014	150057	franciscan st. francis health mooresville	150057	150057	150057	FRANCISCAN ST FRANCIS HEALTH - MOORESVILLE	150057	Initially Merged	General Medical & Surgical
-Matched (3)	2015	150057	franciscan st. francis health mooresville	150057	150057	150057	FRANCISCAN ST FRANCIS HEALTH - MOORESVILLE	150057	Initially Merged	General Medical & Surgical
-Matched (3)	2016	150057	franciscan health mooresville	150057	150057	150057	FRANCISCAN HEALTH MOORESVILLE	150057	Initially Merged	General Medical & Surgical
-Matched (3)	2017	150057	franciscan health mooresville	150057	150057	150057	FRANCISCAN HEALTH MOORESVILLE	150057	Initially Merged	General Medical & Surgical		
-	* have 2005-2007 and then 2014-2017 in AHA/HIMSS	
-	* ahanumber: 6421030
-		
-* once I have loaded the M&A data: _____________________________________________
- 
+* CASE STUDIES _________________________________________________________________
+
+* Tri-county hospital 	
 	* this one matches for multiple years except 2013 - is it in the M&A data in 2013?
-_merge	year	medicarenumber	mcrnum_x	cleaned_mcr	mcrnum_y	fac_name	medicare_ccn	merge_status	type
-Master only (1)	2014	100139	100139	100139	100322	REGIONAL GENERAL HOSPITAL WILLISTON	100322	Secondary Merge	General Medical & Surgical
-Master only (1)	2013	100139	100139	100139	100322			Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2015	100139	100139	100139	100322	REGIONAL GENERAL HOSPITAL WILLISTON	100322	Secondary Merge	General Medical & Surgical
-Master only (1)	2016	100139	100139	100139	100322	REGIONAL GENERAL HOSPITAL WILLISTON	100322	Secondary Merge	General Medical & Surgical
-* The hospital, once known as Tri-County Hospital, has existed for 50 years. The next closest hospitals are in Gainesville and Ocala. Lander said the hospital has taken a positive turn since Pagidipati purchased it in 2014, shortly after it went through bankruptcy reorganization in 2013.
-* notably, the M&A dataset doesn't have this change – it is missing 2013, when the bankruptcy happened. And no record of an ownership change in 2014. 	
-	
+ahanumber	himss_entityid	entity_uniqueid	medicarenumber	entity_name	year	mcrnum_y	type	sysid	sysid_final	system_id	medicare_ccn	fac_name	merge_status	system_id_qtr	system_id_yr	bankruptcy	system_exit	system_split	merger_of_equals	target
+6391146	497954	46900	100139	nature coast regional hospital	2010	100139	General Medical & Surgical			46739	100139	TRI COUNTY HOSPITAL - WILLISTON	Initially Merged	935	935	0	1	0	0	0
+6391146	541449	46900	100139	tri county hospital in williston	2011	100139	General Medical & Surgical			46739	100139	TRI COUNTY HOSPITAL - WILLISTON	Initially Merged	935	935	0	0	0	0	0
+6391146	587836	46900	100139	tri county hospital in williston	2012	100139	General Medical & Surgical			46739	100139	TRI COUNTY HOSPITAL - WILLISTON	Initially Merged	935	935	0	0	0	0	0
+6391146	639498	46900	100139	regional general hospital williston	2013	100322	General Medical & Surgical						Unmerged from AHA/HIMSS							
+6391146	697595	46900	100139	regional general hospital williston	2014	100322	General Medical & Surgical			935	100322	REGIONAL GENERAL HOSPITAL WILLISTON	Secondary Merge	935	935	0	0	0	0	0
+6391146	768041	46900	100139	regional general hospital williston	2015	100322	General Medical & Surgical			935	100322	REGIONAL GENERAL HOSPITAL WILLISTON	Secondary Merge	935	935	0	0	0	0	0
+6391146	845370	46900	100139	regional general hospital of williston	2016	100322	General Medical & Surgical			935	100322	REGIONAL GENERAL HOSPITAL WILLISTON	Secondary Merge	935	935	0	0	0	0	0
+6391146	932686	46900	100322	regional general hospital of williston	2017	100322	General Medical & Surgical			46739	100322	REGIONAL GENERAL HOSPITAL WILLISTON	Initially Merged	935	935	0	0	0	0	0
+
+* Doctors specialty hospital 
 	* this one drops out of M&A data after 2014
 	_merge	year	medicarenumber	entity_name	mcrnum_x	cleaned_mcr	mcrnum_y	fac_name	medicare_ccn	merge_status	type
 Matched (3)	2013	110186	doctors specialty hospital	110186	110186	110186	DOCTORS SPECIALTY HOSPITAL	110186	Initially Merged	General Medical & Surgical
@@ -365,127 +403,7 @@ Master only (1)	2017	110186	midtown medical center west	110186	110186				Unmerge
 	* listed as a "never claimer" hospital on GME reporting from GA: https://nosorh.org/wp-content/uploads/2022/05/GME131Elig_GA.pdf
 	* seems likely it's actually closed?
 	* https://www.ahd.com/free_profile/110186/Midtown_Medical_Center_-_West_Campus/Columbus/Georgia/
-		* says that this facility became an urgent care center on april 16 2025
+		* says that this facility became an urgent care center on april 16 2015
 		* now at the same address is Columbus Specialty Hospital (CCN 112012)
 	
-	* this one is in the M&A data but not the AHA/HIMSS from 2010-2013, then is in both	
-	_merge	year	medicarenumber	entity_name	mcrnum_x	cleaned_mcr	mcrnum_y	fac_name	medicare_ccn	merge_status	type
-.	2010	130067				130067	IDAHO DOCTORS HOSPITAL	130067	Unmerged from M&A	
-.	2011	130067				130067	IDAHO DOCTORS HOSPITAL	130067	Unmerged from M&A	
-.	2012	130067				130067	IDAHO DOCTORS HOSPITAL	130067	Unmerged from M&A	
-.	2013	130067				130067	IDAHO DOCTORS HOSPITAL	130067	Unmerged from M&A	
-Matched (3)	2014	130067	idaho doctors hospital	130067	130067	130067	IDAHO DOCTORS HOSPITAL	130067	Initially Merged	Other Specialty
-Matched (3)	2015	130067	idaho doctors hospital	130067	130067	130067	IDAHO DOCTORS HOSPITAL	130067	Initially Merged	Other Specialty
-Matched (3)	2016	130067	idaho doctors hospital	130067	130067	130067	IDAHO DOCTORS HOSPITAL	130067	Initially Merged	Other Specialty
-Matched (3)	2017	130067	idaho doctors hospital	130067	130067	130067	IDAHO DOCTORS HOSPITAL	130067	Initially Merged	Other Specialty
-	
-		* this one is never in the M&A data (it seems)
-_merge	year	medicarenumber	entity_name	mcrnum_x	cleaned_mcr	mcrnum_y	fac_name	medicare_ccn	merge_status	type
-Master only (1)	2010	140079	st. james hospital health centers	140079	140079	192050			Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2011	140079	franciscan st. james health	140079	140079	192050			Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2012	140079	franciscan st. james health chicago heights	140079	140079	192050			Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2013	140079	franciscan st. james health chicago heights	140079	140079	192050			Unmerged from AHA/HIMSS	General Medical & Surgical
-	* HMM it seems like there is another franciscan st james health that only matches in 2017.....
-_merge	year	medicarenumber	entity_name	mcrnum_x	cleaned_mcr	mcrnum_y	fac_name	medicare_ccn	merge_status	type
-.	2010	140172				140172	ST JAMES HOSP & HLTH CTR-OLYMPIA FLDS	140172	Unmerged from M&A	
-.	2011	140172				140172	FRANCISCAN ST JAMES HEALTH	140172	Unmerged from M&A	
-.	2012	140172				140172	FRANCISCAN ST JAMES HEALTH	140172	Unmerged from M&A	
-.	2013	140172				140172	FRANCISCAN ST JAMES HEALTH	140172	Unmerged from M&A	
-.	2014	140172				140172	FRANCISCAN ST JAMES HEALTH	140172	Unmerged from M&A	
-.	2015	140172				140172	FRANCISCAN ST JAMES HEALTH	140172	Unmerged from M&A	
-Matched (3)	2017	140172	franciscan health olympia fields	140172	140172	140172	FRANCISCAN HEALTH OLYMPIA & CHICAGO HEIGHTS	140172	Initially Merged	General Medical & Surgical
 
-* skips years - merged only in 2016
-_merge	year	medicarenumber	entity_name	mcrnum_x	cleaned_mcr	mcrnum_y	fac_name	medicare_ccn	merge_status	type
-.	2010	150003				150003	ST ELIZABETH CENTRAL	150003	Unmerged from M&A	
-.	2011	150003				150003	AHHS CRYSTAL LAKE BRANCH OFFICE	150003	Unmerged from M&A	
-.	2012	150003				150003	AHHS CRYSTAL LAKE BRANCH OFFICE	150003	Unmerged from M&A	
-.	2013	150003				150003	FRANCISCAN ST ELIZABETH HEALTH - LAFAYETTE CENTRAL	150003	Unmerged from M&A	
-Master only (1)	2016	150003	franciscan health lafayette east	150003	150003	150109	FRANCISCAN HEALTH LAFAYETTE	150109	Secondary Merge	General Medical & Surgical
-	* M&A data always available for CCN: 150109. Would work if used that CCN in the merge instead. 
-
-* weirdness with CCNs
-_merge	year	medicarenumber	entity_name	mcrnum_x	cleaned_mcr	mcrnum_y	fac_name	medicare_ccn	merge_status	type
-.	2010	150033				150033	ST FRANCIS HOSPITAL AND HEALTH CENTERS	150033	Unmerged from M&A	
-.	2011	150033				150033	FRANCISCAN ST FRANCIS HEALTH - BEECH GROVE	150033	Unmerged from M&A	
-Master only (1)	2012	150033	franciscan st. francis health indianapolis	150033	150033	150162	FRANCISCAN ST FRANCIS HEALTH - INDIANAPOLIS	150162	Secondary Merge	General Medical & Surgical
-Master only (1)	2013	150033	franciscan st. francis health indianapolis	150033	150033	150162	FRANCISCAN ST FRANCIS HEALTH - INDIANAPOLIS	150162	Secondary Merge	General Medical & Surgical
-Master only (1)	2014	150033	franciscan st. francis health indianapolis	150033	150033	150162	FRANCISCAN ST FRANCIS HEALTH - INDIANAPOLIS	150162	Secondary Merge	General Medical & Surgical
-	* Franciscan Health Indianapolis announced plans in 2008 to consolidate services from its Beech Grove[11] to its Indianapolis campus upon completion of an inpatient bed tower in 2011.[12] The first phase of the tower construction opened in April 2011.[13][14] The Beech Grove hospital closed all inpatient and emergency services in March 2012. Outpatient services are still available. https://en.wikipedia.org/wiki/Franciscan_Health_Indianapolis
-
-* falls out of M&A sample in 2017
-_merge	year	medicarenumber	entity_name	mcrnum_x	cleaned_mcr	mcrnum_y	fac_name	medicare_ccn	merge_status	type
-Matched (3)	2010	171366	harper hospital	171366	171366	171366	HARPER HOSPITAL DISTRICT NO 5	171366	Initially Merged	Critical Access
-Matched (3)	2011	171366	harper hospital	171366	171366	171366	HARPER HOSPITAL DISTRICT NO 5	171366	Initially Merged	Critical Access
-Matched (3)	2012	171366	harper hospital	171366	171366	171366	HARPER HOSPITAL DISTRICT NO 5	171366	Initially Merged	Critical Access
-Matched (3)	2013	171366	harper hospital	171366	171366	171366	HARPER HOSPITAL DISTRICT NO 5	171366	Initially Merged	Critical Access
-Matched (3)	2014	171366	harper hospital	171366	171366	171366	HARPER HOSPITAL DISTRICT NO 5	171366	Initially Merged	Critical Access
-Matched (3)	2015	171366	harper hospital	171366	171366	171366	HARPER HOSPITAL DISTRICT NO 5	171366	Initially Merged	Critical Access
-Matched (3)	2016	171366	harper hospital	171366	171366	171366	HARPER HOSPITAL DISTRICT NO 5	171366	Initially Merged	Critical Access
-Master only (1)	2017	171366	harper hospital	171366	171366	171346			Unmerged from AHA/HIMSS	Critical Access
-* https://www.ahd.com/free_profile/171366/_Hospital_District_%236_-_Harper_Campus/Harper/Kansas/ consolidated with 171346 officially in 2019. But earlier? 
-* last operational year seems to have been 2017 - in 2018, terminated its 340B participation due to "site closure" https://340bopais.hrsa.gov/CePrint/27999?AspxAutoDetectCookieSupport=1
-
-* never in M&A?
-_merge	year	medicarenumber	entity_name	mcrnum_x	cleaned_mcr	mcrnum_y	fac_name	medicare_ccn	merge_status	type
-Master only (1)	2010	180014	norton audubon hospital	180014	180014				Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2011	180014	norton audubon hospital	180014	180014				Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2012	180014	norton audubon hospital	180014	180014				Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2013	180014	norton audubon hospital	180014	180014				Unmerged from AHA/HIMSS	General Medical & Surgical
-
-* never in M&A 
-_merge	year	medicarenumber	entity_name	mcrnum_x	cleaned_mcr	mcrnum_y	fac_name	medicare_ccn	merge_status	type
-Master only (1)	2010	180037	sts. mary elizabeth hospital	180037	180037				Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2011	180037	sts. mary elizabeth hospital	180037	180037				Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2012	180037	sts. mary elizabeth hospital	180037	180037				Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2013	180037	sts. mary elizabeth hospital	180037	180037				Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2014	180037	sts. mary elizabeth hospital	180037	180037				Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2015	180037	sts. mary elizabeth hospital	180037	180037				Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2016	180037	sts. mary elizabeth hospital	180037	180037				Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2017	180037	sts. mary elizabeth hospital	180037	180037				Unmerged from AHA/HIMSS	General Medical & Surgical
-
-* never in M&A 
-_merge	year	medicarenumber	entity_name	mcrnum_x	cleaned_mcr	mcrnum_y	fac_name	medicare_ccn	merge_status	type
-Master only (1)	2010	180123	norton suburban hospital	180123	180123				Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2011	180123	norton suburban hospital	180123	180123				Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2012	180123	norton suburban hospital	180123	180123				Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2013	180123	norton suburban hospital	180123	180123				Unmerged from AHA/HIMSS	General Medical & Surgical
-		
-* never in M&A
-_merge	year	medicarenumber	entity_name	mcrnum_x	cleaned_mcr	mcrnum_y	fac_name	medicare_ccn	merge_status	type
-Master only (1)	2010	190182	tulane lakeside hospital	190182	190182				Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2011	190182	tulane lakeside hospital	190182	190182				Unmerged from AHA/HIMSS	General Medical & Surgical
-		
-* never in M&A 
-_merge	year	medicarenumber	entity_name	mcrnum_x	cleaned_mcr	mcrnum_y	fac_name	medicare_ccn	merge_status	type
-Master only (1)	2010	210010	dorchester general hospital	210010	210010				Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2011	210010	dorchester general hospital	210010	210010				Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2012	210010	dorchester general hospital	210010	210010				Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2013	210010	um shore medical center at dorchester	210010	210010				Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2014	210010	um shore medical center at dorchester	210010	210010				Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2015	210010	um shore medical center at dorchester	210010	210010				Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2016	210010	um shore medical center at dorchester	210010	210010				Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2017	210010	um shore medical center at dorchester	210010	210010				Unmerged from AHA/HIMSS	General Medical & Surgical
-		
-* missing some years in M&A? 
-_merge	year	medicarenumber	entity_name	mcrnum_x	cleaned_mcr	mcrnum_y	fac_name	medicare_ccn	merge_status	type
-Master only (1)	2010	210025	western maryland regional medical center	210025	210025				Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2011	210025	western maryland regional medical center	210025	210025	210027	WESTERN MARYLAND REGIONAL MEDICAL CENTER	210027	Secondary Merge	General Medical & Surgical
-Master only (1)	2012	210025	western maryland regional medical center	210025	210025	210027	WESTERN MARYLAND REGIONAL MEDICAL CENTER	210027	Secondary Merge	General Medical & Surgical
-Master only (1)	2013	210025	western maryland regional medical center	210025	210025	210027	WESTERN MARYLAND REGIONAL MEDICAL CENTER	210027	Secondary Merge	General Medical & Surgical
-Master only (1)	2014	210025	western maryland regional medical center	210025	210025	210027	WESTERN MARYLAND REGIONAL MEDICAL CENTER	210027	Secondary Merge	General Medical & Surgical
-Matched (3)	2015	210027	western maryland regional medical center	210027	210027	210027	WESTERN MARYLAND REGIONAL MEDICAL CENTER	210027	Initially Merged	General Medical & Surgical
-Matched (3)	2016	210027	western maryland regional medical center	210027	210027	210027	WESTERN MARYLAND REGIONAL MEDICAL CENTER	210027	Initially Merged	General Medical & Surgical
-Matched (3)	2017	210027	western maryland regional medical center	210027	210027	210027	WESTERN MARYLAND REGIONAL MEDICAL CENTER	210027	Initially Merged	General Medical & Surgical
-		
-* weird.... 
-_merge	year	medicarenumber	entity_name	mcrnum_x	cleaned_mcr	mcrnum_y	fac_name	medicare_ccn	merge_status	type
-Matched (3)	2010	210054	southern maryland hospital center	210054	210054	210054	SOUTHERN MARYLAND HOSPITAL CENTER	210054	Initially Merged	General Medical & Surgical
-Matched (3)	2011	210054	southern maryland hospital center	210054	210054	210054	SOUTHERN MARYLAND HOSPITAL CENTER	210054	Initially Merged	General Medical & Surgical
-Master only (1)	2012	210054	southern maryland hospital center	210054	210054	210062			Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2013	210054	medstar southern maryland hospital center	210054	210054	210062	MEDSTAR SOUTHERN MARYLAND HOSPITAL CENTER	210062	Secondary Merge	General Medical & Surgical
-Master only (1)	2014	210054	medstar southern maryland hospital center	210054	210054	210062	MEDSTAR SOUTHERN MARYLAND HOSPITAL CENTER	210062	Secondary Merge	General Medical & Surgical
-Master only (1)	2015	210054	medstar southern maryland hospital	210054	210054	210062	MEDSTAR SOUTHERN MARYLAND HOSPITAL CENTER	210062	Secondary Merge	General Medical & Surgical
-		
-
-		
