@@ -208,16 +208,42 @@ missing_adds = missing_loc_df[['entity_address', 'entity_zip',
 cleaned_census = hlp.load_census(data_path)
 cleaned_api = hlp.load_neonatim(data_path)
 
-filled_census, unfilled_census = hlp.match_census_adds(missing_adds, cleaned_census)
+filled_census, unfilled_census = hlp.updated_match_census_adds(missing_adds, data_path)
 filled_api, unfilled_api = hlp.match_api_adds(unfilled_census, cleaned_api)
 
+###### GEOCODE REMAINING MISSING LOCATIONS
+api_key = "AIzaSyDN1GTGa7x62biR--9zEEB6yjgFyQBKEmY" # replace once done
+filled_google = hlp.geocode_addresses(unfilled_api, data_path, api_key)
 
-filled_na = hlp.zip_distance_updated(hospitals, x_walk_2_data, data_path)
+### create list of missing aha numbers and their coordinates
+locations = pd.concat([filled_census, filled_api,filled_google], ignore_index=True)
+
+hospitals['_row_id'] = range(len(hospitals))
+
+## merge with hospitals data frame
+hospitals_merged = hospitals.merge(
+    locations[['entity_address', 'entity_city', 'entity_state', 'latitude', 
+               'longitude']].drop_duplicates(),
+    on=['entity_address', 'entity_city', 'entity_state'],
+    how='left',
+    suffixes=('', '_new')  # prevent immediate overwriting
+)
+
+# clean up latitude and longitude
+hospitals_merged['latitude'] = hospitals_merged['latitude'].\
+    combine_first(hospitals_merged['latitude_new'])
+hospitals_merged['longitude'] = hospitals_merged['longitude'].\
+    combine_first(hospitals_merged['longitude_new'])
+hospitals_merged = hospitals_merged.drop(columns=['latitude_new', 
+                                                  'longitude_new'])
+
+# combine dfs with updated aha
+filled_na = hlp.impute_aha_with_loc(hospitals_merged, x_walk_2_data)
 pre_filled = hospitals[hospitals['filled_aha'].notna()]
-
-
-combined_df = pd.concat([pre_filled, filled_na], ignore_index=True)
+combined_df = pd.concat([pre_filled, filled_na], ignore_index=True)\
+.drop_duplicates()
 combined_df['missing_aha'] = combined_df['filled_aha'].isna().astype(int)
 
-export_path = os.path.join(data_path, "derived/auxiliary/xwalk_updated.csv")
+# export aha numbers
+export_path = os.path.join(data_path, "derived/auxiliary/xwalk_updated_529.csv")
 combined_df.to_csv(export_path)
