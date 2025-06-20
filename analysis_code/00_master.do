@@ -32,5 +32,8 @@ Goal: 			Master do-file for Hospital CEOs analysis.
 	
 * Harmonize system ID variables
 	do "${github}/analysis_code/03_harmonize_sysid.do"
+	
+* CEO descriptives
+	do "${github}/analysis_code/04_ceo_descriptives.do"
 
 

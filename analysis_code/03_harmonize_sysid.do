@@ -5,6 +5,8 @@ Programmer: 	Julia Paris
 
 Goal: 			Compare M&A system ID to Ellie's xwalk sysid
 				Make a harmonized system ID variable
+				Clean and reduce data to xwalk for individual-level analyses
+				Save xwalk
 
 *******************************************************************************/
 
@@ -26,7 +28,7 @@ Goal: 			Compare M&A system ID to Ellie's xwalk sysid
 * visual inspection
 	sort entity_name year (medicarenumber)
 	sort medicarenumber year
-	br ahanumber medicarenumber year sameissystem system_id_aha sysid sysname sys_aha system_id_ma system_id_qtr_ma system_id_yr_ma sysid_final merge_status entity_name sysid_final_partial_sysname
+	br ahanumber medicarenumber year system_id_aha sysid sysname sys_aha system_id_ma system_id_qtr_ma system_id_yr_ma sysid_final merge_status entity_name sysid_final_partial_sysname
 	
 * make a combined_medicarenumber variable that fills missing values of medicare with tostringed mcrnum_y with appropriate leading zeroes? 
 	
@@ -128,9 +130,99 @@ Goal: 			Compare M&A system ID to Ellie's xwalk sysid
 	bysort medicarenumber (year): egen always_good = min(looksgood)
 	replace always_good = looksgood if medicarenumber == "" // for the group of obs missing medicarenumber
 	
+	codebook medicarenumber if always_good 
+	codebook medicarenumber if !always_good 
+	
 * remaining observations: should we worry about them?
 	sort medicarenumber year
 	br medicarenumber year system_id_aha sysid sysname sys_aha system_id_ma sysid_final merge_status entity_name sysid_final_partial_sysname *modal* *count* looksgood if always_good == 0
+	
+* create system change variables _______________________________________________
+
+	* first, make a variable to show when system is different from prior year within entity_uniqueid
+		
+	foreach sysvar in system_id_ma sysid_final {
+		bysort entity_uniqueid (year): gen syschng_`sysvar' = `sysvar' != `sysvar'[_n-1] if _n > 1
+	}
+	* replace uncertain years will missing 
+		* then any years following those missings also have to be missing because we didn't have system info for prior year
+	* system_id_ma missing means we really don't have any information about it (didn't merge)
+	replace syschng_system_id_ma = . if missing(system_id_ma)
+		replace syschng_system_id_ma = . if missing(system_id_ma[_n-1])
+	* if _merge_ellie_xwalk == 1, then missing sysid_final means that we don't have information
+	replace syschng_sysid_final = . if _merge_ellie_xwalk == 1
+		replace syschng_sysid_final = . if _merge_ellie_xwalk[_n-1] == 1
+ 	
+	foreach sysvar in system_id_ma sysid_final {
+		* generate variable to count total # of cumulative system changes
+		gen syschng_ct_`sysvar' = 0 if !missing(syschng_`sysvar')
+		* replace with 1 system change if the second non-missing system observation is actually a change
+		bysort entity_uniqueid (year): replace syschng_ct_`sysvar' = 1 if syschng_`sysvar'==1 & missing(syschng_ct_`sysvar'[_n-1])
+		* pull last year's number forward
+		bysort entity_uniqueid (year): replace syschng_ct_`sysvar' = syschng_ct_`sysvar'[_n-1]+syschng_`sysvar' if !missing(syschng_ct_`sysvar'[_n-1])
+//	think about what to do when the change variable is missing
+	}
+	
+* acquisition descriptives _____________________________________________________ 
+
+	* mean number of acquisitions over period by entity_uniqueid
+	preserve
+		collapse (rawsum) syschng*, by(year)
+		drop if year == 2010
+		graph bar syschng_system_id_ma syschng_sysid_final, over(year) ///
+			legend(position(bottom) label(1 "M&A Data") label(2 "PS Data")) ///
+			title("Count of System M&A Events by Year") ///
+			blabel(bar, size(vsmall))
+		graph export "${overleaf}/notes/M&A Merge/figures/counts_syschng_byyear.pdf", as(pdf) name("Graph") replace
+	restore
+	* share of non-missing observations in a given year with an acquisition event
+	preserve
+		collapse syschng*, by(year)
+		drop if year == 2010
+		graph bar syschng_system_id_ma syschng_sysid_final, over(year) ///
+			legend(position(bottom) label(1 "M&A Data") label(2 "PS Data")) ///
+			title("Share of Facilities With System M&A Events by Year") ///
+			blabel(bar, size(vsmall) format(%4.3f))
+		graph export "${overleaf}/notes/M&A Merge/figures/shares_syschng_byyear.pdf", as(pdf) name("Graph") replace
+	restore
+	
+* reduce sample to info needed for crosswalking to indiv. file _________________
+	 
+* fix variable names - eventually want to do this early in the code
+	* sysid_final -> sysid_ps
+	cap rename sysid_final sysid_ps
+	cap rename syschng_sysid_final syschng_sysid_ps
+	cap rename syschng_ct_sysid_final syschng_ct_sysid_ps
+	
+	* system_id_ma -> sysid_ma
+	cap rename system_id_ma sysid_ma
+	cap rename syschng_system_id_ma syschng_sysid_ma
+	cap rename syschng_ct_system_id_ma syschng_ct_sysid_ma
+	
+	* medicarenumber -> ccn_himss
+	cap rename medicarenumber ccn_himss
+	
+	* mcrnum_y -> ccn_aha
+	cap rename mcrnum_y ccn_aha
+	
+	* make sure all the for-profit variables from PS data are correctly named
+	foreach profvar in forprofit forprofit_lag forprofit_chng {
+		cap rename `profvar' `profvar'_ps
+	}
+	
+* keep key variables
+	keep 	ccn_himss ccn_aha /// medicare number variables
+			*sysid_ps *sysid_ma /// system ID variables
+			ahanumber year entity_uniqueid ///
+			forprofit_ps forprofit_lag_ps forprofit_chng_ps gov_priv_type_ps
+			
+* make unique by entity_uniqueid year
+	bysort entity_uniqueid year: keep if _n == 1
+		* 12 duplicate observations dropped
+			
+* save a crosswalk for merging with large file
+	save "${dbdata}/derived/temp/merged_ma_sysid_xwalk.dta", replace
+	
 	
 * case studies _________________________________________________________________
 
