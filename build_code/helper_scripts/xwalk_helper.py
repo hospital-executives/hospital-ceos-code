@@ -13,6 +13,8 @@ import time
 from tqdm import tqdm
 from sklearn.neighbors import BallTree
 import numpy as np
+import requests
+import json
 
 ## define helpful functions
 def clean_and_convert(val):
@@ -704,6 +706,52 @@ def match_census_adds(missing_adds, cleaned_census):
 
     return filled,unfilled
 
+def updated_match_census_adds(missing_adds, data_path):
+    
+    ## load census addresses:geocoding
+    census_path = f"{data_path}/supplemental/census_adds/combined_census.csv"
+    census_coords = pd.read_csv(census_path)
+    census_coords['latitude'] = census_coords['latitude'].round(5)
+    census_coords['longitude'] = census_coords['longitude'].round(5)
+
+    ## remove dupes 
+    dupes = census_coords.duplicated(subset=['address_clean', 'entity_city', 
+                                             'entity_state'], keep=False)
+    dupe_coords = census_coords[dupes]
+    not_dupes = census_coords[~dupes]
+
+    dupe_coords = dupe_coords[['address_clean', 'entity_city', 
+                               'entity_state', 'latitude', 'longitude']]
+    df_clean = dupe_coords.copy()
+    df_clean['latitude'] = df_clean['latitude'].round(5)
+    df_clean['longitude'] = df_clean['longitude'].round(5)
+
+    # Step 2: Force string normalization for text fields
+    text_cols = ['address_clean', 'entity_city', 'entity_state']
+    for col in text_cols:
+        df_clean[col] = df_clean[col].str.strip().str.upper()
+
+    # Step 3: Sort and drop duplicates across all columns
+    df_deduped = df_clean.sort_values(by=text_cols + 
+                                      ['latitude', 'longitude']
+                                      ).drop_duplicates()
+    
+    ## combine into final coords
+    final_coords = pd.concat([not_dupes,df_deduped])
+
+    ## merge with missing addresses
+    final = missing_adds.merge(final_coords[['address_clean', 'entity_city',
+                                                  'entity_state', 
+                                                  'latitude', 'longitude']],
+                                on=['address_clean', 'entity_city',
+                                    'entity_state'], 
+                                    how='left').drop_duplicates()
+    
+    filled = final[final['latitude'].notna() & final['longitude'].notna()]
+    unfilled = final[final['latitude'].isna() | final['longitude'].isna()]
+
+    return filled,unfilled
+
 def match_api_adds(unfilled_census, cleaned_api):
 
     cleaned_api_dedup = cleaned_api.drop_duplicates(subset=['address', 'zipcode'])
@@ -728,3 +776,122 @@ def match_api_adds(unfilled_census, cleaned_api):
     unfilled_result = merged[merged['latitude'].isna() | merged['longitude'].isna()].drop_duplicates()
     
     return filled_result,unfilled_result
+ 
+def geocode_addresses(unfilled_api, data_path, API_KEY):
+    cached_file = f"{data_path}/supplemental/google_geocoded.json"
+
+    unfilled_api['full_address'] = unfilled_api['entity_address'].astype(str) \
+        + ', ' + unfilled_api['entity_city'].astype(str) + ', ' + \
+            unfilled_api['entity_state'].astype(str)
+    
+    unique_addresses = unfilled_api[['entity_address', 'entity_city',
+                                     'entity_state', 'full_address']].\
+                                        drop_duplicates()
+
+
+    try:
+        with open(cached_file, 'r') as f:
+            cache = json.load(f)
+    except FileNotFoundError:
+        cache = {}
+
+    def geocode(address):
+        if address in cache:
+            return cache[address]
+        
+        print('ahhh!!!')
+        url = "https://maps.googleapis.com/maps/api/geocode/json"
+        params = {"address": address, "key": API_KEY}
+        response = requests.get(url, params=params)
+        result = response.json()
+        
+        if result['status'] == 'OK':
+            location = result['results'][0]['geometry']['location']
+            lat_lng = (location['lat'], location['lng'])
+            cache[address] = lat_lng
+            time.sleep(0.1)  # pause to respect rate limits
+            return lat_lng
+        else:
+            print(f"Failed to geocode: {address}, Status: {result['status']}")
+            cache[address] = (None, None)
+            return (None, None)
+        
+    results = []
+    for _, row in tqdm(unique_addresses.iterrows(), 
+                       total=len(unique_addresses), desc="Geocoding"):
+        lat_lng = geocode(row['full_address'])
+        results.append(lat_lng)
+
+    unique_addresses[['latitude', 'longitude']] = \
+        pd.DataFrame(results, index=unique_addresses.index)
+
+    # Save updated cache
+    with open(cached_file, 'w') as f:
+            json.dump(cache, f, indent=2)
+    
+    unfilled_api = unfilled_api[['entity_address', 'entity_zip',
+                                 'entity_zip_five', 'entity_city',
+                                 'entity_state', 'address_clean',
+                                 'address_clean_std']].merge(
+    unique_addresses[['entity_address', 'entity_city', 'entity_state', 'latitude', 'longitude']],
+    on=['entity_address', 'entity_city', 'entity_state'],
+    how='left'
+    )
+
+    return unfilled_api
+
+def impute_aha_with_loc(hospitals_merged, x_walk_2_data, input_threshold = 0.5):
+    target_df = hospitals_merged[hospitals_merged['filled_aha'].isna()]
+
+    target_df['latitude'] = pd.to_numeric(target_df['latitude'], 
+                                          errors='coerce')
+    target_df['longitude'] = pd.to_numeric(target_df['longitude'],
+                                            errors='coerce')
+
+    missing_lat_long = target_df[target_df[['latitude', 'longitude']
+                                           ].isna().any(axis=1)]
+    target_df = target_df.dropna(subset=['latitude', 'longitude'])
+    target_coords = np.radians(target_df[['latitude', 'longitude']
+                                         ].to_numpy())
+
+    ref_df = x_walk_2_data[[ 'ahaid_noletter', 'lat', 'lon']].rename(
+            columns={
+                'ahaid_noletter': 'ahaid', 
+                'lat': 'latitude',
+                'lon': 'longitude'
+                }
+            )
+    ref_df['ahaid'] = ref_df['ahaid'].apply(clean_and_convert)
+
+    ref_df['latitude'] = pd.to_numeric(ref_df['latitude'], errors='coerce')
+    ref_df['longitude'] = pd.to_numeric(ref_df['longitude'], errors='coerce')
+    ref_df = ref_df.dropna(subset=['latitude', 'longitude'])
+
+    ref_coords = np.radians(ref_df[['latitude', 'longitude']].to_numpy())
+
+    tree = BallTree(ref_coords, metric='haversine')
+
+        # Query nearest neighbor (returns distance in radians)
+    distances, indices = tree.query(target_coords, k=1)
+
+        # Convert radians to km (Earth radius ~6371 km)
+    dist_km = distances.flatten() * 6371  # Earth radius in km
+    nearest_indices = indices.flatten()
+
+        # Define a match threshold (e.g., 0.5 km = 500 meters)
+    match_threshold_km = input_threshold
+
+        # Create a copy to avoid modifying original
+    target_df = target_df.copy()
+
+    target_df = target_df.reset_index(drop=True)
+
+        # Fill in ahaid where within distance and aha is missing
+    for i, (dist, idx) in enumerate(zip(dist_km, nearest_indices)):
+        if dist <= match_threshold_km and pd.isna(target_df.loc[i, 'filled_aha']):
+            target_df.loc[i, 'filled_aha'] = ref_df.iloc[idx]['ahaid']
+
+    result = pd.concat([target_df, missing_lat_long], 
+                       ignore_index=True).drop_duplicates()
+    
+    return result
