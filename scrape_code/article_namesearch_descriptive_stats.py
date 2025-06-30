@@ -100,8 +100,7 @@ plt.ylim(0, 0.3)
 
 # Save the figure
 plt.savefig(rf'{DROPBOX_PATH}\_data\scrape_output\DOJ_Pre2010__Yearly_Health_Article_Proportion.png', dpi=300)
-plt.show()
-
+plt.close()
 ### Summary statistics for post 2010 DOJ archives.
 
 post2010df = pd.read_csv(rf'{DROPBOX_PATH}\_data\scrape_output\dojarchivepost2010cleaned.csv')
@@ -122,7 +121,7 @@ post2010df["Health Words (Most false positives removed)"] = 0
 
 
 
-#Lines 128-150 are identical to the process for the pre2010 dataframe in lines 33-61.
+#Lines 126-148 are identical to the process for the pre2010 dataframe in lines 32-60.
 
 for i, text in enumerate(post2010df['Full Text']):
     if isinstance(text, str) and any(word in text.lower() for word in keywords_original):
@@ -200,8 +199,7 @@ plt.ylim(0, 0.3)
 
 # Saving the figure
 plt.savefig(rf'{DROPBOX_PATH}\_data\scrape_output\DOJ_Post2010__Yearly_Health_Article_Proportion.png', dpi=300)
-plt.show()
-
+plt.close()
 ### Summary statistics for name search matching - number andproportion of unique names matched 
 # in pre and post 2010 DOJ archives.
 
@@ -231,8 +229,7 @@ plt.xticks(rotation=15)
 
 #Saving the Figure
 plt.savefig(rf'{DROPBOX_PATH}\_data\scrape_output\DOJ_fullname_matches_totals.png', dpi=300)
-plt.show()
-
+plt.close()
 
 #Plotting proportion of names found.
 labels = ['Proportion Pre-2010', 'Proportion Post-2010']
@@ -247,6 +244,5 @@ plt.xticks(rotation=15)
 
 #Saving the figure.
 plt.savefig(rf'{DROPBOX_PATH}\_data\scrape_output\DOJ_fullname_matches_proportion.png', dpi=300)
-plt.show()
-
+plt.close()
 
