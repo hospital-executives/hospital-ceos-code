@@ -136,9 +136,9 @@ step1 <- merged %>%
   select(-override_aha) %>% 
   group_by(ahanumber) %>%
   mutate(
-    has_non_na = any(!is.na(clean_aha)),
+    has_match = any(clean_aha == sys_aha, na.rm = TRUE),
     clean_aha = case_when(
-      has_non_na & is.na(clean_aha) ~ 0,
+      has_match & is.na(clean_aha) ~ 0,
       TRUE ~ clean_aha
     )
   ) %>%
@@ -180,9 +180,9 @@ step1b <- step1 %>%
   select(-override_aha) %>% 
   group_by(ahanumber) %>%
   mutate(
-    has_non_na = any(!is.na(clean_aha)),
+    has_match = any(clean_aha == sys_aha, na.rm = TRUE),
     clean_aha = case_when(
-      has_non_na & is.na(clean_aha) ~ 0,
+      has_match & is.na(clean_aha) ~ 0,
       TRUE ~ clean_aha
     )
   ) %>%
@@ -222,9 +222,9 @@ step2 <- step1b %>%
   select(-override_aha) %>% 
   group_by(ahanumber) %>%
   mutate(
-    has_non_na = any(!is.na(clean_aha)),
+    has_match = any(clean_aha == sys_aha, na.rm = TRUE),
     clean_aha = case_when(
-      has_non_na & is.na(clean_aha) ~ 0,
+      has_match & is.na(clean_aha) ~ 0,
       TRUE ~ clean_aha
     )
   ) %>%
@@ -281,9 +281,9 @@ step3 <- step2 %>%
   select(-override_aha) %>% 
   group_by(ahanumber) %>%
   mutate(
-    has_non_na = any(!is.na(clean_aha)),
+    has_match = any(clean_aha == sys_aha, na.rm = TRUE),
     clean_aha = case_when(
-      has_non_na & is.na(clean_aha) ~ 0,
+      has_match & is.na(clean_aha) ~ 0,
       TRUE ~ clean_aha
     )
   ) %>%
