@@ -41,3 +41,29 @@ Goal: 			Set globals for Hospital CEOs analysis
 	
 	end
 	* this will be run at the start of all other programs. 
+
+* WRITE A PROGRAM TO EXPORT MERGE RESULTS ______________________________________
+	
+	program export_merge 
+	
+		syntax , Folder(string) Filename(string) Target(string) 
+		
+		* write merge results
+		tempname f
+		file open `f' using "${overleaf}/notes/`folder'/figures/`filename'.tex", write replace
+		file write `f' "\begin{tabular}{lr}" _n
+		file write `f' "Group & Count \\" _n
+		file write `f' "\hline" _n
+
+		quietly levelsof `target', local(vals)
+		foreach v of local vals {
+			count if `target' == `v'
+			local n = r(N)
+			local label : label (`target') `v'
+			file write `f' "`label' & `n' \\" _n
+		}
+
+		file write `f' "\end{tabular}" _n
+		file close `f'
+		
+	end

@@ -1,7 +1,7 @@
 ###########
 # Exploratory analysis: identifying hospital CEO promotions
 # Author: Maggie Shi
-# Last edited: 4/25/2025
+# Last edited: 06/30/25
 ###########
 
 
@@ -24,6 +24,7 @@ dropbox_base <- switch(
   Sys.info()[["user"]],
   "maggieshi" = "/Users/maggieshi/Dropbox",
   "mengdishi" = "/Users/mengdishi/Dropbox",
+  "juliaparis" = "/Users/juliaparis/Library/CloudStorage/Dropbox",
   stop("Unrecognized user")
 )
 df <- read_dta(file.path(dropbox_base, "hospital_ceos/_data/derived/final_confirmed.dta"))

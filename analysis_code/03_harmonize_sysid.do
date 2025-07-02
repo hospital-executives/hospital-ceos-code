@@ -7,6 +7,8 @@ Goal: 			Compare M&A system ID to Ellie's xwalk sysid
 				Make a harmonized system ID variable
 				Clean and reduce data to xwalk for individual-level analyses
 				Save xwalk
+				
+				New: compare to Cooper M&A data
 
 *******************************************************************************/
 
@@ -21,6 +23,7 @@ Goal: 			Compare M&A system ID to Ellie's xwalk sysid
 	* clean_aha: unclear whether this is a system ID too?
 	* system_id_ma system_id_yr_ma system_id_qtr_ma: all from M&A data
 	* sysid_final: from Ellie's crosswalk
+	* sysid_coop: Cooper et al system ID
 	
 * load data
 	use "${dbdata}/derived/temp/merged_ma_nonharmonized.dta", clear
@@ -141,10 +144,10 @@ Goal: 			Compare M&A system ID to Ellie's xwalk sysid
 
 	* first, make a variable to show when system is different from prior year within entity_uniqueid
 		
-	foreach sysvar in system_id_ma sysid_final {
+	foreach sysvar in system_id_ma sysid_final sysid_coop {
 		bysort entity_uniqueid (year): gen syschng_`sysvar' = `sysvar' != `sysvar'[_n-1] if _n > 1
 	}
-	* replace uncertain years will missing 
+	* replace uncertain years with missing 
 		* then any years following those missings also have to be missing because we didn't have system info for prior year
 	* system_id_ma missing means we really don't have any information about it (didn't merge)
 	replace syschng_system_id_ma = . if missing(system_id_ma)
@@ -152,8 +155,11 @@ Goal: 			Compare M&A system ID to Ellie's xwalk sysid
 	* if _merge_ellie_xwalk == 1, then missing sysid_final means that we don't have information
 	replace syschng_sysid_final = . if _merge_ellie_xwalk == 1
 		replace syschng_sysid_final = . if _merge_ellie_xwalk[_n-1] == 1
+	* if _merge_coop == 1, then missing sysid_final means that we don't have information
+	replace syschng_sysid_coop = . if _merge_coop == 1
+		replace syschng_sysid_coop = . if _merge_coop[_n-1] == 1
  	
-	foreach sysvar in system_id_ma sysid_final {
+	foreach sysvar in system_id_ma sysid_final sysid_coop {
 		* generate variable to count total # of cumulative system changes
 		gen syschng_ct_`sysvar' = 0 if !missing(syschng_`sysvar')
 		* replace with 1 system change if the second non-missing system observation is actually a change
@@ -185,6 +191,28 @@ Goal: 			Compare M&A system ID to Ellie's xwalk sysid
 			blabel(bar, size(vsmall) format(%4.3f))
 		graph export "${overleaf}/notes/M&A Merge/figures/shares_syschng_byyear.pdf", as(pdf) name("Graph") replace
 	restore
+	
+	* now the same graphs from 2011-2014 with Cooper et al data
+	preserve
+		collapse (rawsum) syschng*, by(year)
+		keep if inrange(year,2011,2014)
+		graph bar syschng_system_id_ma syschng_sysid_final syschng_sysid_coop, over(year) ///
+			legend(position(bottom) label(1 "M&A Data") label(2 "PS Data") label(3 "Cooper et al Data")) ///
+			title("Count of System M&A Events by Year") ///
+			blabel(bar, size(vsmall))
+		graph export "${overleaf}/notes/M&A Merge/figures/counts_syschng_byyear_coop.pdf", as(pdf) name("Graph") replace
+	restore
+	* share of non-missing observations in a given year with an acquisition event
+	preserve
+		collapse syschng*, by(year)
+		keep if inrange(year,2011,2014)
+		graph bar syschng_system_id_ma syschng_sysid_final syschng_sysid_coop, over(year) ///
+			legend(position(bottom) label(1 "M&A Data") label(2 "PS Data") label(3 "Cooper et al Data")) ///
+			title("Share of Facilities With System M&A Events by Year") ///
+			blabel(bar, size(vsmall) format(%4.3f))
+		graph export "${overleaf}/notes/M&A Merge/figures/shares_syschng_byyear_coop.pdf", as(pdf) name("Graph") replace
+	restore
+	
 	
 * reduce sample to info needed for crosswalking to indiv. file _________________
 	 

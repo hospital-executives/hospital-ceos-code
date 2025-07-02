@@ -12,32 +12,6 @@ Goal: 			Merge M&A data into hospital-level dataset
 * check setup is complete
 	check_setup
 	
-* write program to export merge results
-	cap program drop export_merge
-	program export_merge 
-	
-		syntax , Filename(string) Target(string)
-		
-		* write merge results
-		tempname f
-		file open `f' using "${overleaf}/notes/M&A Merge/figures/`filename'.tex", write replace
-		file write `f' "\begin{tabular}{lr}" _n
-		file write `f' "Group & Count \\" _n
-		file write `f' "\hline" _n
-
-		quietly levelsof `target', local(vals)
-		foreach v of local vals {
-			count if `target' == `v'
-			local n = r(N)
-			local label : label (`target') `v'
-			file write `f' "`label' & `n' \\" _n
-		}
-
-		file write `f' "\end{tabular}" _n
-		file close `f'
-		
-	end
-	
 * PREPARE FOR MERGE  ___________________________________________________________
 
 * load data
@@ -125,7 +99,7 @@ Goal: 			Merge M&A data into hospital-level dataset
 	* format and export merge results
 	label define mergelab 1 "Unmerged from AHA/HIMSS" 2 "Unmerged from M\&A" 3 "Merged"
 	label values _merge mergelab
-	export_merge, filename(merge1_tab) target(_merge)
+	export_merge, folder("M&A Merge") filename(merge1_tab) target(_merge)
 	
 	* unmerged observations from AHA/HIMSS that are NOT MISSING CCN: 4,136
 	* unmerged observations from AHA/HIMSS that are MISSING CCN: 2,259
@@ -205,28 +179,15 @@ Goal: 			Merge M&A data into hospital-level dataset
 	* format and export merge results
 	encode merge_status, gen(enc_merge_status)
 	label define enc_merge_status 4 "Unmmerged From M\&A", modify
-	export_merge, filename(merge2_tab) target(enc_merge_status)
+	export_merge, folder("M&A Merge") filename(merge2_tab) target(enc_merge_status)
 	
 	* resolved the 2010 issue:
 	tab year if type == "Critical Access" & merge_status=="Unmerged from AHA/HIMSS" & !missing(medicarenumber)
 
 * merge quality checks	
 	br _merge year medicarenumber entity_name mcrnum_x cleaned_mcr mcrnum_y fac_name medicare_ccn merge_status type 				
-	/*
-* Pull in Ellie dataset	for merge #3 __ no new matches ___ delete eventually ___
-	* pull unmerged from M&A into own file
-	preserve
-		keep if merge_status == "Unmerged from M&A"
-		drop _merge
-		keep fac_name year medicarenumber year_qtr medicare_ccn hrrcode month source_completed bankruptcy system_exit system_split merger_of_equals target notes system_id_ma system_id_qtr_ma system_id_yr
-		gen mcrnum_ellie = medicarenumber
-		tempfile unmerged2
-		save `unmerged2'
-	restore
 
-	* prepare for merge
-	drop if merge_status == "Unmerged from M&A"
-	*/
+* prepare Ellie's data
 	tostring ahanumber, gen(ahaid_noletter)	
 	preserve
 		use "${dbdata}/supplemental/hospital_ownership.dta", clear
@@ -239,125 +200,25 @@ Goal: 			Merge M&A data into hospital-level dataset
 		tempfile ellie_xwalk
 		save `ellie_xwalk'
 	restore
-
 	
-	* merge Ellie's xwalk
+* merge Ellie's xwalk
 	merge m:1 ahaid_noletter year using `ellie_xwalk', gen(_merge_ellie_xwalk) keepusing(ahaid sysid_final mcrnum sysid_final_partial_sysname forprofit* gov_priv_type_ps) keep(1 3)
 	rename mcrnum mcrnum_ellie
 
-	/*
-	destring mcrnum_ellie, gen(mcrnum_ellie_destr)
-	gen same_ccn = mcrnum_ellie_destr == mcrnum_y
-	* only different for 385 obs (0.9%), of which 294 have a missing mcrnum_y
-	gen same_ccn2 = mcrnum_ellie==medicarenumber
-	* different 
-	
-	* keep a separate file of all the successful merges
+* prepare Cooper et al data
 	preserve
-		keep if merge_status == "Initially Merged" | merge_status == "Secondary Merge"
-		tempfile merged2
-		save `merged2'
-	restore
-	
-	keep if merge_status == "Unmerged from AHA/HIMSS"
-	drop fac_name year_qtr medicare_ccn hrrcode month source_completed bankruptcy system_exit system_split merger_of_equals target notes system_id_ma system_id_qtr_ma system_id_yr
-	merge m:1 mcrnum_ellie year using `unmerged2', gen(_merge3)
-	replace merge_status = "Unmerged from M&A" if _merge3 == 2
-	append using `merged2'
-
-* try the crosswalk approach ___________________________________________________
-	
-* first, create a crosswalk for every CCN of every other CCN that appears on a shared observation
-	preserve
-		* keep only relevant variables
-		keep medicarenumber mcrnum_y 
-		* keep unique combinations
-		bysort medicarenumber mcrnum_y: keep if _n == 1
-		* drop any observations where they are the same
-		foreach lett in y {
-			gen mcrnum_`lett'_str = string(mcrnum_`lett', "%06.0f")
-			replace mcrnum_`lett'_str = "" if mcrnum_`lett'_str == "."
+		use "${dbdata}/supplemental/coop_20190108_mergerdata/HC_ext_mergerdata_public.dta", clear
+		rename id_defunct ahaid
+		foreach var in id sysid target acquirer id_parent {
+			rename `var' `var'_coop
 		}
-		drop if mcrnum_y_str == medicarenumber	
-		drop mcrnum_y_str
-		tempfile base
-		save `base'
-		
-		* first, try finding every option of mcrnum_y for each different ccn. 
-		drop if medicarenumber == "" | mcrnum_y == .
-		bysort medicarenumber (mcrnum_y): gen num=_n
-		rename mcrnum_y alt_mcrnum_y
-		reshape wide alt_mcrnum_y, i(medicarenumber) j(num)
-		save "${dbdata}/derived/temp/alt_CCNs_medicarenumber.dta", replace
-		
-		* second, try finding every option of medicarenumber for each different mcrnum_y
-		use `base', clear
-		drop if medicarenumber == "" | mcrnum_y == .
-		bysort mcrnum_y (medicarenumber): gen num=_n
-		rename medicarenumber alt_medicarenumber
-		reshape wide alt_medicarenumber, i(mcrnum_y) j(num)
-		save "${dbdata}/derived/temp/alt_CCNs_mcrnum_y.dta", replace
+		keep if inrange(year,2010,2017)
+		tempfile coop_xwalk
+		save`coop_xwalk'
 	restore
 	
-* first, try merging crosswalk on medicarenumber. 
-merge m:1 medicarenumber using "${dbdata}/derived/temp/alt_CCNs_medicarenumber.dta", gen(_merge_medicarenumber)	
-
-	foreach num in 1 2 3 {
-	* set up merge 
-		preserve
-			keep if merge_status == "Unmerged from M&A"
-			drop _merge
-			keep fac_name year medicarenumber year_qtr medicare_ccn hrrcode month source_completed bankruptcy system_exit system_split merger_of_equals target notes system_id_ma system_id_qtr_ma system_id_yr_ma 
-			gen alt_mcrnum_y`num' = medicare_ccn
-			tempfile unmerged3a_`num'
-			save `unmerged3a_`num''
-		restore
-		
-		* keep a separate file of all the successful merges or observations we can't use here
-		preserve
-			keep if merge_status == "Initially Merged" | merge_status == "Secondary Merge" | missing(alt_mcrnum_y`num')
-			tempfile merged3a_`num'
-			save `merged3a_`num''
-		restore
-		
-		keep if merge_status == "Unmerged from AHA/HIMSS" & !missing(alt_mcrnum_y`num')
-		drop fac_name year_qtr medicare_ccn hrrcode month source_completed bankruptcy system_exit system_split merger_of_equals target notes system_id_ma system_id_qtr_ma system_id_yr
-		merge m:1 alt_mcrnum_y`num' year using `unmerged3a_`num'', gen(_merge4a_`num') keep(1 3)
-		replace merge_status = "Unmerged from M&A" if _merge4a_`num' == 2
-		replace merge_status = "Final Merges" if _merge4a_`num' == 3
-		append using `merged3a_`num''
-		* got 7 more on this round
-	}
-	
-* now try the merging the crosswalk on mcrnum_y
-merge m:1 mcrnum_y using "${dbdata}/derived/temp/alt_CCNs_mcrnum_y.dta", gen(_merge_mcrnum_y)	
-	
-	foreach num in 1 2 {
-		* set up for merge
-		preserve
-			keep if merge_status == "Unmerged from M&A"
-			drop _merge
-			keep fac_name year medicarenumber year_qtr medicare_ccn hrrcode month source_completed bankruptcy system_exit system_split merger_of_equals target notes system_id_ma system_id_qtr_ma system_id_yr_ma 
-			gen alt_medicarenumber`num' = medicarenumber
-			tempfile unmerged3b_`num'
-			save `unmerged3b_`num''
-		restore
-		
-		* keep a separate file of all the successful merges or observations we can't use here
-		preserve
-			keep if merge_status == "Initially Merged" | merge_status == "Secondary Merge" | missing(alt_medicarenumber`num')
-			tempfile merged3b_`num'
-			save `merged3b_`num''
-		restore
-
-		keep if merge_status == "Unmerged from AHA/HIMSS" & !missing(alt_medicarenumber`num')
-		drop fac_name year_qtr medicare_ccn hrrcode month source_completed bankruptcy system_exit system_split merger_of_equals target notes system_id_ma system_id_qtr_ma system_id_yr
-		merge m:1 alt_medicarenumber`num' year using `unmerged3b_`num'', gen(_merge4b_`num') keep(1 3)
-		replace merge_status = "Unmerged from M&A" if _merge4b_`num' == 2
-		replace merge_status = "Final Merges" if _merge4b_`num' == 3
-		append using `merged3b_`num''
-	} 
-*/
+* merge in Cooper et al data
+	merge m:1 ahaid year using `coop_xwalk', gen(_merge_coop) keep(1 3)
 
 * need to add variable cleaning and renaming
 * save merged file
