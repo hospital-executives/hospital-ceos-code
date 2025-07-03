@@ -367,7 +367,7 @@ temp_export <- temp_export %>%
 
 
 ## CREATE INDIVIDUAL LEVEL EXPORT
-himss <- read_feather('/Users/loaner/Dropbox/hospital_ceos/_data/derived/final_himss.feather')
+himss <- read_feather(paste0(derived_data, '/final_himss.feather'))
 himss_mini <- himss %>%
   select(himss_entityid, year, id, entity_uniqueid) %>%
   mutate(

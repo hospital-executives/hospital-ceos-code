@@ -19,7 +19,7 @@ def install(package):
 
 
 # specify data path 
-data_path = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data"
+data_path = "/Users/katherinepapen/Library/CloudStorage/Dropbox/hospital_ceos/_data"
 # TAKE ARGS FROM MAKEFILE
 # Get arguments from the command line
 if len(sys.argv) == 9:
@@ -35,7 +35,7 @@ if len(sys.argv) == 9:
 else:
     print('WARNING: Not using Makefile Input')
     # Otherwise, use default file paths
-    code_dir = '/Users/loaner/hospital-ceos-code/build_code'
+    code_dir = '/Users/katherinepapen/github/hospital-ceos-code/build_code'
     confirmed_r = os.path.join(data_path, "derived/auxiliary/r_confirmed.feather")
     remaining_r =  os.path.join(data_path, "derived/auxiliary/r_remaining.feather")
     himss_entities_contacts = os.path.join(data_path, 
