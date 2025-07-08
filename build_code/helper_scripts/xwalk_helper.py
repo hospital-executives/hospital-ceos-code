@@ -229,10 +229,21 @@ def year_zip_add(df1, ref_address, hospitals, ha_address):
             matched_address in row[ha_address] or 
             row[ha_address] in matched_address
             ):
-            match_with_mcr[(row['year'], (row['zip']), row['mcrnum'], 
-                            row[ha_address])] = matched_aha
-            match_wo_mcr[(row['year'], (row['zip']), 
-                                row[ha_address])] = matched_aha
+            
+            if score == 100:
+                if not pd.isna(row['mcrnum']):
+                    match_with_mcr[(row['year'], (row['zip']), row['mcrnum'], 
+                                row[ha_address])] = (matched_aha, 0)
+                else:
+                    match_wo_mcr[(row['year'], (row['zip']), 
+                                    row[ha_address])] = (matched_aha, 0)
+            else:
+                if not pd.isna(row['mcrnum']):
+                    match_with_mcr[(row['year'], (row['zip']), row['mcrnum'], 
+                                row[ha_address])] = (matched_aha, 1)
+                else:
+                    match_wo_mcr[(row['year'], (row['zip']), 
+                                    row[ha_address])] = (matched_aha, 1)
             
     return match_with_mcr, match_wo_mcr
 
@@ -284,13 +295,13 @@ def zip_name(df1):
 
 def get_aha_from_address(row, name_to_addresses):
     if pd.notna(row['filled_aha']):
-        return row['filled_aha']  # already filled
+        return (row['filled_aha'], row['fuzzy_flag'])  # already filled
 
     name_key = row['clean_name']
     address = str(row['address_clean'])
 
     if name_key not in name_to_addresses:
-        return None
+        return (None, None)
 
     # Get candidate addresses
     candidates = name_to_addresses[name_key]
@@ -305,9 +316,11 @@ def get_aha_from_address(row, name_to_addresses):
 
     if match_result:
         matched_address, score, idx = match_result
-        if score >= 85:
-            return candidates[idx][1]  # ahaid
-    return None
+        if score == 100:
+            return (candidates[idx][1],0)  # ahaid
+        elif score >= 85:
+            return (candidates[idx][1],1)
+    return (None, None)
 
 def add_only(df1, ref_address):
     address_counts = (
@@ -330,13 +343,13 @@ def add_only(df1, ref_address):
 
     return add_aha
 
-def fill_from_add_aha(row, add_aha):
+def fill_from_add_aha(row, add_aha, add_var):
     if pd.notna(row['filled_aha']):
-        return row['filled_aha']
+        return (row['filled_aha'], row['fuzzy_flag'])
     
-    key = (row['address_clean'], row['year'])
+    key = (row[add_var], row['year'])
     if key not in add_aha:
-        return None
+        return (None, None)
 
     ref_name, ahaid = add_aha[key]
     
@@ -345,7 +358,11 @@ def fill_from_add_aha(row, add_aha):
         str(ref_name).lower().strip()
     )
 
-    return ahaid if score >= 85 else None
+    if score == 100:
+        return (ahaid, 0)
+    elif score >= 85: 
+        return (ahaid, 1)
+    return (None, None)
 
 def get_lat_lon(address, zip_code, geolocator, retry=3):
     full_address = f"{address}, {zip_code}"
@@ -799,7 +816,9 @@ def geocode_addresses(unfilled_api, data_path, API_KEY):
         if address in cache:
             return cache[address]
         
-        print('ahhh!!!')
+        else:
+            return None
+        # removed to prevent overuse of API key
         url = "https://maps.googleapis.com/maps/api/geocode/json"
         params = {"address": address, "key": API_KEY}
         response = requests.get(url, params=params)

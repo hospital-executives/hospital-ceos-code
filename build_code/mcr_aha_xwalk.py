@@ -9,7 +9,7 @@ if '--from_r' in sys.argv:
     data_path = sys.argv[sys.argv.index('--from_r') + 1]
 else:
     print("WARNING - NOT USING R INPUT")
-    data_path = "/Users/loaner/Dropbox/hospital_ceos/_data"
+    data_path = "/Users/katherinepapen/Library/CloudStorage/Dropbox/hospital_ceos/_data"
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from helper_scripts import xwalk_helper as hlp
@@ -39,36 +39,35 @@ address_matches = hlp.mcr_to_address(haentity, mcr_mismatch, df1,
                                      "entity_address", "address")
 
 filled_values = []
+fuzzy_flags = []
+
 for _, row in hospitals.iterrows():
     key1 = (row['cleaned_mcr'], row['year'])
     if key1 in medicare_to_aha:
         filled_values.append(next(iter(medicare_to_aha[key1])))
+        fuzzy_flags.append(0)
     elif key1 in address_matches:
         filled_values.append(address_matches[key1])
+        fuzzy_flags.append(1)
     else:
         filled_values.append(None)
+        fuzzy_flags.append(None)
+
 
 hospitals['filled_aha'] = filled_values
+hospitals['fuzzy_flag'] = fuzzy_flags #124 = 1, 58123 = 0
 
 # SUBSET BY ZIP CODE AND MATCH BY SIMILAR ADDRESSSES
 # for each year, zip find all addresses, ahaid and pick the aha with the most
 # similar address
 match_with_mcr, match_wo_mcr = hlp.year_zip_add(df1, "address_clean", hospitals, 
                                                 "address_clean")
+
+## removed match_with_mcr since it added no additional cleaned entries
+
 hospitals['filled_aha'] = hospitals.apply(
     lambda row: (
-        match_with_mcr[(row['year'], row['zip'], row['mcrnum'], 
-                        row['address_clean'])]
-        if pd.isna(row['filled_aha']) and 
-        (row['year'], row['zip'], row['mcrnum'], row['address_clean']) in 
-        match_with_mcr
-        else row['filled_aha']
-    ),
-    axis=1
-)
-hospitals['filled_aha'] = hospitals.apply(
-    lambda row: (
-        match_wo_mcr[(row['year'], row['zip'],  row['address_clean'])]
+        match_wo_mcr[(row['year'], row['zip'],  row['address_clean'])][0]
         if pd.isna(row['filled_aha']) and 
         (row['year'], row['zip'],  row['address_clean']) in 
         match_wo_mcr
@@ -76,6 +75,18 @@ hospitals['filled_aha'] = hospitals.apply(
     ),
     axis=1
 )
+
+hospitals['fuzzy_flag'] = hospitals.apply(
+    lambda row: (
+        match_wo_mcr[(row['year'], row['zip'],  row['address_clean'])][1]
+        if pd.isna(row['fuzzy_flag']) and 
+        (row['year'], row['zip'],  row['address_clean']) in 
+        match_wo_mcr
+        else row['fuzzy_flag']
+    ),
+    axis=1
+)
+
 ## 6364 obs missing AHA of which 2220 have valid medicare numbers
 
 ## MATCH ON NAME & ADDRESS
@@ -97,40 +108,45 @@ hospitals['filled_aha'] = hospitals.apply(
     axis=1
 )
 
-## (ZIP, NAME) : AHA
-zip_name_aha = hlp.zip_name(df1)
+hospitals.loc[
+    hospitals['filled_aha'].notna() & hospitals['fuzzy_flag'].isna(),
+    'fuzzy_flag'
+] = 0
 
-hospitals['filled_aha'] = hospitals.apply(
-    lambda row: (
-        zip_name_aha.get(
-            (str(row['zip']), str(row['entity_name']).lower().strip(),
-              int(row['year']))
-        )
-        if pd.isna(row['filled_aha']) and 
-           (str(row['zip']), str(row['entity_name']).lower().strip(), 
-            int(row['year'])) in zip_name_aha
-        else row['filled_aha']
-    ),
-    axis=1
-)
+import copy
+backup1 = copy.deepcopy(hospitals)
+
+## (ZIP, NAME) : AHA - removed; did not add filled_ahas
+
+
+## delete when done
+import copy
+hospitals_backup = copy.deepcopy(hospitals)
+## delete o here
 
 ## USE NAME TO FIND CLOSE MATCH ON ADDRESS
 name_to_addresses = defaultdict(list)
 for _, row in df1.iterrows():
     name_to_addresses[row['clean_name']].append((row['address_clean'], 
                                                  row['ahaid']))
-hospitals['filled_aha'] = hospitals.apply(
+    
+hospitals[['filled_aha', 'fuzzy_flag']] = hospitals.apply(
     lambda row: hlp.get_aha_from_address(row, name_to_addresses),
-    axis=1
+    axis=1,
+    result_type='expand'
 )
 
 ## USE JUST ADDRESS TO FIND AHA
 add_aha = hlp.add_only(df1,"address_clean")
-hospitals['filled_aha'] = hospitals.apply(
-    lambda row: hlp.fill_from_add_aha(row, add_aha) if 
-    pd.isna(row['filled_aha']) else row['filled_aha'],
-    axis=1
+hospitals[['filled_aha', 'fuzzy_flag']] = hospitals.apply(
+    lambda row: (
+        hlp.fill_from_add_aha(row, add_aha, "address_clean") 
+        if pd.isna(row['filled_aha']) else (row['filled_aha'], row['fuzzy_flag'])
+    ),
+    axis=1,
+    result_type='expand'
 )
+
 
 # 1996 OBS REMAINING / 3675 ROWS HERE
 ### PART TWO WITH SUPER CLEANED ADDRESS
@@ -141,7 +157,7 @@ match_with_mcr, match_wo_mcr = hlp.year_zip_add(df1,
 hospitals['filled_aha'] = hospitals.apply(
     lambda row: (
         match_with_mcr[(row['year'], row['zip'], row['mcrnum'], 
-                        row['address_clean_std'])]
+                        row['address_clean_std'])][0]
         if pd.isna(row['filled_aha']) and 
         (row['year'], row['zip'], row['mcrnum'], row['address_clean_std']) in 
         match_with_mcr
@@ -149,9 +165,22 @@ hospitals['filled_aha'] = hospitals.apply(
     ),
     axis=1
 )
+
+
+hospitals['fuzzy_flag'] = hospitals.apply(
+    lambda row: (
+        match_with_mcr[(row['year'], row['zip'], row['mcrnum'], row['address_clean_std'])][1]
+        if pd.isna(row['fuzzy_flag']) and 
+        (row['year'], row['zip'], row['mcrnum'],  row['address_clean_std']) in 
+        match_with_mcr
+        else row['fuzzy_flag']
+    ),
+    axis=1
+)
+
 hospitals['filled_aha'] = hospitals.apply(
     lambda row: (
-        match_wo_mcr[(row['year'], row['zip'],  row['address_clean_std'])]
+        match_wo_mcr[(row['year'], row['zip'],  row['address_clean_std'])][0]
         if pd.isna(row['filled_aha']) and 
         (row['year'], row['zip'],  row['address_clean_std']) in 
         match_wo_mcr
@@ -159,6 +188,19 @@ hospitals['filled_aha'] = hospitals.apply(
     ),
     axis=1
 )
+
+
+hospitals['fuzzy_flag'] = hospitals.apply(
+    lambda row: (
+        match_wo_mcr[(row['year'], row['zip'], row['address_clean_std'])][1]
+        if pd.isna(row['fuzzy_flag']) and 
+        (row['year'], row['zip'], row['address_clean_std']) in 
+        match_wo_mcr
+        else row['fuzzy_flag']
+    ),
+    axis=1
+)
+
 ## MATCH ON NAME & ADDRESS
 cleaned_aha_name_address_dict = hlp.name_add(hospitals, x_walk_2_data, 
                                              "address_clean_std")
@@ -183,18 +225,24 @@ name_to_addresses = defaultdict(list)
 for _, row in df1.iterrows():
     name_to_addresses[row['clean_name']].append((row['address_clean_std'], 
                                                  row['ahaid']))
-hospitals['filled_aha'] = hospitals.apply(
+hospitals[['filled_aha', 'fuzzy_flag']] = hospitals.apply(
     lambda row: hlp.get_aha_from_address(row, name_to_addresses),
-    axis=1
+    axis=1,
+    result_type='expand'
 )
+
 
 ## USE JUST ADDRESS TO FIND AHA
 add_aha = hlp.add_only(df1,"address_clean_std")
-hospitals['filled_aha'] = hospitals.apply(
-    lambda row: hlp.fill_from_add_aha(row, add_aha) if 
-    pd.isna(row['filled_aha']) else row['filled_aha'],
-    axis=1
+hospitals[['filled_aha', 'fuzzy_flag']] = hospitals.apply(
+    lambda row: (
+        hlp.fill_from_add_aha(row, add_aha, 'address_clean_std') 
+        if pd.isna(row['filled_aha']) else (row['filled_aha'], row['fuzzy_flag'])
+    ),
+    axis=1,
+    result_type='expand'
 )
+
 
 ## USE ZIP CODE DISTANCES
 missing_loc_df = hospitals[(hospitals['filled_aha'].isna()) & 
@@ -238,8 +286,14 @@ hospitals_merged = hospitals_merged.drop(columns=['latitude_new',
                                                   'longitude_new'])
 
 # combine dfs with updated aha
-filled_na = hlp.impute_aha_with_loc(hospitals_merged, x_walk_2_data)
+
+filled_na = hlp.impute_aha_with_loc(hospitals_merged, x_walk_2_data, 1/3)
+filled_na.loc[
+    filled_na['filled_aha'].notna() & filled_na['fuzzy_flag'].isna(),
+    'fuzzy_flag'
+] = 0
 pre_filled = hospitals[hospitals['filled_aha'].notna()]
+
 combined_df = pd.concat([pre_filled, filled_na], ignore_index=True)\
 .drop_duplicates()
 combined_df['missing_aha'] = combined_df['filled_aha'].isna().astype(int)

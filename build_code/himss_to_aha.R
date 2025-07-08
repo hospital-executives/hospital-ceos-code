@@ -33,7 +33,7 @@ xwalk2 <- raw_xwalk %>%
   ungroup()
 
 
-#### load AHA data
+#### load AHA data #####
 
 # set file path using manual input at beginning of script
 file_path <- paste0(supplemental_data,"/",file_name_aha)
@@ -81,7 +81,7 @@ aha_data <- aha_data %>%
          mcrnum = str_remove_all(mcrnum, "[A-Za-z]"),
          mcrnum = as.numeric(mcrnum))
 
-## finish xwalk clean
+##### finish xwalk clean #####
 combined_ha <- xwalk2 %>% 
   mutate(clean_name = entity_name %>%
                str_to_lower() %>%                            # lowercase
@@ -356,14 +356,46 @@ check_dropped <- step4 %>%
 
 
 ### CHECK OUTPUT
-temp_export <- step4 %>% filter(clean_aha != 0)
-#write_feather(temp_export, '/Users/loaner/Dropbox/hospital_ceos/_data/derived/himss_aha_hospitals_0529.feather')
+temp_export <- step4 %>% filter(clean_aha != 0) %>% 
+  rename(str_ccn_himss = medicarenumber,
+         ccn_himss = mcrnum.x,
+         ccn_aha = mcrnum.y,
+         campus_aha = sys_aha,
+         py_fuzzy_flag = fuzzy_flag) %>%
+  mutate(
+    campus_fuzzy_flag = case_when(
+      is.na(py_fuzzy_flag) ~ NA, 
+      TRUE ~ !is.na(campus_aha) & py_fuzzy_flag == 1
+    ),
+    entity_fuzzy_flag = case_when(
+      is.na(py_fuzzy_flag) ~ NA, 
+      TRUE ~ !is.na(clean_aha) & py_fuzzy_flag == 1
+    )
+  )
+
+
+write_feather(temp_export, paste0(derived_data,'/himss_aha_hospitals_final.feather'))
+
+xwalk_export <- temp_export %>%
+  distinct(year, entity_uniqueid, entity_name, mname, entity_address, mlocaddr,
+           entity_zip, mloczip_five,
+           ccn_himss, ccn_aha, campus_aha,entity_fuzzy_flag,campus_fuzzy_flag) %>%
+  rename(
+         name_himss = entity_name,
+         name_aha = mname,
+         add_himss = entity_address,
+         add_aha = mlocaddr,
+         zip_himss = entity_zip,
+         zip_aha = mloczip_five) 
+
+write_feather(xwalk_export, paste0(derived_data,'/himss_aha_xwalk.feather'))
+
 
 library(janitor)
 
 temp_export <- temp_export %>%
   clean_names() 
-#write_dta(temp_export,'/Users/loaner/Dropbox/hospital_ceos/_data/derived/himss_aha_hospitals_0529.dta')
+write_dta(temp_export, paste0(derived_data,'/himss_aha_hospitals_final.dta'))
 
 
 ## CREATE INDIVIDUAL LEVEL EXPORT
@@ -375,7 +407,7 @@ himss_mini <- himss %>%
     year = as.numeric(year)
   )
 
-himss_to_aha_xwalk <- temp_export %>% distinct(himss_entityid, year, clean_aha, sys_aha) %>%
+himss_to_aha_xwalk <- temp_export %>% distinct(himss_entityid, year, clean_aha, campus_aha, py_fuzzy_flag) %>%
   mutate(ahanumber = clean_aha)
 
 library(data.table)
@@ -417,139 +449,31 @@ final_merged <- himss_without_aha %>%
     by = "id"
   )
 
+final_merged <- final_merged %>%
+  rename(ccn_aha = mcrnum,
+         ccn_himss = medicarenumber) %>%
+  mutate(
+    campus_fuzzy_flag = case_when(
+      is.na(py_fuzzy_flag) ~ NA, 
+      TRUE ~ !is.na(campus_aha) & py_fuzzy_flag == 1
+    ),
+    entity_fuzzy_flag = case_when(
+      is.na(py_fuzzy_flag) ~ NA, 
+      TRUE ~ !is.na(clean_aha) & py_fuzzy_flag == 1
+    )
+  )
 
-#write_feather(final_merged,'/Users/loaner/Dropbox/hospital_ceos/_data/derived/final_confirmed_aha_update_530.feather')
+write_feather(final_merged,paste0(derived_data,'/final_confirmed_aha_final.feather'))
+#write_feather(final_merged,paste0(derived_data,'/final_confirmed_aha_update_530.feather'))
 
 library(janitor)
 
 final_merged <- final_merged %>%
   clean_names() 
-#write_dta(final_merged,'/Users/loaner/Dropbox/hospital_ceos/_data/derived/final_confirmed_aha_update_530.dta')
+write_dta(final_merged,paste0(derived_data, '/final_confirmed_aha_final.dta'))
+#write_dta(final_merged,paste0(derived_data, '/final_confirmed_aha_update_530.dta'))
 
 
-# compare to maggie
-old <- read_feather('/Users/loaner/Dropbox/hospital_ceos/_data/derived/final_confirmed_aha_update.feather')
-
-## matched in old but not in new
-matched <- old %>% filter(!is.na(mname)) %>% select(mname, entity_name, id) %>% pull(id)
-check <- final_merged %>%
-  filter(is.na(mname)) %>% filter( id %in% matched) %>%
-  select(entity_uniqueid, entity_name, mname, haentitytypeid)
-
-
-check_multiple_old <- old %>%
-  filter(!is.na(clean_aha)) %>%
-  group_by(entity_name) %>%
-  filter(n_distinct(clean_aha) > 1) %>%
-  ungroup() %>%
-  select(entity_name, clean_aha, sys_aha, haentitytypeid, entity_uniqueid, year)
-
-check_multiple_old <- old %>%
-  filter(!is.na(ahanumber)) %>%
-  group_by(ahanumber, year) %>%
-  filter(n_distinct(entity_name) > 1) %>%
-  ungroup() %>%
-  distinct(entity_name, ahanumber, haentitytypeid, entity_uniqueid, year)
-
-test <- step4 %>%
-  filter(sys_aha == 6710011) %>%
-  select(entity_name, clean_aha, sys_aha, haentitytypeid, entity_uniqueid, year) 
-
-
-#### check matches
-check <- step4 %>%
-  filter(clean_aha != 0) %>%
-  group_by(clean_aha) %>%
-  filter(n_distinct(entity_uniqueid) > 1)
-
-check_entities <- step4 %>%
-  mutate(
-    lat_round = round(as.numeric(latitude_aha), 6),
-    lon_round = round(as.numeric(longitude_aha), 6)
-  ) %>%
-  group_by(lat_round,lon_round) %>%
-  filter(n_distinct(entity_uniqueid) > 1) %>% 
-  select(entity_uniqueid, entity_name, year, entity_address, haentitytypeid,
-         ahanumber, clean_aha)
-
-##### check merge ### 
-ha_tagged <- step4 %>%
-  mutate(ahanumber = ifelse(clean_aha == 0, NA, clean_aha)) %>%
-  select(entity_uniqueid, entity_name, year, entity_address, haentitytypeid,
-         ahanumber) %>% mutate(source_ha = TRUE)
-
-aha_tagged <- aha_data %>%
-  mutate(source_aha = TRUE)
-
-# Full join to get all possible matches
-merged_all_new <- full_join(ha_tagged, aha_tagged, by = c("ahanumber", "year"))
-
-# Add category for merge result
-merge_stats <- merged_all_new %>%
-  mutate(merge_status = case_when(
-    source_ha == TRUE & source_aha == TRUE ~ "both",
-    source_ha == TRUE & is.na(source_aha) ~ "haentity_hosp only",
-    is.na(source_ha) & source_aha == TRUE ~ "aha_data only"
-  )) %>%
-  count(merge_status)
-
-merge_stats_by_year <- merged_all_new %>%
-  mutate(merge_status = case_when(
-    source_ha == TRUE & source_aha == TRUE ~ "Both",
-    source_ha == TRUE & is.na(source_aha) ~ "haentity_hosp Only",
-    is.na(source_ha) & source_aha == TRUE ~ "aha_data Only"
-  )) %>% filter(merge_status != "haentity_hosp Only") %>% 
- distinct(mname, year, merge_status) %>% # & 
-                 # (is.na(haentitytypeid) | haentitytypeid == "1")) %>%
-  count(year, merge_status)
-
-ggplot(merge_stats_by_year, aes(x = factor(year), y = n, fill = merge_status)) +
-  geom_col() +  # default is stacked
-  labs(title = "Merge Status by Year",
-       x = "Year",
-       y = "Number of Hospitals",
-       fill = "Merge Status") +
-  theme_minimal()
-  
-### determine the differences between the two
-filtered_new <- merged_all_new %>%
-  filter(!is.na(entity_name), !is.na(mname))
-
-filtered_original <- merged_all_original %>%
-  filter(!is.na(entity_name), !is.na(mname))
-
-# Step 2: Define what counts as a match
-join_cols <- c("ahanumber", "year", "entity_name", "mname")
-
-# Step 3: Find new matches not in original
-new_only <- anti_join(filtered_new, filtered_original, by = join_cols)
-
-yearly_dist <- new_only %>%
-  filter(!is.na(entity_uniqueid)) %>%
-  group_by(year) %>%
-  summarise(unique_ids = n_distinct(entity_uniqueid)) %>%
-  arrange(year)
-
-top_types_per_year <- new_only %>%
-  filter(!is.na(haentitytypeid)) %>%
-  group_by(year, haentitytypeid) %>%
-  summarise(count = n(), .groups = "drop") %>%
-  group_by(year) %>%
-  slice_max(order_by = count, n = 3, with_ties = FALSE) %>%
-  arrange(year, desc(count))
-
-#### to delete ####
-wat <- step4 %>%
-  filter(clean_aha != 0 & !is.na(mname)) %>%
-  group_by(clean_aha) %>%
-  filter(n_distinct(entity_uniqueid) > 1) %>% ungroup() %>%
-  distinct(year, ahanumber, clean_aha, entity_uniqueid, entity_name, mname, haentitytypeid,
-           madmin, latitude_aha) %>% arrange(clean_aha, year)
-
-wat2 <- step4 %>%
-  filter(clean_aha != ahanumber & clean_aha != 0) %>%
-  distinct(year, ahanumber, clean_aha, entity_uniqueid, entity_name, mname, haentitytypeid,
-           madmin, latitude_aha) %>% arrange(clean_aha, year)
 
 ## need to fix this case study: 
 # case study 1: st. andrews home health
