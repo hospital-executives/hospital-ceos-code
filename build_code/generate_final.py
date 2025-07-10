@@ -10,14 +10,12 @@ user_path = "/Users/loaner/Dropbox/hospital_ceos/_data"
 current_date = datetime.now().strftime("%m-%d")
 
 #### SET VARIABLES ####
-if len(sys.argv) == 8:
+if len(sys.argv) == 6:
     confirmed_path = sys.argv[1]
     remainder_path = sys.argv[2]
     json_path = sys.argv[3]
     final_himss_path = sys.argv[4]
-    final_confirmed_dta_path = sys.argv[5]
-    final_confirmed_feather_path = sys.argv[6]
-    himss_path = sys.argv[7]
+    himss_path = sys.argv[5]
 
 else: 
     print('WARNING: not using Makefile inputs')
@@ -176,10 +174,10 @@ final_df.to_feather(desktop_himss_path)
 shutil.move(desktop_himss_path, final_himss_path)
 
 # save dta to desktop then move to dropbox
-final_dta = final_df[final_df['confirmed']]
-final_dta.to_stata(desktop_dta_path, write_index=False, version=118)
-shutil.move(desktop_dta_path, final_confirmed_dta_path)
+#final_dta = final_df[final_df['confirmed']]
+#final_dta.to_stata(desktop_dta_path, write_index=False, version=118)
+#shutil.move(desktop_dta_path, final_confirmed_dta_path)
 
 # save final confirmed to fether as well 
-final_dta.to_feather(desktop_feather_path)
-shutil.move(desktop_feather_path, final_confirmed_feather_path)
+# final_dta.to_feather(desktop_feather_path)
+# shutil.move(desktop_feather_path, final_confirmed_feather_path)

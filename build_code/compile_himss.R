@@ -985,3 +985,6 @@ entity_roles <- entity_contacts %>%
 file_name <- "himss_entities_contacts_0517_v1"
 file_path_feather <- paste0(derived_data,"/",file_name,".feather")
 write_feather(entity_contacts, file_path_feather)
+
+haentity_path <- paste0(derived_data,"/auxiliary/haentity.feather")
+write_feather(haentity, haentity_path)

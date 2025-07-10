@@ -1,7 +1,66 @@
+
+
 ## load and format data
 library(dplyr)
 library(stringr)
 library(janitor)
+
+# take inputs from Makefile
+args <- commandArgs(trailingOnly = TRUE)
+code_path <- args[1]
+data_path <- paste0(args[2], "/_data/")
+
+cat(paste0("CODE PATH: ", code_path))
+cat(paste0("DATA PATH: ", data_path))
+
+# set up script directory
+get_script_directory <- function() {
+  # Try to get the path of the current Rmd file during rendering
+  if (!is.null(knitr::current_input())) {
+    script_directory <- dirname(normalizePath(knitr::current_input()))
+    return(script_directory)
+  }
+  
+  # Fallback to params$code_dir if provided
+  if (!is.null(code_path) && code_path != "None") {
+    return(code_path)
+  }
+  
+  # Try to get the script path when running via Rscript
+  args <- commandArgs(trailingOnly = FALSE)
+  file_arg_index <- grep("--file=", args)
+  if (length(file_arg_index) > 0) {
+    # Running via Rscript
+    file_arg <- args[file_arg_index]
+    script_path <- normalizePath(sub("--file=", "", file_arg))
+    return(dirname(script_path))
+  } else if (interactive()) {
+    # Running interactively in RStudio
+    if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
+      script_path <- rstudioapi::getActiveDocumentContext()$path
+      if (nzchar(script_path)) {
+        return(dirname(normalizePath(script_path)))
+      } else {
+        stop("Cannot determine script directory: No active document found in RStudio.")
+      }
+    } else {
+      stop("Cannot determine script directory: Not running in RStudio or rstudioapi not available.")
+    }
+  } else {
+    # Fallback to current working directory
+    script_directory <- getwd()
+    return(script_directory)
+  }
+}
+
+# Detect the script directory
+script_directory <- get_script_directory()
+
+# Construct the path to the config.R file
+config_path <- file.path(script_directory, "config.R")
+
+# Source the config file dynamically
+source(config_path)
 
 
 #### Pull in AHA<>MCR Crosswalk 2 - it should be the case that after updating
@@ -34,9 +93,41 @@ xwalk2 <- raw_xwalk %>%
 
 
 #### load AHA data #####
+columns_to_keep <- c( 
+  "ID", 
+  "YEAR", 
+  "MNAME", 
+  "HOSPN", 
+  "MCRNUM",
+  # "CBSANAME", 
+  "HRRNAME", 
+  "HSANAME", 
+  "MADMIN", 
+  "SYSID", 
+  "SYSNAME", 
+  "CNTRL", 
+  "SERV", 
+  "HOSPBD", 
+  "BDTOT", 
+  "ADMTOT", 
+  "IPDTOT", 
+  "MCRDC", 
+  "MCRIPD", 
+  "MCDDC", 
+  "MCDIPD", 
+  "BIRTHS", 
+  "FTEMD", 
+  "FTERN", 
+  "FTE",
+  "LAT",
+  "LONG",
+  "MLOCADDR", #street address
+  "MLOCCITY", #city
+  "MLOCZIP" #zip code
+)
 
 # set file path using manual input at beginning of script
-file_path <- paste0(supplemental_data,"/",file_name_aha)
+file_path <- paste0(supplemental_data,"/AHA_2004_2017.csv")
 #import the CSV
 aha_data <- read_csv(file_path, col_types = cols(.default = col_character()))
 
@@ -407,7 +498,8 @@ himss_mini <- himss %>%
     year = as.numeric(year)
   )
 
-himss_to_aha_xwalk <- temp_export %>% distinct(himss_entityid, year, clean_aha, campus_aha, py_fuzzy_flag) %>%
+himss_to_aha_xwalk <- temp_export %>% distinct(himss_entityid, year, 
+                                      clean_aha, campus_aha, py_fuzzy_flag) %>%
   mutate(ahanumber = clean_aha)
 
 library(data.table)
@@ -463,82 +555,18 @@ final_merged <- final_merged %>%
     )
   )
 
-write_feather(final_merged,paste0(derived_data,'/final_confirmed_aha_final.feather'))
+write_feather(final_merged,paste0(derived_data,'/final_aha.feather'))
 #write_feather(final_merged,paste0(derived_data,'/final_confirmed_aha_update_530.feather'))
 
 library(janitor)
 
 final_merged <- final_merged %>%
   clean_names() 
-write_dta(final_merged,paste0(derived_data, '/final_confirmed_aha_final.dta'))
+write_dta(final_merged,paste0(derived_data, '/final_aha.dta'))
 #write_dta(final_merged,paste0(derived_data, '/final_confirmed_aha_update_530.dta'))
 
+final_confirmed <- final_merged %>% filter(confirmed)
+write_feather(final_merged,paste0(derived_data,'/final_confirmed_aha.feather'))
+write_dta(final_merged,paste0(derived_data, '/final_confirmed_aha.dta'))
 
 
-## need to fix this case study: 
-# case study 1: st. andrews home health
-# case study 2: sturgis regional hospital
-# case study 3: candler county hospital
-# case study 4: dana farber - AHA: 6140583
-# case study 5: aha 653032
-test <- step3 %>%
-  filter(ahanumber == 6140583) %>%
-  #filter(str_detect(entity_name, regex("dana farber cancer institute", ignore_case = TRUE))) %>%
-  select(year,clean_aha, ahanumber, entity_uniqueid,  mname, entity_name, entity_address, mlocaddr, 
-         haentitytypeid, entity_city, mloccity, jw_sim, valid_jw, max_sim, is_best, n_best_type1)
-
-check2 <- step2%>% 
-  filter(ahanumber == 6110160) %>%
-  select(haentitytypeid, clean_aha, entity_uniqueid, mname, entity_name, 
-         entity_address, mlocaddr, entity_city, mloccity)
-
-test <- step4 %>%
-  #filter(str_detect(entity_name, regex("dana farber cancer institute", ignore_case = TRUE))) %>%
-  distinct(year,clean_aha, ahanumber, entity_uniqueid,  mname, entity_name, entity_address, mlocaddr, 
-         haentitytypeid, entity_city, mloccity)
-
-jw <- test %>%
-  mutate(
-    jw_dist = stringdist(entity_name, mname, method = "jw", p = 0.1)
-  ) %>%
-   filter(clean_aha != 0)
-
-find <- test %>% filter(entity_city == "Bradford")
-
-
-##### to remove ###### 
-confirm <- merged %>%
-  group_by(ahanumber) %>%
-  filter(n_distinct(entity_uniqueid) > 1 & n_distinct(entity_name) > 1) %>%
-  filter(any(haentitytypeid %in% c("5", "7", "9", "10"))) %>%
-  ungroup() %>%
-  distinct(ahanumber, entity_uniqueid, entity_name, mname, haentitytypeid) %>%
-  mutate(haentitytypeid = as.numeric(haentitytypeid)) %>%
-  arrange(ahanumber, haentitytypeid)
-cat(n_distinct(test$entity_uniqueid))
-  
-  # Step 1: Set of all AHA numbers before filtering
-  all_ahas <- unique(merged$ahanumber)
-
-# Initialize a list to store results
-removed_ahas_by_type <- list()
-
-# Loop over haentitytypeid values from 1 to 10
-for (type_id in 1:10) {
-  
-  # Exclude this type
-  filtered_df <- merged %>% filter(haentitytypeid != type_id)
-  remaining_ahas <- unique(filtered_df$ahanumber)
-  
-  # Which AHA numbers are lost?
-  removed_ahas <- setdiff(all_ahas, remaining_ahas)
-  
-  # Save results
-  removed_ahas_by_type[[as.character(type_id)]] <- list(
-    count_removed = length(removed_ahas),
-    ahanumbers_removed = removed_ahas
-  )
-}
-
-# View how many AHA numbers are removed per type
-sapply(removed_ahas_by_type, function(x) x$count_removed)

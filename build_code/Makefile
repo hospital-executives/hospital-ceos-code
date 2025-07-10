@@ -73,10 +73,18 @@ PY_CLEANED := $(AUX_DIR)/py_confirmed.csv
 PY_REMAINING := $(AUX_DIR)/py_remaining.csv
 GRAPH_COMPS := $(AUX_DIR)/py_graph_components.json
 
-# Final output
+# Final individual output
 FINAL_HIMSS := $(DERIVED_DIR)/final_himss.feather
-FINAL_CONFIRMED_FEATHER := $(DERIVED_DIR)/final_confirmed.feather
-FINAL_CONFIRMED_DTA := $(DERIVED_DIR)/final_confirmed.dta
+# FINAL_CONFIRMED_FEATHER := $(DERIVED_DIR)/final_confirmed.feather
+# FINAL_CONFIRMED_DTA := $(DERIVED_DIR)/final_confirmed.dta
+
+# Assign AHA output
+AHA_OUTPUT := $(AUX_DIR)/aha_himss_xwalk.csv
+
+# Final output
+FINAL_HIMSS_AHA := $(DERIVED_DIR)/final_himss_with_aha.feather
+FINAL_FEATHER_AHA := $(DERIVED_DIR)/final_confirmed_with_aha.feather
+FINAL_DTA_AHA := $(DERIVED_DIR)/final_confirmed_with_aha.dta 
 
 # Define Stamps
 COMPILE_STAMP := $(STAMP_DIR)/compile.stamp
@@ -88,7 +96,9 @@ DIGRAPHS_STAMP := $(STAMP_DIR)/digraphs.stamp
 BLOCKS_STAMP := $(STAMP_DIR)/blocks.stamp
 PAIRS_STAMP := $(STAMP_DIR)/pairs.stamp
 FUZZY_STAMP := $(STAMP_DIR)/fuzzy.stamp
-FINAL_STAMP := $(STAMP_DIR)/final.stamp
+FINAL_INDIVIDUAL_STAMP := $(STAMP_DIR)/final_individual.stamp
+MAKE_AHA_STAMP := $(STAMP_DIR)/make_aha.stamp
+CLEAN_AHA_STAMP := $(STAMP_DIR)/clean_aha.stamp
 
 # Define error message
 define safe_run
@@ -101,7 +111,7 @@ define safe_run
 endef
 
 # Stamp Dependencies
-all: $(FINAL_STAMP)
+all: $(CLEAN_AHA_STAMP)
 
 # Step 1: Compile HIMSS data
 compile_himss: $(COMPILE_STAMP)
@@ -170,11 +180,20 @@ $(FUZZY_STAMP): $(PAIRS_STAMP)
 	touch $(FUZZY_STAMP)
 
 # Step 9: Generate final HIMSS dataset and cleaned dta with flags
-make_final: $(FINAL_STAMP)
-$(FINAL_STAMP): $(FUZZY_STAMP)
+individual_output: $(FINAL_INDIVIDUAL_STAMP)
+$(FINAL_INDIVIDUAL_STAMP): $(FUZZY_STAMP)
 	$(call safe_run,python3 generate_final.py $(PY_CLEANED) $(PY_REMAINING) \
 	$(GRAPH_COMPS) $(FINAL_HIMSS) $(FINAL_CONFIRMED_DTA) \
 	$(FINAL_CONFIRMED_FEATHER) $(HIMSS_ENTITIES_CONTACTS))
-	touch $(FINAL_STAMP)
+	touch $(FINAL_INDIVIDUAL_STAMP)
 
+# Step 10: 
+assign_aha: $(MAKE_AHA_STAMP)
+$(MAKE_AHA_STAMP): $(FINAL_INDIVIDUAL_STAMP)
+	$(call safe_run,python3 mcr_aha_xwalk.py $(DATA_DIR) $(AHA_OUTPUT))
+	touch $(MAKE_AHA_STAMP)
 
+clean_aha: $(CLEAN_AHA_STAMP)
+$(CLEAN_AHA_STAMP): $(MAKE_AHA_STAMP)
+	$(call safe_run,Rscript himss_to_aha.R $(CODE_DIR) '$(R_USER_DIR)')
+		touch $(CLEAN_AHA_STAMP)

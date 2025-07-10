@@ -5,11 +5,21 @@ import sys
 import os
 
 ## load data
-if '--from_r' in sys.argv:
-    data_path = sys.argv[sys.argv.index('--from_r') + 1]
-else:
-    print("WARNING - NOT USING R INPUT")
-    data_path = "/Users/katherinepapen/Library/CloudStorage/Dropbox/hospital_ceos/_data"
+### FOR INTEGRATION UPSTREAM - INCOMPLETE:
+#if '--from_r' in sys.argv:
+    #data_path = sys.argv[sys.argv.index('--from_r') + 1]
+#else:
+    #print("WARNING - NOT USING R INPUT")
+    #data_path = "/Users/katherinepapen/Library/CloudStorage/Dropbox/hospital_ceos/_data"
+
+### FOR INTEGRATION DOWNSTREAM:
+if len(sys.argv) == 3:
+    data_path = sys.argv[1]
+    aha_output = sys.argv[2]
+
+else: 
+    print('WARNING: not using Makefile inputs')
+
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from helper_scripts import xwalk_helper as hlp
@@ -299,5 +309,4 @@ combined_df = pd.concat([pre_filled, filled_na], ignore_index=True)\
 combined_df['missing_aha'] = combined_df['filled_aha'].isna().astype(int)
 
 # export aha numbers
-export_path = os.path.join(data_path, "derived/auxiliary/xwalk_updated_529.csv")
-combined_df.to_csv(export_path)
+combined_df.to_csv(aha_output)
