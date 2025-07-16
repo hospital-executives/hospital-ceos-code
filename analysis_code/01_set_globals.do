@@ -4,6 +4,7 @@ Program name: 	01_set_globals.do
 Programmer: 	Julia Paris
 
 Goal: 			Set globals for Hospital CEOs analysis
+				Write programs that will be re-used throughout analysis
 
 *******************************************************************************/
 
