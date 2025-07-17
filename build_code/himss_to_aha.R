@@ -491,7 +491,7 @@ write_dta(temp_export, paste0(derived_data,'/himss_aha_hospitals_final.dta'))
 
 ## CREATE INDIVIDUAL LEVEL EXPORT
 himss <- read_feather(paste0(derived_data, '/final_himss.feather'))
-himss_mini <- himss %>%
+himss_mini <- himss %>% # confirmed
   select(himss_entityid, year, id, entity_uniqueid) %>%
   mutate(
     himss_entityid = as.numeric(himss_entityid),
@@ -527,7 +527,9 @@ merged_ahanumber <- himss_mini %>%
 
 merged_aha <- merged_ahanumber %>%
   left_join(
-    aha_data,
+    aha_data %>% mutate(
+      ahanumber = as.numeric(str_remove_all(ahanumber, "[A-Za-z]")),
+      year = as.numeric(year)),
     by = c("ahanumber", "year")
   )
 
