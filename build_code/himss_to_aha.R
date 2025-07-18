@@ -4,6 +4,8 @@
 library(dplyr)
 library(stringr)
 library(janitor)
+library(haven)
+library(data.table)
 
 # take inputs from Makefile
 args <- commandArgs(trailingOnly = TRUE)
@@ -447,13 +449,14 @@ check_dropped <- step4 %>%
 
 
 ### CHECK OUTPUT
-temp_export <- step4 %>% filter(clean_aha != 0) %>% 
+temp_export <- step4 %>% 
   rename(str_ccn_himss = medicarenumber,
          ccn_himss = mcrnum.x,
          ccn_aha = mcrnum.y,
          campus_aha = sys_aha,
          py_fuzzy_flag = fuzzy_flag) %>%
   mutate(
+    entity_aha = if_else(clean_aha == 0, NA_real_, clean_aha),
     campus_fuzzy_flag = case_when(
       is.na(py_fuzzy_flag) ~ NA, 
       TRUE ~ !is.na(campus_aha) & py_fuzzy_flag == 1
@@ -464,8 +467,6 @@ temp_export <- step4 %>% filter(clean_aha != 0) %>%
     )
   )
 
-
-write_feather(temp_export, paste0(derived_data,'/himss_aha_hospitals_final.feather'))
 
 xwalk_export <- temp_export %>%
   distinct(year, entity_uniqueid, entity_name, mname, entity_address, mlocaddr,
@@ -481,15 +482,24 @@ xwalk_export <- temp_export %>%
 
 write_feather(xwalk_export, paste0(derived_data,'/himss_aha_xwalk.feather'))
 
+# CREATE HIMSS MERGE
+export_xwalk <- temp_export %>% distinct(himss_entityid, campus_aha, entity_aha) %>%
+  mutate(ahanumber = campus_aha)
 
-library(janitor)
+merged_haentity <- haentity %>% select(-ahanumber) %>%
+  mutate(himss_entityid = as.numeric(himss_entityid),
+         entity_uniqueid = as.numeric(entity_uniqueid),
+         year = as.numeric(year)) %>%
+  left_join(export_xwalk) %>% 
+  select(-any_of(setdiff(names(aha_data), c("year", "ahanumber")))) %>%
+  left_join(aha_data) %>%
+  mutate(is_hospital = !is.na(entity_aha))
 
-temp_export <- temp_export %>%
-  clean_names() 
-write_dta(temp_export, paste0(derived_data,'/himss_aha_hospitals_final.dta'))
+write_feather(merged_haentity, paste0(derived_data,'/himss_aha_hospitals_final.feather'))
+merged_haentity <- merged_haentity %>% clean_names() 
+write_dta(merged_haentity, paste0(derived_data,'/himss_aha_hospitals_final.dta'))
 
-
-## CREATE INDIVIDUAL LEVEL EXPORT
+## CREATE LEVEL EXPORT
 himss <- read_feather(paste0(derived_data, '/final_himss.feather'))
 himss_mini <- himss %>% # confirmed
   select(himss_entityid, year, id, entity_uniqueid) %>%
@@ -500,9 +510,8 @@ himss_mini <- himss %>% # confirmed
 
 himss_to_aha_xwalk <- temp_export %>% distinct(himss_entityid, year, 
                                       clean_aha, campus_aha, py_fuzzy_flag) %>%
-  mutate(ahanumber = clean_aha)
+  mutate(ahanumber = campus_aha)
 
-library(data.table)
 
 # Step 1: Convert both data frames to data.table
 setDT(himss_mini)
@@ -554,16 +563,15 @@ final_merged <- final_merged %>%
     entity_fuzzy_flag = case_when(
       is.na(py_fuzzy_flag) ~ NA, 
       TRUE ~ !is.na(clean_aha) & py_fuzzy_flag == 1
-    )
-  )
+    ),
+    is_hospital = !is.na(entity_uniqueid),
+    entity_aha = if_else(clean_aha == 0, NA_real_, clean_aha))
+    
 
 write_feather(final_merged,paste0(derived_data,'/final_aha.feather'))
 #write_feather(final_merged,paste0(derived_data,'/final_confirmed_aha_update_530.feather'))
 
-library(janitor)
-
-final_merged <- final_merged %>%
-  clean_names() 
+final_merged <- final_merged %>% clean_names() 
 write_dta(final_merged,paste0(derived_data, '/final_aha.dta'))
 #write_dta(final_merged,paste0(derived_data, '/final_confirmed_aha_update_530.dta'))
 

@@ -124,3 +124,56 @@ check_aha <- aha_data %>%  mutate(
   ahanumber = as.numeric(str_remove_all(ahanumber, "[A-Za-z]"))) %>%
   filter(ahanumber %in% c(6620126,6620003,6629025)) %>%
   select(mname, mlocaddr, madmin, year, ahanumber)
+
+#### additional hospitals were missing with the new merge
+## these can be explained by the following: 
+
+## compare haentity and temp_export
+
+# create xwalk using temp export 
+export_xwalk <- temp_export %>% distinct(himss_entityid, campus_aha, entity_aha) %>%
+  mutate(ahanumber = campus_aha)
+
+merged_haentity <- haentity %>% 
+  mutate(himss_entityid = as.numeric(himss_entityid),
+         entity_uniqueid = as.numeric(entity_uniqueid),
+         ahanumber = str_remove_all(ahanumber, "[A-Za-z]"),
+         ahanumber = as.numeric(ahanumber),
+         year = as.numeric(year)) %>%
+  left_join(export_xwalk) %>% 
+  select(-any_of(setdiff(names(aha_data), c("year", "ahanumber")))) %>%
+  left_join(aha_data)
+
+check_merge <- merged_haentity %>% group_by(campus_aha) %>%
+  filter(any(xor(is.na(campus_aha), is.na(entity_aha)))) %>%
+  ungroup() %>%
+  arrange(campus_aha) %>%
+  select(campus_aha, entity_aha, year, entity_name,mname, entity_address, mlocaddr, haentitytypeid)
+
+## check haentity
+in_individual <- final_merged %>% distinct(entity_uniqueid) %>% pull(entity_uniqueid)
+in_hospital <- merged_haentity %>% distinct(entity_uniqueid) %>% pull(entity_uniqueid)
+missing_from_final <- setdiff(in_individual, in_hospital) 
+
+# there are no entities that are in the individual data set but are not in the 
+# hospital data set
+
+# need to check entities that are in the hospital set but not the individual set
+missing_from_final <- setdiff(in_hospital, in_individual) 
+
+# there are 3 that have no obs before 2009 so they do not make it to "original"
+in_og <- og_himss %>% distinct(entity_uniqueid) %>% pull(entity_uniqueid)
+missing_from_og <- setdiff(in_individual, in_og) 
+
+# this removes most of the mismatches
+test <- og_himss %>% filter(entity_uniqueid %in% missing_from_final) %>%
+  filter(!is.na(firstname) & year > 2008) %>% distinct(entity_uniqueid) %>% 
+  pull(entity_uniqueid)
+
+# there are still 430 cases for which an entity_uniqueid is missing in the 
+# individual level data set
+still_missing <- df %>% filter(entity_uniqueid %in% test) %>%
+  filter(haentitytypeid != "9" & haentitytypeid != "10") %>%
+  select(entity_uniqueid, entity_name, entity_address, entity_state, firstname,lastname, year, haentitytypeid) %>%
+  arrange(entity_uniqueid) # the remaining cases can be explained by Nans (i.e., "Nanette"s)
+
