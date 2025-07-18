@@ -18,6 +18,7 @@ if len(sys.argv) == 3:
     aha_output = sys.argv[2]
 
 else: 
+    data_path = "/Users/katherinepapen/Library/CloudStorage/Dropbox/hospital_ceos/_data"
     print('WARNING: not using Makefile inputs')
 
 
@@ -307,6 +308,43 @@ pre_filled = hospitals[hospitals['filled_aha'].notna()]
 combined_df = pd.concat([pre_filled, filled_na], ignore_index=True)\
 .drop_duplicates()
 combined_df['missing_aha'] = combined_df['filled_aha'].isna().astype(int)
+
+#### assign latitude and longitude numbers
+
+## get lat/lon from aha
+aha_coords = x_walk_2_data[
+    x_walk_2_data['lat'].notna() & x_walk_2_data['lon'].notna() &
+    (x_walk_2_data['lat'] != 0) & (x_walk_2_data['lon'] != 0)
+]
+
+# Drop duplicates to keep the first valid (lat, lon) per ahanumber
+first_latlon = aha_coords.drop_duplicates(subset='ahaid_noletter', keep='first')
+ahanumber_to_latlon = dict(zip(first_latlon['ahaid_noletter'], 
+                               zip(first_latlon['lat'], first_latlon['lon'])))
+
+# map with AHA first
+# Convert filled_aha to stringified int before mapping
+mapped_coords = combined_df['filled_aha'].map(
+    lambda x: ahanumber_to_latlon.get(str(int(x))) if pd.notna(x) else pd.NA
+)
+combined_df['new_lat'] = mapped_coords.map(lambda x: x[0] if pd.notna(x) else pd.NA)
+combined_df['new_lon'] = mapped_coords.map(lambda x: x[1] if pd.notna(x) else pd.NA)
+
+# map with geocoded adds second
+combined_df = combined_df.merge(
+    locations[['address_clean_std', 'latitude', 'longitude']],
+    on='address_clean_std',
+    how='left',
+    suffixes=('', '_from_address')
+)
+
+# Step 3: Fill in NAs in new_lat/new_lon with address-based values
+combined_df['new_lat'] = combined_df['new_lat'].fillna(combined_df['latitude_from_address'])
+combined_df['new_lon'] = combined_df['new_lon'].fillna(combined_df['longitude_from_address'])
+
+# Optional cleanup: drop helper columns
+combined_df = combined_df.drop(columns=['latitude_from_address', 'longitude_from_address'])
+
 
 # export aha numbers
 combined_df.to_csv(aha_output)
