@@ -6,6 +6,7 @@ library(stringr)
 library(janitor)
 library(haven)
 library(data.table)
+library(arrow)
 
 # take inputs from Makefile
 args <- commandArgs(trailingOnly = TRUE)
@@ -67,7 +68,7 @@ source(config_path)
 
 #### Pull in AHA<>MCR Crosswalk 2 - it should be the case that after updating
 #### zip codes that all assigned AHAs in haentityhosp are assigned here
-raw_xwalk <- read.csv(paste0(auxiliary_data, "/xwalk_updated_529.csv"))
+raw_xwalk <- read.csv(paste0(auxiliary_data, "/aha_himss_xwalk.csv"))
 xwalk2 <- raw_xwalk %>%
   mutate(ahanumber = filled_aha) %>%
   group_by(entity_uniqueid) %>%
@@ -215,18 +216,18 @@ step1 <- merged %>%
   ) %>% #select( clean_aha, sys_aha, year, mname, entity_name, entity_address, address)
   ungroup() %>%
   select(-n_match, -is_unique_match)   %>%
-  group_by(entity_uniqueid) %>%
-  mutate(
-    override_aha = if (any(!is.na(clean_aha) & clean_aha != 0)) {
+ # group_by(entity_uniqueid) %>%
+  #mutate(
+    #override_aha = if (any(!is.na(clean_aha) & clean_aha != 0)) {
       # use the first non-zero, non-NA clean_aha
-      clean_aha[which(!is.na(clean_aha) & clean_aha != 0)[1]]
-    } else {
-      NA_real_
-    },
-    clean_aha = override_aha
-  ) %>% 
-  ungroup() %>%
-  select(-override_aha) %>% 
+      #clean_aha[which(!is.na(clean_aha) & clean_aha != 0)[1]]
+   # } else {
+     # NA_real_
+    #},
+   # clean_aha = override_aha
+ # ) %>% 
+ # ungroup() %>%
+  #select(-override_aha) %>% 
   group_by(ahanumber) %>%
   mutate(
     has_match = any(clean_aha == sys_aha, na.rm = TRUE),
@@ -259,18 +260,7 @@ step1b <- step1 %>%
   ) %>%
   ungroup() %>%
   select(-n_match, -is_unique_match)   %>%
-  group_by(entity_uniqueid) %>%
-  mutate(
-    override_aha = if (any(!is.na(clean_aha) & clean_aha != 0)) {
-      # use the first non-zero, non-NA clean_aha
-      clean_aha[which(!is.na(clean_aha) & clean_aha != 0)[1]]
-    } else {
-      NA_real_
-    },
-    clean_aha = override_aha
-  ) %>%
   ungroup() %>%
-  select(-override_aha) %>% 
   group_by(ahanumber) %>%
   mutate(
     has_match = any(clean_aha == sys_aha, na.rm = TRUE),
@@ -280,10 +270,6 @@ step1b <- step1 %>%
     )
   ) %>%
   ungroup()
-
-check <- step1 %>% group_by(ahanumber) %>%
-  filter(any(!is.na(clean_aha))) %>%
-  distinct(ahanumber, clean_aha, entity_uniqueid, entity_name, mname, haentitytypeid) 
 
 ## step 2 - if an ahanumber (a) has all NA clean_aha numbers and
 ## (b) has exactly one entity with haentitytypeid == 1 that entity should be
@@ -301,18 +287,6 @@ step2 <- step1b %>%
   right_join(step1b %>% mutate(ahanumber = sys_aha), by = c("ahanumber", "entity_uniqueid")) %>%
   mutate(clean_aha = coalesce(clean_aha.y, clean_aha.x)) %>%
   select(-clean_aha.x, -clean_aha.y) %>%
-  group_by(entity_uniqueid) %>%
-  mutate(
-    override_aha = if (any(!is.na(clean_aha) & clean_aha != 0)) {
-      # use the first non-zero, non-NA clean_aha
-      clean_aha[which(!is.na(clean_aha) & clean_aha != 0)[1]]
-    } else {
-      NA_real_
-    },
-    clean_aha = override_aha
-  ) %>%
-  ungroup() %>%
-  select(-override_aha) %>% 
   group_by(ahanumber) %>%
   mutate(
     has_match = any(clean_aha == sys_aha, na.rm = TRUE),
@@ -322,10 +296,6 @@ step2 <- step1b %>%
     )
   ) %>%
   ungroup()
-
-check <- step2 %>% group_by(ahanumber) %>%
-  filter(any(!is.na(clean_aha))) %>%
-  distinct(ahanumber, clean_aha, entity_uniqueid, entity_name, mname, haentitytypeid) 
 
 library(dplyr)
 library(stringdist)
@@ -342,36 +312,32 @@ step3 <- step2 %>%
     )
   ) %>%
   #group_by(a)
-  group_by(ahanumber) %>%
+  group_by(ahanumber, year) %>%
   mutate(
     valid_jw = jw_sim >= 0.8,
     max_sim = if (any(valid_jw, na.rm = TRUE)) max(jw_sim[valid_jw], na.rm = TRUE) else NA_real_,
     is_best = valid_jw & jw_sim == max_sim,
     n_best_type1 = sum(is_best & haentitytypeid == "1", na.rm = TRUE),
-    any_type1 = any(haentitytypeid == "1", na.rm = TRUE)
+    any_type1 = any(haentitytypeid == "1", na.rm = TRUE),
+    
+    # find max jw_sim among haentitytypeid == "1" and valid_jw
+    max_type1_sim = if (any(valid_jw & haentitytypeid == "1", na.rm = TRUE)) {
+      max(jw_sim[valid_jw & haentitytypeid == "1"], na.rm = TRUE)
+    } else NA_real_,
+    
+    is_best_type1 = valid_jw & haentitytypeid == "1" & jw_sim == max_type1_sim
   ) %>%
   mutate(
     clean_aha = case_when(
-      is.na(clean_aha) & is_best & haentitytypeid == "1" & n_best_type1 == 1 ~ ahanumber,
-      is.na(clean_aha) & is_best & n_best_type1 == 0 ~ ahanumber,  # no haentitytypeid == 1 match
-      is.na(clean_aha) & valid_jw & !is_best ~ 0,
+      is.na(clean_aha) & is_best & haentitytypeid == "1" ~ ahanumber,                                   # 1. top priority
+      is.na(clean_aha) & is_best_type1 ~ ahanumber,                                                     # 2. fallback to best type1 match
+      is.na(clean_aha) & is_best & max_type1_sim < 0.8 & n_best_type1 == 0 ~ ahanumber,                                       # 3. fallback if no type1 match at all
+      is.na(clean_aha) & valid_jw & !is_best ~ 0,                                                       # 4. valid but not best
       TRUE ~ clean_aha
     )
   ) %>%
   ungroup() %>%
   select(-jw_sim, -valid_jw, -max_sim, -is_best, -n_best_type1) %>% 
-  group_by(entity_uniqueid) %>%
-  mutate(
-    override_aha = if (any(!is.na(clean_aha) & clean_aha != 0)) {
-      # use the first non-zero, non-NA clean_aha
-      clean_aha[which(!is.na(clean_aha) & clean_aha != 0)[1]]
-    } else {
-      NA_real_
-    },
-    clean_aha = override_aha
-  ) %>%
-  ungroup() %>%
-  select(-override_aha) %>% 
   group_by(ahanumber) %>%
   mutate(
     has_match = any(clean_aha == sys_aha, na.rm = TRUE),
@@ -382,10 +348,6 @@ step3 <- step2 %>%
   ) %>%
   ungroup()
 
-check <- step3 %>% group_by(ahanumber) %>%
-  filter(any(!is.na(clean_aha))) %>%
-  distinct(ahanumber, clean_aha, entity_uniqueid, entity_name, mname, haentitytypeid) 
-cat(n_distinct(check$entity_uniqueid))
 
 remaining <- step3 %>% group_by(ahanumber) %>%
   filter(all(is.na(clean_aha))) %>%
@@ -483,8 +445,12 @@ xwalk_export <- temp_export %>%
 write_feather(xwalk_export, paste0(derived_data,'/himss_aha_xwalk.feather'))
 
 # CREATE HIMSS MERGE
-export_xwalk <- temp_export %>% distinct(himss_entityid, campus_aha, entity_aha) %>%
-  mutate(ahanumber = campus_aha)
+export_xwalk <- temp_export %>% distinct(himss_entityid, campus_aha, entity_aha, latitude, longitude) %>%
+  mutate(ahanumber = campus_aha) %>%
+  rename(geo_lat = latitude,
+         geo_lon = longitude)
+
+haentity <- read_feather(paste0(auxiliary_data,"/haentity.feather"))
 
 merged_haentity <- haentity %>% select(-ahanumber) %>%
   mutate(himss_entityid = as.numeric(himss_entityid),
@@ -509,8 +475,10 @@ himss_mini <- himss %>% # confirmed
   )
 
 himss_to_aha_xwalk <- temp_export %>% distinct(himss_entityid, year, 
-                                      clean_aha, campus_aha, py_fuzzy_flag) %>%
-  mutate(ahanumber = campus_aha)
+                                      clean_aha, campus_aha, py_fuzzy_flag, latitude, longitude) %>%
+  mutate(ahanumber = campus_aha)  %>%
+  rename(geo_lat = latitude,
+         geo_lon = longitude)
 
 
 # Step 1: Convert both data frames to data.table
@@ -575,8 +543,8 @@ final_merged <- final_merged %>% clean_names()
 write_dta(final_merged,paste0(derived_data, '/final_aha.dta'))
 #write_dta(final_merged,paste0(derived_data, '/final_confirmed_aha_update_530.dta'))
 
-final_confirmed <- final_merged %>% filter(confirmed)
-write_feather(final_merged,paste0(derived_data,'/final_confirmed_aha.feather'))
-write_dta(final_merged,paste0(derived_data, '/final_confirmed_aha.dta'))
+final_confirmed <- final_merged %>% filter(confirmed) %>% clean_names() 
+write_feather(final_confirmed,paste0(derived_data,'/final_confirmed_aha.feather'))
+write_dta(final_confirmed,paste0(derived_data, '/final_confirmed_aha.dta'))
 
 

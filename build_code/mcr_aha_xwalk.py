@@ -3,6 +3,7 @@ import pandas as pd
 from collections import defaultdict
 import sys
 import os
+import numpy as np
 
 ## load data
 ### FOR INTEGRATION UPSTREAM - INCOMPLETE:
@@ -123,9 +124,6 @@ hospitals.loc[
     hospitals['filled_aha'].notna() & hospitals['fuzzy_flag'].isna(),
     'fuzzy_flag'
 ] = 0
-
-import copy
-backup1 = copy.deepcopy(hospitals)
 
 ## (ZIP, NAME) : AHA - removed; did not add filled_ahas
 
@@ -309,7 +307,7 @@ combined_df = pd.concat([pre_filled, filled_na], ignore_index=True)\
 .drop_duplicates()
 combined_df['missing_aha'] = combined_df['filled_aha'].isna().astype(int)
 
-#### assign latitude and longitude numbers
+#### finalize latitude and longitude numbers
 
 ## get lat/lon from aha
 aha_coords = x_walk_2_data[
@@ -323,28 +321,42 @@ ahanumber_to_latlon = dict(zip(first_latlon['ahaid_noletter'],
                                zip(first_latlon['lat'], first_latlon['lon'])))
 
 # map with AHA first
-# Convert filled_aha to stringified int before mapping
 mapped_coords = combined_df['filled_aha'].map(
     lambda x: ahanumber_to_latlon.get(str(int(x))) if pd.notna(x) else pd.NA
 )
-combined_df['new_lat'] = mapped_coords.map(lambda x: x[0] if pd.notna(x) else pd.NA)
-combined_df['new_lon'] = mapped_coords.map(lambda x: x[1] if pd.notna(x) else pd.NA)
-
-# map with geocoded adds second
-combined_df = combined_df.merge(
-    locations[['address_clean_std', 'latitude', 'longitude']],
-    on='address_clean_std',
-    how='left',
-    suffixes=('', '_from_address')
+combined_df['latitude'] = np.where(
+    combined_df['latitude'].isna(),
+    mapped_coords.map(lambda x: x[0] if pd.notna(x) else pd.NA),
+    combined_df['latitude']
 )
 
-# Step 3: Fill in NAs in new_lat/new_lon with address-based values
-combined_df['new_lat'] = combined_df['new_lat'].fillna(combined_df['latitude_from_address'])
-combined_df['new_lon'] = combined_df['new_lon'].fillna(combined_df['longitude_from_address'])
+combined_df['longitude'] = np.where(
+    combined_df['longitude'].isna(),
+    mapped_coords.map(lambda x: x[1] if pd.notna(x) else pd.NA),
+    combined_df['longitude']
+)
 
-# Optional cleanup: drop helper columns
-combined_df = combined_df.drop(columns=['latitude_from_address', 'longitude_from_address'])
+# manually add coords if possible
+address_to_coords = {
+    "930 chestnut ridge road": (39.654877, -79.95564),
+    "718 glenview avenue":(42.19076,-87.805744),
+    "2051 hamill road":(35.12474,-85.237919),
+    "400 old river road":(35.351425,-119.112538),
+    "4601 corbett drive":(40.522013,-105.02846),
+    "1501 hartford street":(40.427303, -86.880745)
+}
 
+combined_df['latitude'] = np.where(
+    combined_df['latitude'].isna(),
+    combined_df['entity_address'].map(lambda addr: address_to_coords.get(addr, (pd.NA, pd.NA))[0]),
+    combined_df['latitude']
+)
+
+combined_df['longitude'] = np.where(
+    combined_df['longitude'].isna(),
+    combined_df['entity_address'].map(lambda addr: address_to_coords.get(addr, (pd.NA, pd.NA))[1]),
+    combined_df['longitude']
+)
 
 # export aha numbers
 combined_df.to_csv(aha_output)
