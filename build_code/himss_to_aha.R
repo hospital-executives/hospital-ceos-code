@@ -369,7 +369,7 @@ name_clean <- step3 %>%
   distinct()
 
 # Step 3: Left join both, with entity_uniqueid taking priority
-step4 <- step3 %>%
+step4 <- step4 <- step3 %>%
   left_join(uid_clean, by = "entity_uniqueid") %>%
   group_by(sys_aha, year) %>%
   mutate(
@@ -377,19 +377,29 @@ step4 <- step3 %>%
   ) %>%
   group_by(entity_uniqueid) %>%
   mutate(
-    clean_aha = case_when(
-      !fillable_group ~ clean_aha,
+    # Compute potential fill values
+    potential_fill = case_when(
+      !fillable_group ~ NA_real_,
       is.na(mname) ~ NA_real_,
       TRUE ~ {
-        vals <- c(clean_aha, clean_aha_uid) # , clean_aha_name
+        vals <- c(clean_aha, clean_aha_uid)
         if (any(vals != 0, na.rm = TRUE)) {
           vals[which(vals != 0 & !is.na(vals))[1]]
         } else {
-          coalesce(clean_aha, clean_aha_uid) # , clean_aha_name
+          coalesce(clean_aha, clean_aha_uid)
         }
       }
+    ),
+    # Count how many would be filled
+    n_to_fill = sum(!is.na(potential_fill) & (is.na(clean_aha) | clean_aha == 0))
+  ) %>%
+  mutate(
+    clean_aha = case_when(
+      n_to_fill == 1 & !is.na(potential_fill) & (is.na(clean_aha) | clean_aha == 0) ~ potential_fill,
+      TRUE ~ clean_aha
     )
   ) %>%
+  select(-potential_fill, -n_to_fill) %>%
   ungroup() %>%
   select(-c(fillable_group,clean_aha_uid))  # optional: remove helper column%>%
   #select(-clean_aha_uid) #, -clean_aha_name) #%>%
