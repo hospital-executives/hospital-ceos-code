@@ -371,24 +371,28 @@ name_clean <- step3 %>%
 # Step 3: Left join both, with entity_uniqueid taking priority
 step4 <- step3 %>%
   left_join(uid_clean, by = "entity_uniqueid") %>%
-  #left_join(name_clean, by = "entity_name") %>%
+  group_by(sys_aha, year) %>%
+  mutate(
+    fillable_group = all(is.na(clean_aha) | clean_aha == 0)
+  ) %>%
   group_by(entity_uniqueid) %>%
   mutate(
     clean_aha = case_when(
+      !fillable_group ~ clean_aha,
       is.na(mname) ~ NA_real_,
       TRUE ~ {
-        vals <- c(clean_aha, clean_aha_uid) #, clean_aha_name)
+        vals <- c(clean_aha, clean_aha_uid) # , clean_aha_name
         if (any(vals != 0, na.rm = TRUE)) {
-          # Prefer the first non-zero value
           vals[which(vals != 0 & !is.na(vals))[1]]
         } else {
-          # Fall back to first non-NA (even if it's zero)
-          coalesce(clean_aha, clean_aha_uid) #, clean_aha_name)
+          coalesce(clean_aha, clean_aha_uid) # , clean_aha_name
         }
       }
     )
   ) %>%
-  select(-clean_aha_uid) #, -clean_aha_name) #%>%
+  ungroup() %>%
+  select(-c(fillable_group,clean_aha_uid))  # optional: remove helper column%>%
+  #select(-clean_aha_uid) #, -clean_aha_name) #%>%
   #mutate(
   #  clean_aha = if_else(!is.na(clean_aha) & clean_aha != 0 & clean_aha != ahanumber, 0, clean_aha)
   #) 
@@ -445,7 +449,11 @@ xwalk_export <- temp_export %>%
 write_feather(xwalk_export, paste0(derived_data,'/himss_aha_xwalk.feather'))
 
 # CREATE HIMSS MERGE
-export_xwalk <- temp_export %>% distinct(himss_entityid, campus_aha, entity_aha, latitude, longitude) %>%
+export_xwalk <- temp_export %>% distinct(himss_entityid, campus_aha, entity_aha, 
+                                         latitude, longitude) %>%
+  group_by(himss_entityid) %>%
+  slice(1) %>% 
+  ungroup() %>%
   mutate(ahanumber = campus_aha) %>%
   rename(geo_lat = latitude,
          geo_lon = longitude)
@@ -474,8 +482,10 @@ himss_mini <- himss %>% # confirmed
     year = as.numeric(year)
   )
 
-himss_to_aha_xwalk <- temp_export %>% distinct(himss_entityid, year, 
+himss_to_aha_xwalk <- temp_export %>% distinct(himss_entityid, entity_uniqueid, year, 
                                       clean_aha, campus_aha, py_fuzzy_flag, latitude, longitude) %>%
+  group_by(himss_entityid) %>%
+             slice(1) %>% ungroup() %>%
   mutate(ahanumber = campus_aha)  %>%
   rename(geo_lat = latitude,
          geo_lon = longitude)
