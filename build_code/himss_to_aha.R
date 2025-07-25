@@ -376,11 +376,12 @@ step4 <- step3 %>%
   mutate(
     fillable_group = all(is.na(clean_aha) | clean_aha == 0)
   ) %>%
+  ungroup() %>%
   group_by(entity_uniqueid) %>%
   mutate(
     # Compute potential fill values
     potential_fill = case_when(
-      !fillable_group ~ NA_real_,
+      !fillable_group ~ clean_aha,
       is.na(mname) ~ NA_real_,
       TRUE ~ {
         vals <- c(clean_aha, clean_aha_uid)
