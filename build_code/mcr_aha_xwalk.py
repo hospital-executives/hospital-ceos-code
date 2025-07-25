@@ -22,6 +22,7 @@ else:
     data_path = "/Users/katherinepapen/Library/CloudStorage/Dropbox/hospital_ceos/_data"
     print('WARNING: not using Makefile inputs')
 
+key_path = data_path[:-5] + "api_keys/geocoding_key.txt"
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from helper_scripts import xwalk_helper as hlp
@@ -44,19 +45,33 @@ for _, row in x_walk_2_data.iterrows():
     key = (hlp.clean_and_convert(row['mcrnum']), row['year'])
     x_walk_2_mcr[key].add(hlp.clean_and_convert(row['ahaid_noletter']))
 
-# only keep cases where mcrnum has one corresponding entry
+# only keep cases where mcrnum has one corresponding entry and also
+# mcrnum only has one ahaid
 hosp_counts = hospitals.groupby(['mcrnum', 'year']).size()
+mcr_with_multiple_aha = (
+    x_walk_2_data.groupby('mcrnum')['ahaid_noletter']
+    .nunique()
+    .loc[lambda x: x > 1]
+    .index
+    .tolist()
+)
+
+
 medicare_to_aha = {
     k: v for k, v in x_walk_2_mcr.items()
-    if len(v) == 1 and hosp_counts.get(k, 0) == 1
+    if len(v) == 1 and hosp_counts.get(k, 0) == 1 and 
+    str(int(k[0])) not in mcr_with_multiple_aha
+    #str(next(iter(v))) not in aha_with_multiple_mcr
 }
 
-mcr_mismatch = {k: v for k, v in x_walk_2_mcr.items() if len(v) > 1 or 
-                hosp_counts.get(k, 0) != 1}
+mcr_mismatch = {k: v for k, v in x_walk_2_mcr.items() 
+                if k not in medicare_to_aha.keys()}
 
 # make address xwalk
 address_matches = hlp.mcr_to_address(haentity, mcr_mismatch, df1, 
                                      "entity_address", "address")
+cleaned_add_matches = {k:v for k, v in address_matches.items()
+                       if k[0] not in mcr_with_multiple_aha}
 
 filled_values = []
 fuzzy_flags = []
@@ -67,7 +82,7 @@ for _, row in hospitals.iterrows():
         filled_values.append(next(iter(medicare_to_aha[key1])))
         fuzzy_flags.append(0)
     elif key1 in address_matches:
-        filled_values.append(address_matches[key1])
+        filled_values.append(cleaned_add_matches[key1])
         fuzzy_flags.append(1)
     else:
         filled_values.append(None)
@@ -277,7 +292,8 @@ filled_census, unfilled_census = hlp.updated_match_census_adds(missing_adds, dat
 filled_api, unfilled_api = hlp.match_api_adds(unfilled_census, cleaned_api)
 
 ###### GEOCODE REMAINING MISSING LOCATIONS
-api_key = "AIzaSyBGiH998321LVBKhgq7Aks80UfN-RmuDJ4" # replace once done
+with open(key_path, 'r') as file:
+    api_key = file.read()
 filled_google = hlp.geocode_addresses(unfilled_api, data_path, api_key)
 
 ### create list of missing aha numbers and their coordinates
