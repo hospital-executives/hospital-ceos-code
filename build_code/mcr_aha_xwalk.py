@@ -43,8 +43,16 @@ x_walk_2_mcr = defaultdict(set)
 for _, row in x_walk_2_data.iterrows():
     key = (hlp.clean_and_convert(row['mcrnum']), row['year'])
     x_walk_2_mcr[key].add(hlp.clean_and_convert(row['ahaid_noletter']))
-medicare_to_aha = {k: v for k, v in x_walk_2_mcr.items() if len(v) == 1}
-mcr_mismatch = {k: v for k, v in x_walk_2_mcr.items() if len(v) > 1}
+
+# only keep cases where mcrnum has one corresponding entry
+hosp_counts = hospitals.groupby(['mcrnum', 'year']).size()
+medicare_to_aha = {
+    k: v for k, v in x_walk_2_mcr.items()
+    if len(v) == 1 and hosp_counts.get(k, 0) == 1
+}
+
+mcr_mismatch = {k: v for k, v in x_walk_2_mcr.items() if len(v) > 1 or 
+                hosp_counts.get(k, 0) != 1}
 
 # make address xwalk
 address_matches = hlp.mcr_to_address(haentity, mcr_mismatch, df1, 
@@ -269,7 +277,7 @@ filled_census, unfilled_census = hlp.updated_match_census_adds(missing_adds, dat
 filled_api, unfilled_api = hlp.match_api_adds(unfilled_census, cleaned_api)
 
 ###### GEOCODE REMAINING MISSING LOCATIONS
-api_key = "AIzaSyDN1GTGa7x62biR--9zEEB6yjgFyQBKEmY" # replace once done
+api_key = "AIzaSyBGiH998321LVBKhgq7Aks80UfN-RmuDJ4" # replace once done
 filled_google = hlp.geocode_addresses(unfilled_api, data_path, api_key)
 
 ### create list of missing aha numbers and their coordinates

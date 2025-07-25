@@ -816,8 +816,8 @@ def geocode_addresses(unfilled_api, data_path, API_KEY):
         if address in cache:
             return cache[address]
         
-        else:
-            return None
+        #else:
+            #return None
         # removed to prevent overuse of API key
         url = "https://maps.googleapis.com/maps/api/geocode/json"
         params = {"address": address, "key": API_KEY}

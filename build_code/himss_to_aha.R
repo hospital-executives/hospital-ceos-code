@@ -7,6 +7,7 @@ library(janitor)
 library(haven)
 library(data.table)
 library(arrow)
+library(geosphere)
 
 # take inputs from Makefile
 args <- commandArgs(trailingOnly = TRUE)
@@ -228,7 +229,7 @@ step1 <- merged %>%
  # ) %>% 
  # ungroup() %>%
   #select(-override_aha) %>% 
-  group_by(ahanumber) %>%
+  group_by(ahanumber,year) %>%
   mutate(
     has_match = any(clean_aha == sys_aha, na.rm = TRUE),
     clean_aha = case_when(
@@ -261,7 +262,7 @@ step1b <- step1 %>%
   ungroup() %>%
   select(-n_match, -is_unique_match)   %>%
   ungroup() %>%
-  group_by(ahanumber) %>%
+  group_by(ahanumber,year) %>%
   mutate(
     has_match = any(clean_aha == sys_aha, na.rm = TRUE),
     clean_aha = case_when(
@@ -287,7 +288,7 @@ step2 <- step1b %>%
   right_join(step1b %>% mutate(ahanumber = sys_aha), by = c("ahanumber", "entity_uniqueid")) %>%
   mutate(clean_aha = coalesce(clean_aha.y, clean_aha.x)) %>%
   select(-clean_aha.x, -clean_aha.y) %>%
-  group_by(ahanumber) %>%
+  group_by(ahanumber, year) %>%
   mutate(
     has_match = any(clean_aha == sys_aha, na.rm = TRUE),
     clean_aha = case_when(
@@ -337,8 +338,8 @@ step3 <- step2 %>%
     )
   ) %>%
   ungroup() %>%
-  select(-jw_sim, -valid_jw, -max_sim, -is_best, -n_best_type1) %>% 
-  group_by(ahanumber) %>%
+  select( -n_best_type1) %>% 
+  group_by(ahanumber,year) %>%
   mutate(
     has_match = any(clean_aha == sys_aha, na.rm = TRUE),
     clean_aha = case_when(
@@ -369,7 +370,7 @@ name_clean <- step3 %>%
   distinct()
 
 # Step 3: Left join both, with entity_uniqueid taking priority
-step4 <- step4 <- step3 %>%
+step4 <- step3 %>%
   left_join(uid_clean, by = "entity_uniqueid") %>%
   group_by(sys_aha, year) %>%
   mutate(
@@ -401,31 +402,212 @@ step4 <- step4 <- step3 %>%
   ) %>%
   select(-potential_fill, -n_to_fill) %>%
   ungroup() %>%
-  select(-c(fillable_group,clean_aha_uid))  # optional: remove helper column%>%
-  #select(-clean_aha_uid) #, -clean_aha_name) #%>%
-  #mutate(
-  #  clean_aha = if_else(!is.na(clean_aha) & clean_aha != 0 & clean_aha != ahanumber, 0, clean_aha)
-  #) 
+  select(-c(fillable_group,clean_aha_uid)) 
+
+
 remove_terms <- "\\b(center|ctr|health|hlth|care|healthcare|system|clinic|hospital|university|rehabilitation)\\b"
 
-check_dropped <- step4 %>%
-  group_by(sys_aha) %>%
-  mutate(all_zero = all(clean_aha == 0, na.rm = TRUE)) %>%
+step5 <- step4 %>% group_by(ahanumber, year) %>%
+  mutate(
+    n_match = sum(entity_name == mname & haentitytypeid == 2, na.rm = TRUE),
+    is_unique_match = (n_match == 1 & entity_name == mname & haentitytypeid == 2)
+  ) %>% #filter(ahanumber == 6142120)  %>%
+  # select(ahanumber, clean_aha, year, entity_name, mname, n_match, is_unique_match)
+  mutate(
+    clean_aha = case_when(
+      !is.na(clean_aha) ~ clean_aha,
+      clean_aha == 0 ~ 0,
+      is_unique_match ~ ahanumber,
+      n_match == 1 ~ 0,
+      TRUE ~ NA_real_
+    )
+  ) %>%  
+  ungroup() %>%
+  select(-n_match, -is_unique_match)  %>%
+  group_by(ahanumber, year) %>%
+  mutate(
+    n_match = sum(entity_city == mloccity & haentitytypeid == 2, na.rm = TRUE),
+    is_unique_match = (n_match == 1 & entity_city == mloccity & haentitytypeid == 2)
+  ) %>%
+  mutate(
+    clean_aha = if (all(is.na(clean_aha))) {
+      case_when(
+        is_unique_match ~ ahanumber,
+        n_match == 1 ~ 0,
+        TRUE ~ NA_real_
+      )
+    } else {
+      clean_aha  # leave it unchanged if any clean_aha is non-NA
+    }
+  ) %>%
+  ungroup() %>%
+  select(-n_match, -is_unique_match)   %>%
+  ungroup() %>%
+  group_by(ahanumber, year) %>%
+  mutate(
+    has_match = any(clean_aha == sys_aha, na.rm = TRUE),
+    clean_aha = case_when(
+      has_match & is.na(clean_aha) ~ 0,
+      TRUE ~ clean_aha
+    )
+  ) %>%
+  ungroup()
+
+step6 <- step5 %>%
+  group_by(ahanumber, entity_uniqueid) %>%
+  summarise(has_type2 = any(haentitytypeid == "2"), .groups = "drop") %>%
+  group_by(ahanumber) %>%
+  mutate(
+    n_type2_entities = sum(has_type2),
+    assign_aha = if_else(n_type2_entities == 2 & has_type2, TRUE, FALSE)
+  ) %>%
+  filter(assign_aha) %>%
+  select(ahanumber, entity_uniqueid) %>% mutate(clean_aha = ahanumber) %>%
+  right_join(step5 %>% mutate(ahanumber = sys_aha), by = c("ahanumber", "entity_uniqueid")) %>%
+  mutate(clean_aha = coalesce(clean_aha.y, clean_aha.x)) %>%
+  select(-clean_aha.x, -clean_aha.y) %>%
+  group_by(ahanumber, year) %>%
+  mutate(
+    has_match = any(clean_aha == sys_aha, na.rm = TRUE),
+    clean_aha = case_when(
+      has_match & is.na(clean_aha) ~ 0,
+      TRUE ~ clean_aha
+    )
+  ) %>%
+  ungroup()
+
+step7 <- step6 %>%
+  group_by(ahanumber, year) %>%
+  mutate(
+    n_best_type2 = sum(is_best & haentitytypeid == "2", na.rm = TRUE),
+    any_type2 = any(haentitytypeid == "2", na.rm = TRUE),
+    
+    # find max jw_sim among haentitytypeid == "1" and valid_jw
+    max_type2_sim = if (any(valid_jw & (haentitytypeid == "1" | haentitytypeid == "2"), na.rm = TRUE)) {
+      max(jw_sim[valid_jw & (haentitytypeid == "1" | haentitytypeid == "2")], na.rm = TRUE)
+    } else NA_real_,
+    
+    is_best_hospital = valid_jw & (haentitytypeid == "1" | haentitytypeid == "2") & jw_sim == max_type2_sim
+  ) %>%
+  mutate(
+    clean_aha = case_when(
+      is.na(clean_aha) & is_best & haentitytypeid == "1" ~ ahanumber,                                   # 1. top priority
+      is.na(clean_aha) & is_best_hospital ~ ahanumber,                                                     # 2. fallback to best type1 match
+      is.na(clean_aha) & is_best & max_type2_sim < 0.8 & n_best_type2 == 0 ~ ahanumber,                                       # 3. fallback if no type1 match at all
+      is.na(clean_aha) & valid_jw & !is_best ~ 0,                                                       # 4. valid but not best
+      TRUE ~ clean_aha
+    )
+  ) %>%
+  ungroup() %>%
+  select( -n_best_type2) %>% 
+  group_by(ahanumber ,year ) %>%
+  mutate(
+    has_match = any(clean_aha == sys_aha, na.rm = TRUE),
+    clean_aha = case_when(
+      has_match & is.na(clean_aha) ~ 0,
+      TRUE ~ clean_aha
+    )
+  ) %>%
+  ungroup()
+
+step8 <- step7 %>%
+  group_by(ahanumber, year) %>%
+  mutate(still_unfilled = all(is.na(clean_aha)))%>%
   ungroup() %>%
   mutate(
-    entity_name_clean = str_squish(str_remove_all(str_to_lower(entity_name), remove_terms)),
-    mname_clean = str_squish(str_remove_all(str_to_lower(mname), remove_terms))
+    add_sim = ifelse(
+      !is.na(mlocaddr),
+      1 - stringdist::stringdist(entity_address, mlocaddr, method = "jw", p = 0.1),
+      NA_real_),
+    clean_aha = case_when(
+      is.na(clean_aha) & jw_sim >= .95 & haentitytypeid == "3" & still_unfilled ~ ahanumber,
+      TRUE ~ clean_aha
+    )
+  ) %>% ungroup() %>%
+  select(-still_unfilled) %>% 
+  group_by(ahanumber, year) %>%
+  mutate(still_unfilled = all(is.na(clean_aha)))%>%
+  ungroup() %>%
+  mutate(
+    clean_aha = case_when(
+      is.na(clean_aha) & add_sim >= .95 & haentitytypeid == "3" & still_unfilled ~ ahanumber,
+      TRUE ~ clean_aha
+    )
+  ) %>%select(-still_unfilled) %>% 
+  group_by(ahanumber ,year ) %>%
+  mutate(
+    has_match = any(clean_aha == sys_aha, na.rm = TRUE),
+    clean_aha = case_when(
+      has_match & is.na(clean_aha) ~ 0,
+      TRUE ~ clean_aha
+    )
   ) %>%
-  filter(all_zero & !is.na(mname)) %>%
-  filter(stringdist::stringdist(entity_name_clean, mname_clean, method = "jw") <= 0.25) %>%  # similarity > 0.5
-  #filter(stringdist::stringdist(entity_address, mlocaddr, method = "jw") <= 0.25 |
-         #  entity_zip_five == mloczip_five) %>%  
-  distinct(entity_uniqueid, entity_name, mname, entity_address, mlocaddr, haentitytypeid, sys_aha)
-  
+  ungroup()
+
+step9 <- step8  %>%
+  group_by(ahanumber, year) %>%
+  mutate(still_unfilled = all(is.na(clean_aha)|clean_aha == 0))%>%
+  ungroup() %>%
+  mutate(
+    clean_aha = case_when(
+      is.na(clean_aha) & add_sim >= .925 & jw_sim >= .925 & still_unfilled ~ ahanumber,
+      TRUE ~ clean_aha
+    )
+  ) %>% 
+  group_by(ahanumber, year) %>%
+  mutate(still_unfilled = all(is.na(clean_aha)|clean_aha == 0))%>%
+  ungroup() %>%
+  mutate(
+    clean_aha = case_when(
+      is.na(clean_aha) & add_sim >= .85 & jw_sim ==1 & still_unfilled ~ ahanumber,
+      TRUE ~ clean_aha
+    )
+  )  %>%
+  group_by(ahanumber ,year ) %>%
+  mutate(
+    has_match = any(clean_aha == sys_aha, na.rm = TRUE),
+    clean_aha = case_when(
+      has_match & is.na(clean_aha) ~ 0,
+      TRUE ~ clean_aha
+    )
+  ) %>%
+  ungroup()
+
+step10 <- step9 %>%
+  group_by(entity_uniqueid) %>%
+  mutate(
+    max_jw_sim = sapply(mname, function(m) {
+      if (is.na(m)) return(NA_real_)
+      group_names <- entity_name[!is.na(entity_name)]
+      if (length(group_names) == 0) return(NA_real_)
+      sims <- stringsim(m, group_names, method = "jw", p = 0.1)
+      max(sims, na.rm = TRUE)
+    })
+  ) %>%
+  ungroup()  %>%
+  group_by(ahanumber, year) %>%
+  mutate(still_unfilled = all(is.na(clean_aha)|clean_aha == 0))%>%
+  ungroup() %>%
+  mutate(
+    clean_aha = case_when(
+      is.na(clean_aha) & (max_jw_sim >= .95 |(max_jw_sim >= 0.9 & add_sim >= 0.9)) & still_unfilled ~ ahanumber,
+      TRUE ~ clean_aha
+    )
+  )  %>%
+  group_by(ahanumber ,year ) %>%
+  mutate(
+    has_match = any(clean_aha == sys_aha, na.rm = TRUE),
+    clean_aha = case_when(
+      has_match & is.na(clean_aha) ~ 0,
+      TRUE ~ clean_aha
+    )
+  ) %>%
+  ungroup()
+
 
 
 ### CHECK OUTPUT
-temp_export <- step4 %>% 
+temp_export <- step10 %>% 
   rename(str_ccn_himss = medicarenumber,
          ccn_himss = mcrnum.x,
          ccn_aha = mcrnum.y,
