@@ -31,7 +31,7 @@ Goal: 			Compare M&A system ID to Ellie's xwalk sysid
 * visual inspection
 	sort entity_name year (medicarenumber)
 	sort medicarenumber year
-	br ahanumber medicarenumber year system_id_aha sysid sysname sys_aha system_id_ma system_id_qtr_ma system_id_yr_ma sysid_final merge_status entity_name sysid_final_partial_sysname
+	br ahanumber medicarenumber year system_id_aha sysid sysname system_id_ma system_id_qtr_ma system_id_yr_ma sysid_final merge_status entity_name sysid_final_partial_sysname
 	
 * make a combined_medicarenumber variable that fills missing values of medicare with tostringed mcrnum_y with appropriate leading zeroes? 
 	
@@ -76,7 +76,7 @@ Goal: 			Compare M&A system ID to Ellie's xwalk sysid
 	
 * visual inspection
 	sort medicarenumber year
-	br medicarenumber year system_id_aha sysid sysname sys_aha system_id_ma sysid_final merge_status entity_name sysid_final_partial_sysname *modal* *count*
+	br medicarenumber year system_id_aha sysid sysname system_id_ma sysid_final merge_status entity_name sysid_final_partial_sysname *modal* *count*
 	
 	* so when both of them match their modal equiv, 
 		* I see system_id_ma = 170. Usually, that corresponds to sysid_final = 249 (249 is modal). In other words, I think that Ellie's numerical equivalent to that system is 249. So if I see that the sysid_final actually is 249, then I feel good about it. 
@@ -97,7 +97,7 @@ Goal: 			Compare M&A system ID to Ellie's xwalk sysid
 			gen missing_sysid_final = sysid_final ==. 
 			bysort system_id_ma: egen always_missing_sysid_final = min(missing_sysid_final) // missing.. = 1 if missing. So ALWAYS missing implies NEVER equal to 0. Therefore we need to use the minimum here: only ALWAYS missing if minimum is 1. 
 			
-		replace independent = 1 if always_missing_sysid_final == 1 & _merge_ellie_xwalk == 3
+		replace independent = 1 if always_missing_sysid_final == 1 & _merge_ps_entity == 3
 		
 			** look into some questionable observations
 			tab system_id_ma if countmodal_sysid_final > 8
@@ -138,7 +138,7 @@ Goal: 			Compare M&A system ID to Ellie's xwalk sysid
 	
 * remaining observations: should we worry about them?
 	sort medicarenumber year
-	br medicarenumber year system_id_aha sysid sysname sys_aha system_id_ma sysid_final merge_status entity_name sysid_final_partial_sysname *modal* *count* looksgood if always_good == 0
+	br medicarenumber year system_id_aha sysid sysname system_id_ma sysid_final merge_status entity_name sysid_final_partial_sysname *modal* *count* looksgood if always_good == 0
 	
 * create system change variables _______________________________________________
 
@@ -152,9 +152,9 @@ Goal: 			Compare M&A system ID to Ellie's xwalk sysid
 	* system_id_ma missing means we really don't have any information about it (didn't merge)
 	replace syschng_system_id_ma = . if missing(system_id_ma)
 		replace syschng_system_id_ma = . if missing(system_id_ma[_n-1])
-	* if _merge_ellie_xwalk == 1, then missing sysid_final means that we don't have information
-	replace syschng_sysid_final = . if _merge_ellie_xwalk == 1
-		replace syschng_sysid_final = . if _merge_ellie_xwalk[_n-1] == 1
+	* if _merge_ps_entity == 1, then missing sysid_final means that we don't have information
+	replace syschng_sysid_final = . if _merge_ps_entity == 1
+		replace syschng_sysid_final = . if _merge_ps_entity[_n-1] == 1
 	* if _merge_coop == 1, then missing sysid_final means that we don't have information
 	replace syschng_sysid_coop = . if _merge_coop == 1
 		replace syschng_sysid_coop = . if _merge_coop[_n-1] == 1
@@ -173,6 +173,7 @@ Goal: 			Compare M&A system ID to Ellie's xwalk sysid
 
 	* mean number of acquisitions over period by entity_uniqueid
 	preserve
+		keep if is_hospital ==1
 		collapse (rawsum) syschng*, by(year)
 		drop if year == 2010
 		graph bar syschng_system_id_ma syschng_sysid_final, over(year) ///
@@ -183,6 +184,7 @@ Goal: 			Compare M&A system ID to Ellie's xwalk sysid
 	restore
 	* share of non-missing observations in a given year with an acquisition event
 	preserve
+		keep if is_hospital ==1
 		collapse syschng*, by(year)
 		drop if year == 2010
 		graph bar syschng_system_id_ma syschng_sysid_final, over(year) ///
@@ -194,6 +196,7 @@ Goal: 			Compare M&A system ID to Ellie's xwalk sysid
 	
 	* now the same graphs from 2011-2014 with Cooper et al data
 	preserve
+		keep if is_hospital ==1
 		collapse (rawsum) syschng*, by(year)
 		keep if inrange(year,2011,2014)
 		graph bar syschng_system_id_ma syschng_sysid_final syschng_sysid_coop, over(year) ///
@@ -204,6 +207,7 @@ Goal: 			Compare M&A system ID to Ellie's xwalk sysid
 	restore
 	* share of non-missing observations in a given year with an acquisition event
 	preserve
+		keep if is_hospital == 1
 		collapse syschng*, by(year)
 		keep if inrange(year,2011,2014)
 		graph bar syschng_system_id_ma syschng_sysid_final syschng_sysid_coop, over(year) ///
@@ -228,10 +232,10 @@ Goal: 			Compare M&A system ID to Ellie's xwalk sysid
 	cap rename syschng_ct_system_id_ma syschng_ct_sysid_ma
 	
 	* medicarenumber -> ccn_himss
-	cap rename medicarenumber ccn_himss
+// 	destring medicarenumber, gen(ccn_himss)
 	
 	* mcrnum_y -> ccn_aha
-	cap rename mcrnum_y ccn_aha
+	cap rename mcrnum ccn_aha
 	
 	* make sure all the for-profit variables from PS data are correctly named
 	foreach profvar in forprofit forprofit_lag forprofit_chng {
@@ -239,14 +243,14 @@ Goal: 			Compare M&A system ID to Ellie's xwalk sysid
 	}
 	
 * keep key variables
-	keep 	ccn_himss ccn_aha /// medicare number variables
+	keep 	/*ccn_himss*/ ccn_aha /// medicare number variables
 			*sysid_ps *sysid_ma /// system ID variables
-			ahanumber year entity_uniqueid ///
+			ahanumber year entity_uniqueid is_hospital ///
 			forprofit_ps forprofit_lag_ps forprofit_chng_ps gov_priv_type_ps
 			
 * make unique by entity_uniqueid year
 	bysort entity_uniqueid year: keep if _n == 1
-		* 12 duplicate observations dropped
+		* 6 duplicate observations dropped
 			
 * save a crosswalk for merging with large file
 	save "${dbdata}/derived/temp/merged_ma_sysid_xwalk.dta", replace

@@ -21,11 +21,13 @@ Goal: 			Compute descriptive stats for CEOs
 	preserve
 		* keep CEOs only
 		keep if char_ceo == 1
+		* keep only hospital observations
+		keep if hospital ==1 
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
 		egen total_dup = total(duplicates)
-		assert total_dup == 6 // 6 facilities that end up with two CEOs in the same year
+		assert total_dup == 2 // 2 hosps that end up with two CEOs in the same year
 		drop if duplicates == 1
 		drop total_dup duplicates 
 		
@@ -92,11 +94,13 @@ Goal: 			Compute descriptive stats for CEOs
 	preserve
 		* keep CEOs only
 		keep if char_ceo == 1
+		* keep only hospital observations
+		keep if hospital ==1 
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
 		egen total_dup = total(duplicates)
-		assert total_dup == 6 // 6 facilities that end up with two CEOs in the same year
+		assert total_dup == 2 // 2 hospitals that end up with two CEOs in the same year
 		drop if duplicates == 1
 		drop total_dup duplicates 
 		
@@ -135,7 +139,7 @@ Goal: 			Compute descriptive stats for CEOs
 			line count_ceo_roles_3 year if forprofit_ps == 1, lcolor("35 139 69") ///
 			legend(order(1 "Non-Profit, 1 Role" ///
 						 2 "Non-Profit, 2 Roles" ///
-						 3 "Non-Profit, 3+ Roles" ///
+						 3 "Non-Profit, 3+ Roles" /// 
 						 4 "For-Profit, 1 Role" ///
 						 5 "For-Profit, 2 Roles" ///
 						 6 "For-Profit, 3+ Roles")) ///
@@ -152,11 +156,13 @@ Goal: 			Compute descriptive stats for CEOs
 	preserve
 		* keep CEOs only
 		keep if char_ceo == 1
+		* keep only hospital observations
+		keep if hospital ==1 
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
 		egen total_dup = total(duplicates)
-		assert total_dup == 6 // 6 facilities that end up with two CEOs in the same year
+		assert total_dup == 2 // 2 hosps that end up with two CEOs in the same year
 		drop if duplicates == 1
 		drop total_dup duplicates 
 		
@@ -205,11 +211,13 @@ Goal: 			Compute descriptive stats for CEOs
 	preserve
 		* keep CEOs only
 		keep if char_ceo == 1
+		* keep only hospital observations
+		keep if hospital ==1 
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
 		egen total_dup = total(duplicates)
-		assert total_dup == 6 // 6 facilities that end up with two CEOs in the same year
+		assert total_dup == 2 // 2 hosps that end up with two CEOs in the same year
 		drop if duplicates == 1
 		drop total_dup duplicates 
 		
@@ -251,11 +259,13 @@ Goal: 			Compute descriptive stats for CEOs
 	preserve
 		* keep CEOs only
 		keep if char_ceo == 1
+		* keep only hospital observations
+		keep if hospital ==1 
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
 		egen total_dup = total(duplicates)
-		assert total_dup == 6 // 6 facilities that end up with two CEOs in the same year
+		assert total_dup == 2 // 2 hosps that end up with two CEOs in the same year
 		drop if duplicates == 1
 		drop total_dup duplicates 
 		
@@ -301,11 +311,13 @@ Goal: 			Compute descriptive stats for CEOs
 	preserve
 		* keep CEOs only
 		keep if char_ceo == 1
+		* keep only hospital observations
+		keep if hospital ==1 
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
 		egen total_dup = total(duplicates)
-		assert total_dup == 6 // 6 facilities that end up with two CEOs in the same year
+		assert total_dup == 2 // 2 hosps that end up with two CEOs in the same year
 		drop if duplicates == 1
 		drop total_dup duplicates 
 		
@@ -342,6 +354,10 @@ Goal: 			Compute descriptive stats for CEOs
 	
 * turnover, share of hosps with CEO (ownership variable: gov_priv_type_ps)
 	preserve
+		
+		* keep only hospital observations
+		keep if hospital ==1 
+		
 		* keep one observation per hospital-year
 		bysort entity_uniqueid year: keep if _n == 1
 		
@@ -363,7 +379,7 @@ Goal: 			Compute descriptive stats for CEOs
 		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_hosp_has_ceo_gov_priv_type.pdf", as(pdf) name("Graph") replace
 		
 		* make CEO turnover line graph over time
-		merge m:1 year using `ceoturnover_all'
+		merge m:1 year using "${dbdata}/derived/temp/ceoturnover_all"
 		twoway line ceo_turnover1 year if gov_priv_type_ps == 1, lcolor(orange) ///
 		|| line ceo_turnover1 year if gov_priv_type_ps == 3, lcolor(green) ///
 		|| line ceo_turnover1 year if gov_priv_type_ps == 4, lcolor(blue) ///
@@ -378,6 +394,10 @@ Goal: 			Compute descriptive stats for CEOs
 	
 * turnover, share of hosps with CEO (ownership variable: forprofit_ps)
 	preserve
+	
+		* keep only hospital observations
+		keep if hospital ==1 
+	
 		* keep one observation per hospital-year
 		bysort entity_uniqueid year: keep if _n == 1
 		
@@ -401,7 +421,7 @@ Goal: 			Compute descriptive stats for CEOs
 		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_hosp_has_ceo_forprofit.pdf", as(pdf) name("Graph") replace
 		
 		* make CEO turnover line graph over time
-		merge m:1 year using `ceoturnover_all'
+		merge m:1 year using "${dbdata}/derived/temp/ceoturnover_all"
 		twoway line ceo_turnover1 year if forprofit_ps == 0, lcolor(blue) ///
 		|| line ceo_turnover1 year if forprofit_ps == 1, lcolor(green) ///
 		|| line ceo_turnover_forprofit year, lcolor(gray) ///
@@ -417,11 +437,13 @@ Goal: 			Compute descriptive stats for CEOs
 	preserve
 		* keep CEOs only
 		keep if char_ceo == 1
+		* keep only hospital observations
+		keep if hospital ==1 
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
 		egen total_dup = total(duplicates)
-		assert total_dup == 6 // 6 facilities that end up with two CEOs in the same year
+		assert total_dup == 2 // 2 hosps that end up with two CEOs in the same year
 		drop if duplicates == 1
 		drop total_dup duplicates 
 
@@ -452,11 +474,13 @@ Goal: 			Compute descriptive stats for CEOs
 	preserve
 		* keep CEOs only
 		keep if char_ceo == 1
+		* keep only hospital observations
+		keep if hospital ==1 
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
 		egen total_dup = total(duplicates)
-		assert total_dup == 6 // 6 facilities that end up with two CEOs in the same year
+		assert total_dup == 2 // 2 hosps that end up with two CEOs in the same year
 		drop if duplicates == 1
 		drop total_dup duplicates 
 
@@ -482,7 +506,7 @@ Goal: 			Compute descriptive stats for CEOs
 	
 * do career transition types vary over time?
 preserve 
-	tab career_transition_type, gen(ct)
+	tab career_transition_type if hospital ==1, gen(ct)
 	collapse (sum) ct*, by(year)
 	drop if year <= 2009
 	
@@ -504,7 +528,7 @@ restore
 
 * do diff ownership types have different career transition types?
 preserve
-	tab career_transition_type, gen(ct)
+	tab career_transition_type if hospital ==1, gen(ct)
 	collapse (sum) ct*, by(forprofit_ps)
 	
 	graph bar ct*, asyvars stack over(forprofit_ps) percent  		///
@@ -518,7 +542,7 @@ restore
 
 * career transition types by profit AND gender
 preserve
-	tab career_transition_type, gen(ct)
+	tab career_transition_type if hospital ==1, gen(ct)
 	collapse (sum) ct*, by(forprofit_ps char_female)
 	
 	graph bar ct* if char_female == 0, asyvars stack over(forprofit_ps) percent  		///
@@ -540,7 +564,7 @@ restore
 
 * do female and male CEOs have different career transition types?
 preserve
-	tab career_transition_type, gen(ct)
+	tab career_transition_type if hospital ==1, gen(ct)
 	collapse (sum) ct*, by(char_female)
 	
 	graph bar ct*, asyvars stack over(char_female) percent  		///
@@ -554,7 +578,7 @@ restore
 
 * do MD and non-MD CEOs have different career transition types?
 preserve
-	tab career_transition_type, gen(ct)
+	tab career_transition_type if hospital ==1, gen(ct)
 	collapse (sum) ct*, by(char_md)
 	
 	graph bar ct*, asyvars stack over(char_md) percent  		///
@@ -570,14 +594,16 @@ restore
 	cap destring hospbd, replace
 	cap destring bdtot, replace
 	* these seem pretty much the same
+* bdtot
 preserve
 	* keep CEOs only
 		keep if char_ceo == 1
+		keep if hospital == 1
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
 		egen total_dup = total(duplicates)
-		assert total_dup == 6 // 6 facilities that end up with two CEOs in the same year
+		assert total_dup == 2 // 2 facilities that end up with two CEOs in the same year
 		drop if duplicates == 1
 		drop total_dup duplicates 
 		
@@ -586,9 +612,33 @@ preserve
 		graph bar bdtot, over(char_female) over(forprofit_ps) ///
 			ytitle("Count") ///
 			title("Mean Bed Count by CEO Gender and Ownership") ///
+			subtitle("AHA Variable") ///
 			blabel(bar, format(%3.2f))
 		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_bdtot_female_forprofit_ps.pdf", as(pdf) name("Graph") replace
 restore
+* entity_bedsize
+preserve
+	* keep CEOs only
+		keep if char_ceo == 1
+		keep if hospital == 1
+		
+		* make sure unique
+		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
+		egen total_dup = total(duplicates)
+		assert total_dup == 2 // 2 facilities that end up with two CEOs in the same year
+		drop if duplicates == 1
+		drop total_dup duplicates 
+		
+	* collapse 	
+		collapse entity_bedsize, by(char_female forprofit_ps)
+		graph bar entity_bedsize, over(char_female) over(forprofit_ps) ///
+			ytitle("Count") ///
+			title("Mean Bed Count by CEO Gender and Ownership") ///
+			subtitle("HIMSS Variable") ///
+			blabel(bar, format(%3.2f))
+		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_entity_bedsize_female_forprofit_ps.pdf", as(pdf) name("Graph") replace
+restore
+
 * TO-DO: redo first taking the sum by contact_uniqueid and then collapsing
 	* take sum of each kind of ownership within a contact_uniqueid
 	* graph over gender stacked bars of each 
@@ -597,11 +647,12 @@ restore
 preserve
 		* keep CEOs only
 		keep if char_ceo == 1
+		keep if hospital ==1
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
 		egen total_dup = total(duplicates)
-		assert total_dup == 6 // 6 facilities that end up with two CEOs in the same year
+		assert total_dup == 2 // 2 facilities that end up with two CEOs in the same year
 		drop if duplicates == 1
 		drop total_dup duplicates 
 		
@@ -619,11 +670,12 @@ restore
 preserve
 	* keep CEOs only
 		keep if char_ceo == 1
+		keep if hospital ==1
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
 		egen total_dup = total(duplicates)
-		assert total_dup == 6 // 6 facilities that end up with two CEOs in the same year
+		assert total_dup == 2 // 2 hosps that end up with two CEOs in the same year
 		drop if duplicates == 1
 		drop total_dup duplicates 
 		
@@ -653,11 +705,12 @@ restore
 preserve
 	* keep CEOs only
 		keep if char_ceo == 1
+		keep if hospital == 1
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
 		egen total_dup = total(duplicates)
-		assert total_dup == 6 // 6 facilities that end up with two CEOs in the same year
+		assert total_dup == 2 // 2 facilities that end up with two CEOs in the same year
 		drop if duplicates == 1
 		drop total_dup duplicates 
 		

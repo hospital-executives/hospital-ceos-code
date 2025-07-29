@@ -14,11 +14,17 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 * merge M&A information onto individual file ___________________________________
 
 * load data
-	use "${dbdata}/derived/final_confirmed_aha_update_530.dta", clear
+	use "${dbdata}/derived/final_confirmed_aha.dta", clear
+	
+	* is this dataset unique by unique_entityid contact_uniqueid year title?
+	duplicates tag entity_uniqueid contact_uniqueid year title_standardized, gen(dup_tag)
+	assert dup_tag == 0
+	drop dup_tag
 	
 * merge in M&A data	
 	merge m:1 entity_uniqueid year using "${dbdata}/derived/temp/merged_ma_sysid_xwalk.dta", gen(_merge_ma_xwalk) keep(1 3)
-	* DOUBLE CHECK NONE ARE MISSING:	
+	* there are still 178,980 observations in the final_confirmed dataset that should be merging
+	* DOUBLE CHECK NONE ARE MISSING ID:	
 		keep if !missing(entity_uniqueid)
 		
 * remove "CIO Reports to" as a role
@@ -35,10 +41,24 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 		label values char_md degree_md
 	
 * individual is female
-	gen char_female = gender=="F"
-		replace char_female = . if missing(gender)
+	* assign modal gender 
+	bysort contact_uniqueid gender: gen gender_count = _N
+	bysort contact_uniqueid gender_count: gen gender_modal = gender[_N]
+	* make indicator based on modal gender
+	gen char_female = gender_modal=="F"
+		replace char_female = . if missing(gender_modal)
+	* replace values with non-modal gender if modal gender is missing
+	gen gender_thisyear = gender == "F"
+		replace gender_thisyear = . if missing(gender)
+	bysort contact_uniqueid: egen gender_ever = max(gender_thisyear)
+	replace char_female = gender_ever if !missing(gender_ever) & missing(char_female)
 		label define gender_female 0 "Male" 1 "Female"
 		label values char_female gender_female
+	drop gender_*
+
+* identify hospitals
+	gen hospital = entity_type=="Hospital"
+	gen hospital_network = inlist(entity_type,"Hospital","Single Hospital Health System","IDS/RHA") 
 		
 * hospital has CEO
 	* individual
@@ -48,15 +68,62 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 		replace char_ceo = 1 if regexm(title,"ceo") & temp_hosp_has_ceo == 0
 		replace char_ceo = 1 if regexm(title,"Chief Executive Officer") & temp_hosp_has_ceo == 0
 		replace char_ceo = 1 if regexm(title,"chief executive officer") & temp_hosp_has_ceo == 0
-	*drop temp_hosp_has_ceo
+	drop temp_hosp_has_ceo
 	* hospital
 	bysort entity_uniqueid year: egen hosp_has_ceo = max(char_ceo)
+		replace hosp_has_ceo = . if hospital == 0
+	
+* hospital CEO variables
+	gen hospital_ceo = hospital==1 & char_ceo==1
+	bysort contact_uniqueid: egen ever_hospital_ceo = max(hospital_ceo)
+	
+	gen hospital_system_ceo = char_ceo ==1 & inlist(entity_type,"Single Hospital Health System","IDS/RHA") 
+	bysort contact_uniqueid: egen ever_hosp_sys_ceo = max(hospital_system_ceo)
 	
 * label FP/NFP variable
 	label define ind_fp 0 "Non-Profit" 1 "For-Profit"
 	label values forprofit_ps ind_fp
 	
-* do CEOs drop out of the sample and then come back?
+* add parents
+	preserve 
+	
+	* keep only CEOs
+		keep if char_ceo == 1
+		* keep hospitals and IDS/RHA or Single Hospital Health Systems
+		keep if regexm(entity_type,"Hospital|IDS/RHA|Single Hospital Health System")
+		
+		* by CEO's unique ID and year, count unique HIMSS IDs:
+			* make sure unique
+			bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
+			egen total_dup = total(duplicates)
+			assert total_dup == 6 // 6 hosps that end up with two CEOs in the same year
+			drop if duplicates == 1
+			drop total_dup duplicates 
+		
+		* then tempfile the systems - keep only CEO ID and name, rename to parent
+		keep if regexm(entity_type,"IDS/RHA|Single Hospital Health System")
+		glob keepvars contact_uniqueid title title_standardized entity_type firstname lastname full_name
+		* make unique 
+			bysort himss_entityid year: gen count = 1 if _n > 1
+			egen total_dup = total(count)
+			assert total_dup == 1 // there is 1 system in 2017 with co-CEOs (both female). The same two co-CEOs for both facilities. Just keeping one.
+			drop if count ==1 
+			drop count total_dup
+		keep himss_entityid year $keepvars
+		foreach var in $keepvars {
+			rename `var' `var'_parentceo
+		}
+		rename himss_entityid entity_parentid
+		tempfile parent_obs
+		save `parent_obs'
+		
+	restore
+				
+	* merge parents onto children
+	merge m:1 entity_parentid year using `parent_obs', gen(_merge_parent) keep(1 3)	
+		
+	
+* do CEOs drop out of the sample and then come back? ___________________________ 
 	preserve
 		* keep only CEOs
 		keep if char_ceo == 1
@@ -64,7 +131,7 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 		* make sure unique
 			bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
 			egen total_dup = total(duplicates)
-			assert total_dup == 6 // 6 facilities that end up with two CEOs in the same year
+			assert total_dup == 6 // 6 hosps that end up with two CEOs in the same year
 			drop if duplicates == 1
 			drop total_dup duplicates 
 		
@@ -73,7 +140,7 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 		
 		* identify skips
 		bysort contact_uniqueid (year): gen skip = year != (year[_n-1]+1) if _n > 1
-		
+				
 		* add labels 
 		label define skippers 0 "No Skip" 1 "Skip"
 		label values skip skippers
@@ -84,38 +151,115 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 			blabel(bar, format(%3.2f))
 		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_ceo_skips_byyear.pdf", as(pdf) name("Graph") replace
 		
+		* share of ceos skipping over time HOSP ONLY
+		graph bar skip if hospital ==1, over(year) title("Share of Returning CEOs who Skipped >=1 Year") ///
+			ytitle("Share") ///
+			subtitle("Hospitals Only") ///
+			blabel(bar, format(%3.2f))
+		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_ceo_skips_byyear_hosp.pdf", as(pdf) name("Graph") replace
+		
 		* descriptives on skippers/non-skippers
 		graph bar forprofit_ps char_female char_md, over(skip) ///
-			title("Descriptives on Skip/vs Non-Skip CEOs") ///
+			title("Descriptives on Skip vs Non-Skip CEOs") ///
 			ytitle("Share") ///
 			legend(order(1 "For-Profit" 2 "Female" 3 "MD")) ///
 			blabel(bar, format(%3.2f))
 		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_ceo_skips_char.pdf", as(pdf) name("Graph") replace
 		
-		collapse (max) ever_skip = skip (max) char_md (mean) char_female (mean) forprofit_ps, by(contact_uniqueid)
-
+		* descriptives on skippers/non-skippers HOSP ONLY
+		graph bar forprofit_ps char_female char_md if hospital==1, over(skip) ///
+			title("Descriptives on Skip vs Non-Skip CEOs") ///
+			subtitle("Hospitals Only") ///
+			ytitle("Share") ///
+			legend(order(1 "For-Profit" 2 "Female" 3 "MD")) ///
+			blabel(bar, format(%3.2f))
+		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_ceo_skips_char_hosp.pdf", as(pdf) name("Graph") replace
+		
+		* collapse to person-level
+		collapse (max) ever_skip = skip (max) char_md (mean) char_female (mean) forprofit_ps, by(contact_uniqueid hospital)
+		* tag one obs per person (for people who have worked at hosp and non hosp)
+		bysort contact_uniqueid: gen tag = 1 if _n ==1
 		sum ever_skip
 		
 		* descriptives on skippers/non-skippers
-		graph bar forprofit_ps char_female char_md, over(ever_skip) ///
-			title("Descriptives on Ever Skip/vs Non-Skip CEOs") ///
+		graph bar forprofit_ps char_female char_md if tag==1, over(ever_skip) ///
+			title("Descriptives on Ever-Skip vs Non-Skip CEOs") ///
 			ytitle("Share") ///
 			legend(order(1 "For-Profit" 2 "Female" 3 "MD")) ///
 			blabel(bar, format(%3.2f))
 		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_ceo_everskips_char.pdf", as(pdf) name("Graph") replace
 		
+		* descriptives on skippers/non-skippers HOSP ONLY
+		graph bar forprofit_ps char_female char_md if hospital ==1, over(ever_skip) ///
+			title("Descriptives on Ever-Skip vs Non-Skip CEOs") ///
+			subtitle("Hospitals Only") ///
+			ytitle("Share") ///
+			legend(order(1 "For-Profit" 2 "Female" 3 "MD")) ///
+			blabel(bar, format(%3.2f))
+		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_ceo_everskips_char_hosp.pdf", as(pdf) name("Graph") replace
+		
 	restore
 	
-* does CEO hold role at multiple hosps? how many by year?
+* does a hospital often report the same CEO as the whole health system? ________
+
 	preserve
-		* keep only CEOs
+		
 		keep if char_ceo == 1
+		keep if hospital == 1
 		
 		* by CEO's unique ID and year, count unique HIMSS IDs:
 			* make sure unique
 			bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
 			egen total_dup = total(duplicates)
-			assert total_dup == 6 // 6 facilities that end up with two CEOs in the same year
+			assert total_dup == 2 // 2 hospitals that end up with two CEOs in the same year
+			drop if duplicates == 1
+			drop total_dup duplicates 
+		
+		* check if CEOs are the same
+		gen same_ceo = contact_uniqueid == contact_uniqueid_parent
+		tab same_ceo entity_type_parent
+		
+		* make count variables for graphing
+		gen count_same = 1 if same_ceo == 1
+		gen count_diff = 1 if same_ceo == 0
+		gen count_unmerged = 1 if missing(same_ceo)
+
+		* make graphics
+		
+			* shares
+		graph bar same_ceo, over(entity_type_parent) ///
+			title("Share of Hospitals With Same CEO as System") ///
+			subtitle("by System Type") ///
+			ytitle("Share of Hospitals") ///
+			blabel(bar)
+		graph export "${overleaf}/notes/CEO Descriptives/figures/same_ceo_shares.pdf", as(pdf) name("Graph") replace
+		
+			* counts
+		collapse (rawsum) count_*, by(entity_type_parent)	
+		graph bar count_same count_diff, over(entity_type_parent) stack ///
+			legend(order(1 "Same CEO" 2 "Different CEOs")) ///
+			title("Count of Hospitals With Same CEO as System") ///
+			subtitle("by System Type") ///
+			ytitle("Count of Hospitals") ///
+			blabel(bar, position(base))
+		graph export "${overleaf}/notes/CEO Descriptives/figures/same_ceo_counts.pdf", as(pdf) name("Graph") replace
+
+
+	restore
+	
+	
+* does CEO hold role at multiple hosps? how many by year? ______________________
+	preserve
+		* keep only CEOs
+		keep if char_ceo == 1
+		* keep only hospital observations
+		keep if hospital ==1 
+		
+		* by CEO's unique ID and year, count unique HIMSS IDs:
+			* make sure unique
+			bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
+			egen total_dup = total(duplicates)
+			assert total_dup == 2 // 2 hosps that end up with two CEOs in the same year
 			drop if duplicates == 1
 			drop total_dup duplicates 
 			* count hosps
@@ -132,12 +276,14 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 	preserve
 		* keep only CEOs
 		keep if char_ceo == 1
+		* keep only hospital observations
+		keep if hospital ==1
 		
 		* by CEO's unique ID and year, count unique AHA IDs:
 			* make sure unique
 			bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
 			egen total_dup = total(duplicates)
-			assert total_dup == 6 // 6 facilities that end up with two CEOs in the same year
+			assert total_dup == 2 // 2 hosps that end up with two CEOs in the same year
 			drop if duplicates == 1
 			drop total_dup duplicates 
 			* count hosps
@@ -159,6 +305,8 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 	preserve
 		* keep only C-suite obs
 		keep if c_suite == 1
+		* keep only hospital observations
+		keep if hospital ==1
 		
 		gen count = 1
 		collapse (rawsum) count (max) char_ceo, by(contact_uniqueid entity_uniqueid year)
@@ -174,6 +322,8 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 	
 	restore
 	
+	* repeat for systems?
+	
 	* merge into main data
 	merge m:1 contact_uniqueid year using `mult_ceo_roles', nogen keep(1 3)
 	merge m:1 contact_uniqueid year using `mult_ceo_roles_aha', nogen keep(1 3)
@@ -188,16 +338,18 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 			replace `var'_3 = . if missing(`var')
 	}
 	
-* CEO tenure
+* CEO tenure ___________________________________________________________________ 
 	preserve
 	
 		* keep only CEOs
 		keep if char_ceo == 1
+		* keep only hospital observations
+		keep if hospital ==1 
 		
 		* make sure unique
 			bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
 			egen total_dup = total(duplicates)
-			assert total_dup == 6 // 6 facilities that end up with two CEOs in the same year
+			assert total_dup == 2 // 2 hosps that end up with two CEOs in the same year
 			drop if duplicates == 1
 			drop total_dup duplicates 
 		
@@ -255,18 +407,20 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 	
 		* keep only CEOs
 		keep if char_ceo == 1
+		* keep only hospital observations
+		keep if hospital ==1 
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
 		egen total_dup = total(duplicates)
-		assert total_dup == 6 // 6 facilities that end up with two CEOs in the same year
+		assert total_dup == 2 // 2 hosps that end up with two CEOs in the same year
 		drop if duplicates == 1
 		drop total_dup duplicates 
 		
 		* check that observations are unique by hospital-year
 		bysort entity_uniqueid year: gen count = 1 if _n > 1
 		egen total_dup = total(count)
-		assert total_dup == 2 // there are 2 facilities in 2017 with co-CEOs (both female). The same two co-CEOs for both facilities. Just keeping one.
+		assert total_dup == 1 // there is 1 facility in 2017 with co-CEOs (both female). The same two co-CEOs for both facilities. Just keeping one.
 		drop if count ==1 
 		drop count total_dup
  
@@ -283,8 +437,7 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 		
 		collapse ceo_turnover1 ceo_turnover_govpriv ceo_turnover_forprofit, by(year)
 		rename ceo_turnover1 ceo_turnover1_all
-		tempfile ceoturnover_all
-		save `ceoturnover_all'
+		save "${dbdata}/derived/temp/ceoturnover_all", replace
 		
 	restore	
 	
@@ -293,12 +446,8 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 	
 * tracking CEO changes _________________________________________________________ 
 
-	gen hospital = inlist(entity_type,"Hospital","Single Hospital Health System") 
-	gen hospital_ceo = hospital==1 & char_ceo==1
-	bysort contact_uniqueid: egen ever_hospital_ceo = max(hospital_ceo)
-
 	preserve 
-		keep if ever_hospital_ceo == 1
+		keep if ever_hospital_ceo ==1 | ever_hosp_sys_ceo == 1
 		
 		* make a person-year dataset with all roles
 		bysort contact_uniqueid year: gen role_num = _n
@@ -651,3 +800,94 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 * save temp file _______________________________________________________________
 
 save "${dbdata}/derived/temp/indiv_file_contextual.dta", replace
+
+
+* SCRATCH - MANUALLY CHECKING SKIPPERS _________________________________________ 
+
+exit
+
+* contact_uniqueid = 76079
+	* Laurence Hinsdale
+	
+	* Our data:
+	* President & CEO at carolinas medical center northeast in 2009
+	* Missing from our data 2009-2013
+	* Executive VP of Regional Group at cone health annie penn hospital 2014-15
+	
+	* Online says:
+		* Hinsdale was an executive at Carolinas HealthCare System (now Atrium Health) and retired in 2014
+			* https://www.wbtv.com/story/28029342/carolinas-healthcare-ceo-paid-53-million-in-2014/
+		* he worked there as of 2011: Executive Vice President, Carolinas HealthCare System; Total 2011 compensation: $1,693,314
+			* https://www.newsobserver.com/news/special-reports/prognosis-profits/article16924658.html 
+
+
+* contact_uniqueid = 110300
+	* Thomas Pentz
+	
+	* In our data:
+	* CEO of Orange Park Medical Center until 2012
+	* Comes back as interim CEO of memorial hospital Jackson in 2016-17
+	* Joins LewisGale as interim CEO in 2017
+	
+	* Online:
+		* retired from Orange Park at the end of 2013
+			* https://www.jacksonville.com/story/business/2013/06/18/orange-park-medical-center-ceo-tom-pentz-will-retire-end-year/15825382007/
+		* joined Southern Hills Hospital as interim CEO in 2015; https://www.reviewjournal.com/life/health/southern-hills-hospital-names-new-ceo/ 
+		* Finished at Southern Hills in September 2015: https://www.beckershospitalreview.com/hospital-executive-moves/southern-hills-hospital-names-new-ceo-4-things-to-know/
+		* joined Memorial as interim CEO in April 2017: https://www.dcmsonline.org/news/337559/Memorial-Hospital-CEO-to-Retire-from-Hospital-Administration.htm 
+		* joineed LewisGale in 2018 https://www.beckershospitalreview.com/hospital-executive-moves/lewisgale-regional-health-system-ceo-to-depart-in-june-4-notes/
+		
+* contact_uniqueid = 95650
+	* Mark Sprada
+	
+	* In our data: 
+	* Interim CEO, COO, & CNO at imperial point medical center in 2011
+	* Interim CEO & Corporate CNO at broward general medical center in 2016
+	
+	* Online: 
+	* Imperial point is part of broward health
+	* seems like he stayed at Broward throughout the whole time (linkedin says 1997-2017)
+		* https://www.linkedin.com/in/markspradarn/
+	* He is referred to as interim CEO in 2017:
+		* https://www.healthcarefacilitiestoday.com/posts/Broward-Health-CEO-discusses-Fort-Lauderdale-airport-shooting--14442 
+		
+
+* contact_uniqueid = 1394364
+	* Donna Harris
+	
+	* Our data: 
+	* CEO at healthsouth rehabilitation hospital of jonesboro every year except 2012
+	
+	* Online:
+	* Linkedin shows that she has continuously been CEO of this facility 
+	* We are missing 2012 for the whole facility
+	
+	
+* contact_uniqueid = 2302493	
+	* David Ressler
+	
+	* Our data:
+	* CEO until 2012 at aspen valley hospital
+	* Missing 2013-2017
+	* CEO again in 2017 at aspen valley hospital
+	
+	* Online:
+	* Linkedin says he was CEO at aspen valley hospital until 2013 then C-suite at Tuscon Medical Center from 2013-2015: https://www.linkedin.com/in/david-ressler-aa6112b3/
+	* He returned to CEO role at aspen valley hospital in 2016: https://www.aspendailynews.com/news/avh-ceo-announces-2026-retirement/article_9a4143d7-4661-4ff3-a544-ce471b571ebc.html
+
+* contact_uniqueid = 2332613
+	* Edward Mirzabegian
+	
+	* Our data:
+	* CEO all over, missing in 2014
+	
+	* Online: 
+	* Transitioned between roles in 2013 and 2014 so may be missing due to timing
+
+
+
+
+
+
+
+
