@@ -1,0 +1,382 @@
+---
+title: "Final Summary Statistics"
+output: html_document
+date: "2025-07-30"
+---
+
+## R Markdown
+
+This Markdown produces all summary statistics in aha_himss_merge.tex
+```{r load data}
+#### load AHA data #####
+columns_to_keep <- c( 
+  "ID", 
+  "YEAR", 
+  "MNAME", 
+  "HOSPN", 
+  "MCRNUM",
+  # "CBSANAME", 
+  "HRRNAME", 
+  "HSANAME", 
+  "MADMIN", 
+  "SYSID", 
+  "SYSNAME", 
+  "CNTRL", 
+  "SERV", 
+  "HOSPBD", 
+  "BDTOT", 
+  "ADMTOT", 
+  "IPDTOT", 
+  "MCRDC", 
+  "MCRIPD", 
+  "MCDDC", 
+  "MCDIPD", 
+  "BIRTHS", 
+  "FTEMD", 
+  "FTERN", 
+  "FTE",
+  "LAT",
+  "LONG",
+  "MLOCADDR", #street address
+  "MLOCCITY", #city
+  "MLOCZIP" #zip code
+)
+
+# set file path using manual input at beginning of script
+file_path <- paste0(supplemental_data,"/AHA_2004_2017.csv")
+#import the CSV
+aha_data <- read_csv(file_path, col_types = cols(.default = col_character()))
+
+# Use problems() function to identify parsing issues
+parsing_issues <- problems(aha_data)
+
+# Check if any parsing issues were detected
+if (nrow(parsing_issues) > 0) {
+  print(parsing_issues)
+} else {
+  print("No parsing problems detected.")
+}
+
+aha_data <- aha_data %>%
+  select(all_of(columns_to_keep)) %>% 
+  rename_all(tolower) %>% 
+  rename(ahanumber = id,
+         latitude_aha = lat,
+         longitude_aha = long) %>% 
+  mutate(
+    # Convert to UTF-8
+    mloczip = stri_trans_general(mloczip, "latin-ascii"),
+    # cbsaname = stri_trans_general(cbsaname, "latin-ascii"),
+    mlocaddr = stri_trans_general(mlocaddr, "latin-ascii") %>% 
+      str_replace_all("-", " ") %>%  # Replace hyphens with a space
+      str_remove_all("[^[:alnum:],.\\s]") %>%  # Remove other punctuation except commas, periods, and spaces
+      str_to_lower() %>%
+      str_squish(),  # Remove extra spaces
+    mname = stri_trans_general(mname, "latin-ascii") %>% 
+      str_replace_all("-", " ") %>%  # Replace hyphens with a space
+      str_remove_all("[^[:alnum:],.\\s]") %>%  # Remove other punctuation except commas, periods, and spaces
+      str_to_lower() %>%
+      str_squish(),  # Remove extra spaces
+    # Extract first five digits of the zip code
+    mloczip_five = str_extract(mloczip, "^\\d{5}")
+  )
+
+aha_data <- aha_data %>%
+  mutate(ahanumber = str_remove_all(ahanumber, "[A-Za-z]"),
+         ahanumber = as.numeric(ahanumber),
+         year = as.numeric(year),
+         mcrnum = str_remove_all(mcrnum, "[A-Za-z]"),
+         mcrnum = as.numeric(mcrnum))
+
+aha_data$mstate <- sub(".*,\\s*", "", aha_data$hrrname)
+us_only <- aha_data %>% filter(!is.na(mstate)) 
+aha_data <- us_only
+
+himss_hospitals <- read_feather(paste0(derived_data,'/himss_aha_hospitals_final.feather'))
+
+```
+
+```{r total merge by year}
+#haentity_hosp <- himss_hospitals %>% filter(haentitytypeid == 1)
+
+# Add tags to each dataset
+ha_tagged <- himss_hospitals %>% filter(!is.na(entity_aha)) %>%
+  mutate(source_ha = TRUE,
+         ahanumber = campus_aha)
+
+aha_tagged <- aha_data %>%
+  mutate(source_aha = TRUE)
+
+# Full join to get all possible matches
+merged_all_original <- full_join(ha_tagged, aha_tagged)
+
+# Add category for merge result
+merge_stats <- merged_all_original %>%
+  mutate(merge_status = case_when(
+    source_ha == TRUE & source_aha == TRUE ~ "both",
+    source_ha == TRUE & is.na(source_aha) ~ "haentity_hosp only",
+    is.na(source_ha) & source_aha == TRUE ~ "aha_data only"
+  )) %>%
+  count(merge_status)
+
+merge_stats_by_year <- merged_all_original %>%
+  mutate(merge_status = case_when(
+    source_ha == TRUE & source_aha == TRUE ~ "Both",
+    source_ha == TRUE & is.na(source_aha) ~ "HIMSS Only",
+    is.na(source_ha) & source_aha == TRUE ~ "AHA Only"
+  )) %>%
+  count(year, merge_status)
+
+ggplot(merge_stats_by_year, aes(x = factor(year), y = n, fill = merge_status)) +
+  geom_col() +
+  geom_text(aes(label = n),
+            position = position_stack(vjust = 0.5),  # centers the label in each bar segment
+            color = "white", size = 3.5) +  # default is stacked
+  labs(title = "Merge Status by Year",
+       x = "Year",
+       y = "Number of Hospitals",
+       fill = "Merge Status") +
+  theme_minimal()
+```
+
+```{r entity counts by year}
+ha_counts <-  himss_hospitals %>% 
+ # filter(haentitytypeid == 1) %>% # | haentitytypeid == 2) %>%
+  #ha_tagged %>% to generate haentitytypeid == 1
+  group_by(year) %>%
+  summarise(count = n_distinct(entity_uniqueid)) %>%
+  mutate(source = "HIMSS")
+
+# Count unique ahanumber by year in aha_tagged
+aha_counts <- aha_tagged %>%
+  group_by(year) %>%
+  summarise(count = n_distinct(ahanumber)) %>%
+  mutate(source = "AHA")
+
+# Combine into one data frame
+combined_counts <- bind_rows(ha_counts, aha_counts)
+
+ggplot(combined_counts, aes(x = year, y = count, color = source)) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "Unique Hospitals by Year",
+    x = "Year",
+    y = "Count",
+    color = "Source"
+  ) +
+  theme_minimal()
+```
+
+```{r HIMSS to AHA match all time}
+haentity <- read_feather(paste0(auxiliary_data,"/haentity.feather"))
+
+cat("There are ", n_distinct(haentity$entity_uniqueid), "in HIMSS.",
+    "Of these,", n_distinct((haentity %>% filter(haentitytypeid == 1))$entity_uniqueid),
+    "are hospitals (haentitytypeid == 1).")
+
+q1 <- himss_hospitals %>%
+  filter(haentitytypeid  == 1 ) %>%
+  group_by(entity_uniqueid) %>%
+  mutate(
+    initial_match = all(entity_fuzzy_flag == 0, na.rm = FALSE),
+    fuzzy_match = all(entity_fuzzy_flag %in% c(0, 1)) & 
+      !any(is.na(entity_fuzzy_flag))
+  ) %>% ungroup()
+
+q1_graph <- q1 %>%
+  group_by(entity_uniqueid) %>%
+  summarise(
+    initial_match = any(initial_match, na.rm = TRUE),
+    fuzzy_match = any(fuzzy_match, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  summarise(
+    initial_match = sum(initial_match),
+    fuzzy_match = sum(fuzzy_match)
+  ) %>%
+  tidyr::pivot_longer(cols = everything(), names_to = "match_type", values_to = "count")
+
+total_entities <- q1 %>% 
+  distinct(entity_uniqueid) %>% 
+  nrow()
+
+q1_graph <- q1_graph %>%
+  mutate(
+    percent = count / total_entities * 100,
+    label = paste0(count, " (", round(percent, 1), "%)")
+  )
+
+himss_entity_plot <- ggplot(q1_graph, aes(x = match_type, y = count, fill = match_type)) +
+  geom_col() +
+  geom_text(aes(label = label), vjust = -0.5) +
+  labs(
+    title = "Entity Match Statistics",
+    x = "Match Type",
+    y = "Number of Matches"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  expand_limits(y = max(q1_graph$count) * 1.1)
+
+# Save to file
+ggsave("entity_match.png", plot = himss_entity_plot, width = 6, height = 4, dpi = 300)
+```
+
+```{r HIMSS to AHA match by year}
+# Step 1: Keep the initial fuzzy match labeling
+fuzzy_stats <- himss_hospitals %>%
+  filter(haentitytypeid == 1) %>%
+  group_by(entity_uniqueid) %>%
+  mutate(
+    initial_match = all(entity_fuzzy_flag == 0, na.rm = FALSE),
+    fuzzy_match = all(entity_fuzzy_flag %in% c(0, 1)) & 
+      !any(is.na(entity_fuzzy_flag))
+  ) %>% 
+  ungroup() %>%
+  filter((!is.na(mname) | !is.na(hrrname)) & !is.na(entity_aha)) %>%
+  distinct(entity_uniqueid, year, fuzzy_match, initial_match)
+
+# Step 2: Summarize by year
+fuzzy_graph_by_year <- fuzzy_stats %>%
+  group_by(year) %>%
+  summarise(
+    initial_match = sum(initial_match, na.rm = TRUE),
+    fuzzy_match = sum(fuzzy_match, na.rm = TRUE),
+    total = n(),
+    .groups = "drop"
+  ) %>%
+  pivot_longer(cols = c(initial_match, fuzzy_match), names_to = "match_type", values_to = "count") %>%
+  mutate(
+    percent = count / total * 100,
+    label = paste0(count) # "(", round(percent, 1), "%)")
+  )
+
+# Step 3: Plot
+entity_by_year <- ggplot(fuzzy_graph_by_year, aes(x = factor(year), y = count, fill = match_type)) +
+  geom_col(position = "dodge") +
+  geom_text(aes(label = label), position = position_dodge(width = 0.9), vjust = -0.3, size = 3) +
+  labs(
+    title = "Initial and Fuzzy Matches by Year",
+    x = "Year",
+    y = "Number of Matches",
+    fill = "Match Type"
+  ) +
+  theme_minimal()
+
+ggsave("entity_match_by_year.png", plot = entity_by_year, width = 6, height = 4, dpi = 300)
+
+```
+
+```{r AHA to HIMSS basic statistics}
+cat("There are", n_distinct(us_only$ahanumber), "US hospitals in the AHA.")
+
+## ever match 
+aha_ahanumber <- unique(us_only$ahanumber)
+himss_ahanumber <- unique(full_xwalk$entity_aha)
+
+overlap <- intersect(aha_ahanumber,himss_ahanumber)
+cat("There is ever a match on", length(overlap), "ahanumbers, (",
+length(overlap)/length(aha_ahanumber),"%) out of",
+    length(aha_ahanumber), "ahanumbers in the AHA data.")
+
+## entity, year match 
+aha_ahanumber <- us_only %>% distinct(ahanumber, year)
+himss_ahanumber <- full_xwalk %>% distinct(entity_aha, year, entity_name) %>%
+  rename(ahanumber = entity_aha)
+
+overlap <- left_join(aha_ahanumber,himss_ahanumber) %>% filter(!is.na(entity_name))
+
+cat("There is a match on ", nrow(overlap)/nrow(aha_ahanumber), 
+    "hospital-year pairs,  or", nrow(overlap))
+```
+
+```{r types of unmerged AHA hospitals}
+dta <- read_dta("/Users/katherinepapen/Library/CloudStorage/Dropbox/hospital_ceos/_data/supplemental/hospital_ownership.dta")
+type_labels <- c(
+  "0" = "ALTC",
+  "1" = "Cancer",
+  "2" = "Childrens ALTC",
+  "3" = "Childrens chronic",
+  "4" = "Childrens general",
+  "5" = "Childrens orthopedic",
+  "6" = "Childrens other",
+  "7" = "Childrens other specialty",
+  "8" = "Childrens psychiatric",
+  "9" = "Childrens rehabilitation",
+  "10" = "Chronic",
+  "11" = "Dependency rehab",
+  "12" = "Facial",
+  "13" = "General",
+  "14" = "Heart",
+  "15" = "Intellectual disabilities",
+  "16" = "Obgyn",
+  "17" = "Orthopedic",
+  "18" = "Other",
+  "19" = "Other speciality",
+  "20" = "Psychiatric",
+  "21" = "Rehabilitation",
+  "22" = "Respiratory",
+  "23" = "Surgical"
+)
+
+aha_not_in_himss <- aha_data %>%
+  anti_join(himss_hospitals %>% select(entity_aha, year) %>%
+              rename(ahanumber = entity_aha), by = c("ahanumber", "year")) %>%
+   left_join(dta %>% select(year, ahaid_noletter, hospital_type) %>% 
+              mutate(ahanumber = as.numeric(ahaid_noletter)), by = c("year", "ahanumber")) %>%
+  mutate(hospital_type_label = recode(as.character(hospital_type), !!!type_labels))
+
+check_unlabeled <- aha_not_in_himss %>% filter(is.na(hospital_type))
+
+type_breakdown_unmerged <- aha_not_in_himss %>%
+  distinct(mname, hospital_type_label) %>%
+  count(hospital_type_label, name = "n") %>%
+  mutate(percent = 100 * n / sum(n)) %>%
+  arrange(desc(percent))
+
+
+## compare to all aha
+
+aha_merged <- aha_data %>%
+   left_join(dta %>% select(year, ahaid_noletter, hospital_type) %>% 
+              mutate(ahanumber = as.numeric(ahaid_noletter)), by = c("year", "ahanumber")) %>%
+  mutate(hospital_type_label = recode(as.character(hospital_type), !!!type_labels))
+
+type_breakdown_all_aha <- aha_merged %>%
+  distinct(mname, hospital_type_label) %>%
+  count(hospital_type_label, name = "n") %>%
+  mutate(percent = 100 * n / sum(n)) %>%
+  arrange(desc(percent))
+
+## merge
+combined_table <- type_breakdown_unmerged %>%
+  rename(n_unmerged = n, pct_unmerged = percent) %>%
+  inner_join(type_breakdown_all_aha %>%
+               rename(n_all = n, pct_all = percent),
+             by = "hospital_type_label")
+
+combined_table <- combined_table %>%
+  mutate(
+    pct_unmerged = sprintf("%.1f%%", pct_unmerged),
+    pct_all = sprintf("%.1f%%", pct_all)
+  )
+
+kable(combined_table, format = "latex", booktabs = TRUE,
+      caption = "Comparison of Type Breakdown: Unmerged vs All AHA") %>%
+  cat(file = "/Users/katherinepapen/github/hospital-ceos-code/build_code/build_analysis/type_breakdown_comparison.tex")
+```
+
+```{r check general hospitals}
+general_aha <- aha_merged %>% filter(hospital_type == 13)
+
+general_pairs <- general_aha %>% distinct(ahanumber, year)
+
+missing_general <- general_aha %>% anti_join(himss_hospitals %>% select(entity_aha, year) %>%
+              rename(ahanumber = entity_aha), by = c("ahanumber", "year"))
+
+missing_pairs <- missing_general %>% distinct(ahanumber,year)
+
+cat("We are missing", nrow(missing_pairs)/nrow(general_pairs), "general observations.")
+```
+

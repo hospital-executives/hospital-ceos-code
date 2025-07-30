@@ -643,7 +643,8 @@ write_feather(xwalk_export, paste0(derived_data,'/himss_aha_xwalk.feather'))
 
 # CREATE HIMSS MERGE
 export_xwalk <- temp_export %>% distinct(himss_entityid, campus_aha, entity_aha, 
-                                         latitude, longitude) %>%
+                                         latitude, longitude, 
+                                         campus_fuzzy_flag, entity_fuzzy_flag, py_fuzzy_flag ) %>%
   group_by(himss_entityid) %>%
   slice(1) %>% 
   ungroup() %>%

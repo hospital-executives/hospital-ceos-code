@@ -1,4 +1,13 @@
 ## find entity_uniqueid in hospital level missing in final export
+library(rstudioapi)
+library(dplyr)
+library(stringr)
+library(fuzzyjoin)
+
+rm(list = ls())
+
+# set working directory
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
 temp_export <- read_feather(paste0(derived_data,'/himss_aha_hospitals_final.feather'))
 final_merged <- read_feather(paste0(derived_data,'/final_aha.feather'))
@@ -172,8 +181,9 @@ test <- og_himss %>% filter(entity_uniqueid %in% missing_from_final) %>%
 
 # there are still 430 cases for which an entity_uniqueid is missing in the 
 # individual level data set
-still_missing <- df %>% filter(entity_uniqueid %in% test) %>%
+still_missing <- og_himss %>% filter(entity_uniqueid %in% test) %>%
+  filter(year > 2008) %>%
   filter(haentitytypeid != "9" & haentitytypeid != "10") %>%
-  select(entity_uniqueid, entity_name, entity_address, entity_state, firstname,lastname, year, haentitytypeid) %>%
+  select(entity_uniqueid, entity_name, entity_address, entity_state, firstname, lastname, year, haentitytypeid) %>%
   arrange(entity_uniqueid) # the remaining cases can be explained by Nans (i.e., "Nanette"s)
 
