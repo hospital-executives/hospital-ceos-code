@@ -6,7 +6,11 @@ library(tidyr)
 library(stringdist)
 
 ##### Part 1: Clean AHA Data #####
+rm(list = ls())
+final_path <- "/Users/katherinepapen/Library/CloudStorage/Dropbox/hospital_ceos/_data/derived/final_aha.feather"
+final <- read_feather(final_path)
 true_aha <- read_feather("/Users/katherinepapen/Desktop/clean_aha.feather")
+data_path <- "/Users/katherinepapen/Library/CloudStorage/Dropbox/hospital_ceos/_data/"
 
 suffixes <- c("i", "ii", "iii", "iv", "v", "jr", "sr", "j.r.", "s.r.")
 
@@ -35,14 +39,15 @@ cleaned_aha <- true_aha %>%
   select(-c(first_word, second_word)) 
 
 ##### Part 2: How many CEOs are in AHA that I am counting as missing in HIMSS? #####
-all_aha_ceos <- cleaned_aha %>% distinct(full_aha, mname, year) %>% 
+all_aha_ceos <- cleaned_aha %>% distinct(full_aha, ahanumber, year) %>% 
   filter(year > 2008) %>%
   rename(full_name = full_aha) #39,138 obs
 
 all_himss_ceos <- final %>% 
   filter(title_standardized == "CEO:  Chief Executive Officer" |
            str_detect(title, "CEO") | str_detect(title, "C.E.O") | 
-  str_detect(title, "Chief Executive")) %>% distinct(full_name, mname, year)
+  str_detect(title, "Chief Executive")) %>% 
+  distinct(full_name, entity_aha, year) %>% rename(ahanumber = entity_aha)
 # 77,024 obs
 
 joined <- all_aha_ceos %>% #first pass 23,291 matched on year + mname
@@ -53,9 +58,9 @@ joined <- all_aha_ceos %>% #first pass 23,291 matched on year + mname
                         distance_col = "name_dist") 
 
 aha_mini <- cleaned_aha %>% 
-  distinct(full_aha, mname, year, first_aha, last_aha) %>%
+  distinct(full_aha, ahanumber, year, first_aha, last_aha) %>%
   rename(aha_year = year,
-         aha_mname = mname)
+         aha_aha = ahanumber)
 
 himss_mini <- final %>% 
   filter(title_standardized == "CEO:  Chief Executive Officer" |
@@ -66,14 +71,14 @@ himss_mini <- final %>%
     last_himss = lastname,
     full_himss = full_name
   ) %>%
-  distinct(full_himss, first_himss, last_himss, year, mname) %>%
-  rename(himss_mname = mname,
+  distinct(full_himss, first_himss, last_himss, year, entity_aha) %>%
+  rename(himss_aha = entity_aha,
          himss_year = year)
 
 cleaned_joined <- joined %>%
   rename(
-    aha_mname = mname.x,
-    himss_mname = mname.y,
+    aha_aha = mname.x,
+    himss_aha = mname.y,
     aha_year = year.x,
     himss_year = year.y,
     full_aha = full_name.x,
