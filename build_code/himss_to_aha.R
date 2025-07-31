@@ -511,7 +511,24 @@ step7 <- step6 %>%
   ) %>%
   ungroup()
 
-step8 <- step7 %>%
+step8 <- step7 %>% arrange(entity_uniqueid, year) %>%  # Ensure correct ordering for locf
+  group_by(entity_uniqueid) %>%
+  mutate(
+    aha_before = zoo::na.locf(clean_aha, na.rm = FALSE),
+    aha_after  = zoo::na.locf(clean_aha, fromLast = TRUE, na.rm = FALSE),
+    clean_filled = case_when(
+      is.na(clean_aha) &
+        !is.na(aha_before) &
+        !is.na(aha_after) &
+        aha_before == aha_after ~ aha_before,
+      TRUE ~ clean_aha
+    )
+  ) %>%
+  ungroup() %>%
+  mutate(clean_aha = clean_filled) %>%
+  select(-aha_before, -aha_after, -clean_filled)
+
+step9 <- step8 %>%
   group_by(ahanumber, year) %>%
   mutate(still_unfilled = all(is.na(clean_aha)))%>%
   ungroup() %>%
@@ -545,7 +562,7 @@ step8 <- step7 %>%
   ) %>%
   ungroup()
 
-step9 <- step8  %>%
+step10 <- step9  %>%
   group_by(ahanumber, year) %>%
   mutate(still_unfilled = all(is.na(clean_aha)|clean_aha == 0))%>%
   ungroup() %>%
@@ -574,7 +591,7 @@ step9 <- step8  %>%
   ) %>%
   ungroup()
 
-step10 <- step9 %>%
+step11 <- step10 %>%
   group_by(entity_uniqueid) %>%
   mutate(
     max_jw_sim = sapply(mname, function(m) {
@@ -608,7 +625,7 @@ step10 <- step9 %>%
 
 
 ### CHECK OUTPUT
-temp_export <- step10 %>% 
+temp_export <- step8 %>% 
   rename(str_ccn_himss = medicarenumber,
          ccn_himss = mcrnum.x,
          ccn_aha = mcrnum.y,
@@ -665,7 +682,7 @@ merged_haentity <- haentity %>% select(-ahanumber) %>%
 
 write_feather(merged_haentity, paste0(derived_data,'/himss_aha_hospitals_final.feather'))
 merged_haentity <- merged_haentity %>% clean_names() 
-write_dta(merged_haentity, paste0(derived_data,'/himss_aha_hospitals_final.dta'))
+#write_dta(merged_haentity, paste0(derived_data,'/himss_aha_hospitals_final.dta'))
 
 ## CREATE LEVEL EXPORT
 himss <- read_feather(paste0(derived_data, '/final_himss.feather'))
