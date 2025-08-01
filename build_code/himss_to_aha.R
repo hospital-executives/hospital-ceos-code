@@ -11,7 +11,8 @@ library(geosphere)
 
 # take inputs from Makefile
 args <- commandArgs(trailingOnly = TRUE)
-code_path <- args[1]
+code_path <- setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+
 data_path <- paste0(args[2], "/_data/")
 
 cat(paste0("CODE PATH: ", code_path))
@@ -530,6 +531,29 @@ step8 <- step7 %>% arrange(entity_uniqueid, year) %>%  # Ensure correct ordering
 
 step9 <- step8 %>%
   group_by(ahanumber, year) %>%
+  mutate(still_unfilled = all(is.na(clean_aha))) %>%
+  ungroup() %>% 
+  arrange(entity_uniqueid, year) %>%  # Ensure correct ordering for locf
+  group_by(entity_uniqueid) %>%
+  mutate(
+    aha_before = zoo::na.locf(clean_aha, na.rm = FALSE),
+    aha_after  = zoo::na.locf(clean_aha, fromLast = TRUE, na.rm = FALSE)
+  ) %>%
+  ungroup() %>%
+  group_by(ahanumber, year) %>%
+  mutate(
+    clean_filled = case_when(
+      is.na(clean_aha) & still_unfilled & !is.na(aha_before) & !is.na(aha_after) & aha_before == aha_after ~ aha_before,
+      is.na(clean_aha) & still_unfilled & !is.na(aha_before) & is.na(aha_after) ~ aha_before,
+      is.na(clean_aha) & still_unfilled & is.na(aha_before) & !is.na(aha_after) ~ aha_after,
+      TRUE ~ clean_aha
+  )) %>%
+  ungroup() %>%
+  mutate(clean_aha = clean_filled) %>% select(-clean_filled,-aha_before, -aha_after )
+
+  
+step_dropped <- step8 %>%
+  group_by(ahanumber, year) %>%
   mutate(still_unfilled = all(is.na(clean_aha)))%>%
   ungroup() %>%
   mutate(
@@ -625,7 +649,7 @@ step11 <- step10 %>%
 
 
 ### CHECK OUTPUT
-temp_export <- step8 %>% 
+temp_export <- step9 %>% 
   rename(str_ccn_himss = medicarenumber,
          ccn_himss = mcrnum.x,
          ccn_aha = mcrnum.y,
