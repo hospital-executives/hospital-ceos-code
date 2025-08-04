@@ -100,7 +100,7 @@ himss_hospitals <- read_feather(paste0(derived_data,'/himss_aha_hospitals_final.
 #haentity_hosp <- himss_hospitals %>% filter(haentitytypeid == 1)
 
 # Add tags to each dataset
-ha_tagged <- himss_hospitals %>% filter(!is.na(entity_aha)) %>%
+ha_tagged <-himss_hospitals %>% filter(!is.na(entity_aha) & !is.na(mname)) %>%
   mutate(source_ha = TRUE,
          ahanumber = campus_aha)
 
@@ -225,6 +225,13 @@ ggsave("entity_match.png", plot = himss_entity_plot, width = 6, height = 4, dpi 
 
 ```{r HIMSS to AHA match by year}
 # Step 1: Keep the initial fuzzy match labeling
+
+# get number of hospital, year pairs in himss
+hosp_year_pairs <- himss_hospitals %>%
+  filter(haentitytypeid == 1) %>% distinct(entity_uniqueid, year)
+
+cat("There are ", nrow(hosp_year_pairs), "in HIMSS")
+
 fuzzy_stats <- himss_hospitals %>%
   filter(haentitytypeid == 1) %>%
   group_by(entity_uniqueid) %>%
@@ -234,7 +241,7 @@ fuzzy_stats <- himss_hospitals %>%
       !any(is.na(entity_fuzzy_flag))
   ) %>% 
   ungroup() %>%
-  filter((!is.na(mname) | !is.na(hrrname)) & !is.na(entity_aha)) %>%
+  filter(!is.na(mname) & !is.na(entity_aha)) %>%
   distinct(entity_uniqueid, year, fuzzy_match, initial_match)
 
 # Step 2: Summarize by year
@@ -266,6 +273,20 @@ entity_by_year <- ggplot(fuzzy_graph_by_year, aes(x = factor(year), y = count, f
 
 ggsave("entity_match_by_year.png", plot = entity_by_year, width = 6, height = 4, dpi = 300)
 
+cat("We have a match for", 
+    sum((fuzzy_graph_by_year %>% filter(match_type == "fuzzy_match"))$count)/
+      nrow(himss_hospitals %>% filter(haentitytypeid == 1) %>% distinct(entity_uniqueid, year)))
+
+## remaining cases
+dont_merge <- himss_hospitals %>% filter(haentitytypeid == 1) %>%
+  filter(!is.na(entity_aha) & is.na(mname)) %>% distinct(entity_uniqueid, year)
+
+campus_no_entity <- himss_hospitals %>% filter(haentitytypeid == 1) %>%
+  filter(is.na(entity_aha) & !is.na(campus_aha))
+
+never_assigned <- himss_hospitals %>% filter(haentitytypeid == 1) %>% 
+  filter(is.na(campus_aha)) %>%
+  select(entity_name, entity_address, entity_state)
 ```
 
 ```{r AHA to HIMSS basic statistics}
@@ -273,6 +294,8 @@ cat("There are", n_distinct(us_only$ahanumber), "US hospitals in the AHA.")
 
 ## ever match 
 aha_ahanumber <- unique(us_only$ahanumber)
+full_xwalk <- read_feather(paste0(derived_data,'/himss_aha_hospitals_final.feather'))
+
 himss_ahanumber <- unique(full_xwalk$entity_aha)
 
 overlap <- intersect(aha_ahanumber,himss_ahanumber)
@@ -287,9 +310,36 @@ himss_ahanumber <- full_xwalk %>% distinct(entity_aha, year, entity_name) %>%
 
 overlap <- left_join(aha_ahanumber,himss_ahanumber) %>% filter(!is.na(entity_name))
 
+cat("There are", nrow(aha_ahanumber), "hospital-year pairs in the AHA.")
 cat("There is a match on ", nrow(overlap)/nrow(aha_ahanumber), 
     "hospital-year pairs,  or", nrow(overlap))
 ```
+
+```{r drop government}
+check_vets <- us_only %>% filter((sysid != "9295" & sysid!= "9395")| is.na(sysid)) 
+all_vets <- us_only %>% filter(sysid == "9295"|sysid== "9395")
+
+aha_ahanumber <- unique(check_vets$ahanumber)
+himss_ahanumber <- unique(full_xwalk$entity_aha)
+
+overlap <- intersect(aha_ahanumber,himss_ahanumber)
+cat("There is ever a match on", length(overlap), "ahanumbers, (",
+length(overlap)/length(aha_ahanumber),"%) out of",
+    length(aha_ahanumber), "ahanumbers in the AHA data.")
+
+## entity, year match 
+aha_ahanumber <- check_vets %>% distinct(ahanumber, year)
+himss_ahanumber <- full_xwalk %>% distinct(entity_aha, year, entity_name) %>%
+  rename(ahanumber = entity_aha)
+
+overlap <- left_join(aha_ahanumber,himss_ahanumber) %>% filter(!is.na(entity_name))
+
+cat("There are", nrow(aha_ahanumber), "hospital-year pairs in the AHA.")
+cat("There is a match on ", nrow(overlap)/nrow(aha_ahanumber), 
+    "hospital-year pairs,  or", nrow(overlap))
+```
+
+
 
 ```{r types of unmerged AHA hospitals}
 dta <- read_dta("/Users/katherinepapen/Library/CloudStorage/Dropbox/hospital_ceos/_data/supplemental/hospital_ownership.dta")
