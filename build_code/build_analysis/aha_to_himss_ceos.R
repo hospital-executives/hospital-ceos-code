@@ -488,7 +488,7 @@ all_matches <- rbind(confirmed_with_title, matches) %>%
 
 ### sixth pass - find matches where AHA observation occurs in HIMSS, but ------
 ###              in a different system, using a (first, last) fuzzy join ------
-
+###              and using system id from AHA 
 remaining <- all_aha_ceos %>% left_join(cleaned_aha) %>%
   distinct(ahanumber, year, mname, full_aha, last_aha, first_aha) %>%
   anti_join(all_matches %>% distinct(full_aha,ahanumber, year)) %>%
@@ -559,11 +559,97 @@ if (any(sys_matches$match_type == "unaccounted", na.rm = TRUE)) {
   stop("Some matches are unaccounted for")
 }
 
+### seventh pass - find matches where AHA observation occurs in HIMSS, but ------
+###              in a different system, using a full name fuzzy join ------
+###              and using system id from HIMSS
+
+# combine current matches
+confirmed_matches <- rbind(all_matches %>% select(full_aha, ahanumber, year), 
+                           sys_matches %>% select(full_aha, aha_aha, aha_year) %>%
+                             rename(ahanumber = aha_aha, year = aha_year)) %>%
+  rename(full_name = full_aha)  %>% distinct(ahanumber, full_name, year)
+
+# get unaccounted for ceos
+unmatched <- all_aha_ceos %>% anti_join(confirmed_matches) %>% 
+  left_join(cleaned_aha %>% distinct(full_aha, ahanumber, year,cleaned_title_aha))
+
+# get mapping between ahanumber and systems
+all_missing_aha <- unmatched %>% distinct(ahanumber) %>% pull(ahanumber)
+corresponding_system_ids <- final %>% filter(campus_aha %in% all_missing_aha) %>%
+  distinct(ahanumber, parentid, year, system_id) %>% rename(himss_year = year) 
+
+parent_df <- final %>% filter(parentid %in% corresponding_system_ids$parentid) %>%
+  distinct(firstname, lastname, full_name, ahanumber, entity_aha, entity_name, year, title_standardized, title) %>%
+  rename(himss_year = year,
+         himss_full = full_name,
+         first_himss = firstname,
+         last_himss = lastname)
+
+merged_df <- unmatched %>% 
+  left_join(cleaned_aha %>% distinct(first_aha, last_aha, year, ahanumber)) %>%
+  left_join(corresponding_system_ids %>% select(-parentid)) %>%
+  left_join(parent_df)
+
+df_with_sim <- merged_df %>% mutate(
+  full_jw  = stringdist(full_aha , himss_full , method = "jw", p = 0.1),
+  first_jw = stringdist(first_aha, first_himss, method = "jw", p = 0.1),
+  last_jw  = stringdist(last_aha , last_himss , method = "jw", p = 0.1),
+  nick_1 = mapply(function(a, b) names_in_same_row_dict(a, b, dict1), first_aha, first_himss),
+  nick_2 = mapply(function(a, b) names_in_same_row_dict(a, b, dict2), first_aha, first_himss),
+  nick_3 = mapply(function(a, b) names_in_same_row_dict(a, b, dict3), first_aha, first_himss),
+  last_substring = mapply(last_name_overlap, last_aha, last_himss),
+  first_substring = mapply(last_name_overlap, first_aha, first_himss)
+)
+
+check_sim <- df_with_sim %>% 
+  filter((full_jw <= .1 |    
+            (
+              (last_jw <= .15 | last_substring) & 
+                (first_jw <= .15 | first_substring | nick_1 | nick_2 | nick_3)
+            )))
+
+himss_sys_matches <- check_sim %>%
+  rename(aha_year = year) %>%
+  group_by(full_aha, ahanumber, aha_year) %>%
+  mutate(
+    has_himss_year_equal = any(himss_year == aha_year, na.rm = TRUE),
+    has_himss_after = any(himss_year > aha_year, na.rm = TRUE),
+    has_himss_before = any(himss_year < aha_year, na.rm = TRUE),
+    has_himss_after_no_match = has_himss_after & !has_himss_year_equal,
+    has_himss_before_no_match = has_himss_before & !has_himss_year_equal
+  ) %>% ungroup() %>%
+  mutate(year_diff = abs(himss_year - aha_year),
+         prefer_after = if_else(himss_year > aha_year, 1, 0)) %>%
+  group_by(full_aha, ahanumber, aha_year) %>%
+  slice_min(order_by = year_diff, with_ties = TRUE) %>%  # keep ties
+  slice_max(order_by = prefer_after, n = 1, with_ties = FALSE) %>%  # break ties by favoring after
+  ungroup() %>%
+  mutate(
+    match_type = case_when(
+      str_detect(title_standardized, "CEO") & himss_year == aha_year ~ "sys",
+      str_detect(title, "CEO") & himss_year == aha_year ~ "sys",
+      str_detect(title_standardized, "CEO") & himss_year != aha_year ~ paste0("sys_year_", year_diff),
+      str_detect(title, "CEO") & himss_year != aha_year ~ paste0("sys_year_", year_diff),
+      himss_year != aha_year ~ paste0("sys_year_", year_diff),
+      himss_year == aha_year ~ "sys_title",
+      TRUE ~ "unaccounted"
+    )) %>% 
+  rename(himss_after_aha = has_himss_after_no_match, 
+         himss_before_aha = has_himss_before_no_match)
+
+
+
+#### clean output
+
 final_matches <- rbind(all_matches %>% select(-match_order), 
                        sys_matches %>% select(full_aha, aha_aha, aha_year,
                                           match_type, himss_before_aha,
                                           himss_after_aha) %>%
-                         rename(ahanumber = aha_aha, year = aha_year)) %>%
+                         rename(ahanumber = aha_aha, year = aha_year), 
+                       himss_sys_matches %>% select(full_aha, ahanumber, aha_year,
+                                  match_type, himss_before_aha,
+                                  himss_after_aha) %>%
+                         rename(year = aha_year)) %>%
   mutate(
     match_order = case_when(
       match_type == "jw" ~ 1,
@@ -608,12 +694,10 @@ real_missing <- all_aha_ceos %>% anti_join(
 stopifnot(nrow(real_missing) + nrow(cleaned_matches) == nrow(all_aha_ceos))
 
 interim_cases <- real_missing %>% 
-  filter(str_detect(cleaned_title_aha, "interim")) %>%
+  filter(str_detect(cleaned_title_aha, "interim|acting")) %>%
   distinct(full_aha, ahanumber, year)
 cat("Of the remaining", nrow(real_missing), "cases,",
     nrow(interim_cases), "can be explained by the madmin CEO being interim.")
-
-
 
 ######### TBD USEFUL ########
 check_matches <- matches %>%
@@ -623,118 +707,12 @@ check_matches <- matches %>%
 # these may be cases where we are potentially failing to track people
 # through HIMSS
 
+view_remaining <- real_missing %>% anti_join(interim_cases)
 
+## create a random sample
+set.seed(87)
+random_rows_indices <- sample(nrow(view_remaining), 10)
+sampled_df <- view_remaining[random_rows_indices, ]
 
-real_missing <- all_aha_ceos %>% anti_join(
-  all_matches %>% distinct(ahanumber, full_aha, year)
-) %>% left_join(cleaned_aha %>% distinct(full_aha, ahanumber, year,cleaned_title_aha )) %>%
-  filter(str_detect(cleaned_title_aha, "interim"))
-
-
-all_missing <- all_aha_ceos %>% anti_join(
-  all_matches %>% distinct(ahanumber, full_aha, year)
-) 
-
-## try to get match on campus_aha
-all_missing_aha <- all_missing %>% distinct(ahanumber) %>% pull(ahanumber)
-corresponding_system_ids <- final %>% filter(campus_aha %in% all_missing_aha) %>%
-  distinct(ahanumber, parentid, year, system_id) %>% rename(himss_year = year) 
-
-parent_df <- final %>% filter(parentid %in% corresponding_system_ids$parentid) %>%
-  distinct(firstname, lastname, full_name, ahanumber, entity_aha, entity_name, year) %>%
-  rename(himss_year = year,
-         himss_full = full_name,
-         first_himss = firstname,
-         last_himss = lastname)
-
-merged_df <- all_missing %>% 
-  left_join(cleaned_aha %>% distinct(first_aha, last_aha, year, ahanumber)) %>%
-  left_join(corresponding_system_ids %>% select(-parentid)) %>%
-  left_join(parent_df) %>%
-  rename(full_aha = full_name)
-
-test_merge <- merged_df %>% filter(year != himss_year)
-
-df_with_sim <- merged_df %>% mutate(
-  full_jw  = stringdist(full_aha , himss_full , method = "jw", p = 0.1),
-  first_jw = stringdist(first_aha, first_himss, method = "jw", p = 0.1),
-  last_jw  = stringdist(last_aha , last_himss , method = "jw", p = 0.1),
-  nick_1 = mapply(function(a, b) names_in_same_row_dict(a, b, dict1), first_aha, first_himss),
-  nick_2 = mapply(function(a, b) names_in_same_row_dict(a, b, dict2), first_aha, first_himss),
-  nick_3 = mapply(function(a, b) names_in_same_row_dict(a, b, dict3), first_aha, first_himss),
-  last_substring = mapply(last_name_overlap, last_aha, last_himss),
-  first_substring = mapply(last_name_overlap, first_aha, first_himss)
-)
-
-check_sim <- df_with_sim %>% 
-  filter((full_jw <= .1 |    
-           (
-          (last_jw <= .15 | last_substring) & 
-          (first_jw <= .15 | first_substring | nick_1 | nick_2 | nick_3)
-          )))
-
-
-# these are maybe not assigning entity_aha properly but a problem for later
-hmm <- df_with_sim %>% filter(himss_aha == ahanumber) %>%
-  filter(full_jw <= .15 |    (
-    (last_jw <= .15 | last_substring) & 
-      (first_jw <= .15 | first_substring | nick_1 | nick_2 | nick_3)) )
-
-actually_in_missing_check <- all_missing %>% filter(full_name == "robert s adcock")
-check_himss <- final %>% filter(campus_aha == 6440215) %>% 
-  #filter(full_name == "brendagosney") %>%
-  select(entity_name, title_standardized, entity_aha, ahanumber, parentid, year, madmin,firstname, lastname, haentitytypeid)
-
-same_system <- check_sim %>%
-  distinct(full_aha,ahanumber, year) %>%
-  mutate(match_type = "jw_system",
-         himss_after_aha = NA,
-         himss_before_aha = NA)
-
-new_matches <- rbind(same_system, all_matches %>% select(-match_order))
-
-
-
-# any match 
-test_missing <- all_aha_ceos %>% anti_join(
-  new_matches %>% distinct(full_aha, ahanumber, year) %>% rename(full_name = full_aha)
-)
-
-mini_himss <- final %>% 
-  separate(madmin, into = c("aha_name", "title_aha"), 
-           sep = ",", extra = "merge", fill = "right") %>%
-  mutate(cleaned_title_aha = title_aha %>%
-           str_to_lower() %>%
-           str_replace_all("[[:punct:]]", "")) %>%
-  filter(str_detect(cleaned_title_aha, "ceo|chief executive")) %>% 
-  mutate(full_aha = str_trim(str_remove_all(aha_name, "[[:punct:]]")),
-         last_aha = if_else(
-           str_to_lower(word(full_aha, -1)) %in% suffixes,
-           word(full_aha, -2),
-           word(full_aha, -1)),
-         first_word = word(full_aha, 1),
-         second_word = word(full_aha, 2),
-         first_aha = if_else(nchar(first_word) == 1, second_word, first_word),
-         first_aha = first_aha %>%
-           str_to_lower() %>%
-           str_replace_all("[[:punct:]]", ""),
-         last_aha = last_aha %>%
-           str_to_lower() %>%
-           str_replace_all("[[:punct:]]", ""),
-         full_aha = full_aha %>% str_to_lower()) %>% 
-  select(-c(first_word, second_word))  
-
-left_merge_full <- stringdist_join(test_missing, 
-                                   mini_himss %>% 
-                                     distinct(full_aha, entity_name, entity_uniqueid, 
-                                              campus_aha, entity_aha, year, 
-                                              firstname, lastname, full_name),
-                                   by = "full_name", max_dist = 0.2, method = "jw", mode = "left")
-
-cleaned_merged <- left_merge_full %>%
-  mutate(full_name_jw = stringdist(full_name.x, full_aha, method = "jw"))
-
-good_jw <- cleaned_merged %>% filter(full_name_jw <= .05)
-
-check_aha <- test_missing %>% filter(ahanumber == 6433130)
-
+check_himss <- final %>% filter(campus_aha == 6410506) %>%
+  select(entity_aha, year, firstname, lastname, madmin, entity_name, title_standardized, title)
