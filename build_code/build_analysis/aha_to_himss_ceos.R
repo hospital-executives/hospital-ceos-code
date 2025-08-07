@@ -544,12 +544,12 @@ sys_matches <- sys_matches %>%
   ungroup() %>%
   mutate(
       match_type = case_when(
-      str_detect(title_standardized, "CEO") & himss_year == aha_year ~ "title",
-      str_detect(title, "CEO") & himss_year == aha_year ~ "title",
-      str_detect(title_standardized, "CEO") & himss_year != aha_year ~ paste0("jw_year_", year_diff),
-      str_detect(title, "CEO") & himss_year != aha_year ~ paste0("jw_year_", year_diff),
-      himss_year != aha_year ~ paste0("jw_year_", year_diff),
-      himss_year == aha_year ~ "title",
+      str_detect(title_standardized, "CEO") & himss_year == aha_year ~ "sys",
+      str_detect(title, "CEO") & himss_year == aha_year ~ "sys",
+      str_detect(title_standardized, "CEO") & himss_year != aha_year ~ paste0("sys_year_", year_diff),
+      str_detect(title, "CEO") & himss_year != aha_year ~ paste0("sys_year_", year_diff),
+      himss_year != aha_year ~ paste0("sys_year_", year_diff),
+      himss_year == aha_year ~ "sys_title",
       TRUE ~ "unaccounted"
     )) %>% 
   rename(himss_after_aha = has_himss_after_no_match, 
@@ -563,14 +563,33 @@ final_matches <- rbind(all_matches %>% select(-match_order),
                        sys_matches %>% select(full_aha, aha_aha, aha_year,
                                           match_type, himss_before_aha,
                                           himss_after_aha) %>%
-                         rename(ahanumber = aha_aha, year = aha_year)) 
+                         rename(ahanumber = aha_aha, year = aha_year)) %>%
+  mutate(
+    match_order = case_when(
+      match_type == "jw" ~ 1,
+      match_type == "title" ~ 2,
+      str_detect(match_type, "^jw_year_\\d+$") ~ 2 + as.numeric(str_extract(match_type, "\\d+")),
+      str_detect(match_type, "^jw_year_title_\\d+$") ~ 100 + as.numeric(str_extract(match_type, "\\d+")),
+      match_type == "sys" ~ 1000,
+      str_detect(match_type, "^sys_title$") ~ 1001,
+      str_detect(match_type, "^sys_year$") ~ 1002,
+      TRUE ~ Inf
+    )
+  ) %>%
+  group_by(full_aha, ahanumber, year) %>%
+  slice_min(order_by = match_order, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  mutate(
+    match_type = str_replace_all(match_type, "year_|_0", "")
+  )
 
+cleaned_matches <- final_matches %>% inner_join(all_aha_ceos)
 
 ###### ggplot code #####
-get_count <- final_matches %>% distinct(full_aha,ahanumber, year)
+get_count <- cleaned_matches %>% distinct(full_aha,ahanumber, year) 
 cat(nrow(get_count)/nrow(all_aha_ceos))
 
-df_counts <- all_matches %>% 
+df_counts <- final_matches %>% 
   count(match_type) %>%
   mutate(percent = n / nrow(all_aha_ceos) * 100) %>% 
   filter(percent >= 1)
@@ -580,6 +599,20 @@ ggplot(df_counts, aes(x = reorder(match_type, -n), y = n)) +
   geom_text(aes(label = paste0(round(percent, 1), "%")), vjust = -0.5) +
   labs(title = "Category Counts with % of Total", x = "Category", y = "Count") +
   theme_minimal()
+
+#### identify remaining cases
+real_missing <- all_aha_ceos %>% anti_join(
+  cleaned_matches %>% distinct(ahanumber, full_aha, year)
+) %>% left_join(cleaned_aha %>% distinct(full_aha, ahanumber, year,cleaned_title_aha))
+
+stopifnot(nrow(real_missing) + nrow(cleaned_matches) == nrow(all_aha_ceos))
+
+interim_cases <- real_missing %>% 
+  filter(str_detect(cleaned_title_aha, "interim")) %>%
+  distinct(full_aha, ahanumber, year)
+cat("Of the remaining", nrow(real_missing), "cases,",
+    nrow(interim_cases), "can be explained by the madmin CEO being interim.")
+
 
 
 ######### TBD USEFUL ########
@@ -591,23 +624,6 @@ check_matches <- matches %>%
 # through HIMSS
 
 
-get_count <- check_matches %>% distinct(full_aha, aha_aha, aha_year)
-
-
-same_year <- check_with_sys %>% filter(himss_year == aha_year)
-
-get_count <- check_with_sys %>% 
-  distinct(full_aha, aha_aha, aha_year)
-
-
-# check all matches
-
-
-## still remaining
-
-still_missing <- valid_himss %>% anti_join(
-  all_matches %>% distinct(ahanumber, full_aha, year)
-) %>% group_by(full_aha, last_himss)
 
 real_missing <- all_aha_ceos %>% anti_join(
   all_matches %>% distinct(ahanumber, full_aha, year)
