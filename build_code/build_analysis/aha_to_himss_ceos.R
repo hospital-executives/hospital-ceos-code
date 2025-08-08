@@ -279,7 +279,7 @@ confirmed_same_3 <- remaining2 %>%
            himss_aha == aha_aha & 
            ((
              (last_jw <= .15 |last_substring) & 
-               (nick_1 | nick_2 | nick_3|first_substring|first_jw)
+               (nick_1 | nick_2 | nick_3|first_substring|first_jw <= .15)
              ) |  
             (jw_full <= .15))) %>%
   arrange(full_aha, jw_full) %>%
