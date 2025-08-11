@@ -156,10 +156,7 @@ Goal: 			Merge M&A data into hospital-level dataset
 * SAVE _________________________________________________________________________ 
 
 * save merged file
-	preserve
-		drop if merge_status == "Unmerged from M&A"
-		save "${dbdata}/derived/temp/merged_ma_nonharmonized.dta", replace
-	restore
+	save "${dbdata}/derived/temp/merged_ma_nonharmonized.dta", replace
 		
 		
 exit 

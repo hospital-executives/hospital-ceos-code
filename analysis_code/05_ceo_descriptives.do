@@ -947,5 +947,5 @@ preserve
 		blabel(bar, format(%3.2f))
 		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_everceo_forprofit_bymd.pdf", as(pdf) name("Graph") replace
 	
-restore
+restore	
 	
