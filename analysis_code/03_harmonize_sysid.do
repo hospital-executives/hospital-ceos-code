@@ -3,12 +3,9 @@
 Program name: 	03_harmonize_sysid.do
 Programmer: 	Julia Paris
 
-Goal: 			Compare M&A system ID to Ellie's xwalk sysid
-				Make a harmonized system ID variable
+Goal: 			Clean system ID variable from Cooper et al data
 				Clean and reduce data to xwalk for individual-level analyses
 				Save xwalk
-				
-				New: compare to Cooper M&A data
 
 *******************************************************************************/
 
@@ -16,150 +13,73 @@ Goal: 			Compare M&A system ID to Ellie's xwalk sysid
 	check_setup
 
 * quick catalogue of the system ID variables:
-	* system_id_aha: from AHA/HIMSS data (unclear from where originally)
-	* sysid: from AHA/HIMSS data (unclear from where originally)
-	* sysname: from AHA/HIMSS data (unclear from where originally)
-	* sys_ada: from AHA/HIMSS data (unclear from where originally)
-	* clean_aha: unclear whether this is a system ID too?
-	* system_id_ma system_id_yr_ma system_id_qtr_ma: all from M&A data
-	* sysid_final: from Ellie's crosswalk
-	* sysid_coop: Cooper et al system ID
+	* system_id: from HIMSS, numeric IDs that differ from AHA
+	* sysid_orig: from AHA/HIMSS data (from AHA originally)
+	* sysname: from AHA/HIMSS data (from AHA originally)
+	* sysid: cleaned AHA system ID from cooper et al, merged onto entity_aha
+	* sysid_campus: cleaned AHA system ID from cooper et al, merged onto campus_aha
 	
 * load data
 	use "${dbdata}/derived/temp/merged_ma_nonharmonized.dta", clear
 	
-* visual inspection
-	sort entity_name year (medicarenumber)
-	sort medicarenumber year
-	br ahanumber medicarenumber year system_id_aha sysid sysname system_id_ma system_id_qtr_ma system_id_yr_ma sysid_final merge_status entity_name sysid_final_partial_sysname
-	
-* make a combined_medicarenumber variable that fills missing values of medicare with tostringed mcrnum_y with appropriate leading zeroes? 
-	
 * challenges to think about: what to do with unmerged AHA/HIMSS systems?
-* in the M&A data, do individual hospitals still have a system ID? 
-	* yes, it seems like they assign a system ID to every facility even indiv.
 	
 * creating our own variable
 
-* if sysid_final is always missing for a system_id_ma, then it's an independent hospital
 * find the modal sysid_final for each system_id_ma, and vice versa
-* use entity name from Ellie's crosswalk when available. 
 * then check if they agree on the specific system for different observations. 	
 
 * FIND MODAL OBS
-	preserve 
-		* collapse to counts by sysid_final system_id_ma
-		gen count = 1
-		collapse (count) count, by(sysid_final system_id_ma)
-		tempfile collapsed
-		save `collapsed'
-		
-		* modal sysid_final for each system_id_ma
-		bysort system_id_ma: gen countalt_sysid_final = _N
-		bysort system_id_ma (count): keep if _n ==_N
-		rename sysid_final modal_sysid_final
-		rename count countmodal_sysid_final
-		save "${dbdata}/derived/temp/modal_sysid_final_bysystem_id_ma.dta", replace
-	
-		* modal system_id_ma for each sysid_final
-		use `collapsed', clear
-		bysort sysid_final: gen countalt_system_id_ma = _N
-		bysort sysid_final (count): keep if _n ==_N
-		rename system_id_ma modal_system_id_ma
-		rename count countmodal_system_id_ma
-		save "${dbdata}/derived/temp/modal_system_id_ma_bysysid_final.dta", replace
-	restore
-		
-* merge into full data		
-	merge m:1 system_id_ma using "${dbdata}/derived/temp/modal_sysid_final_bysystem_id_ma.dta", nogen
-	merge m:1 sysid_final using "${dbdata}/derived/temp/modal_system_id_ma_bysysid_final.dta", nogen
-	
-* visual inspection
-	sort medicarenumber year
-	br medicarenumber year system_id_aha sysid sysname system_id_ma sysid_final merge_status entity_name sysid_final_partial_sysname *modal* *count*
-	
-	* so when both of them match their modal equiv, 
-		* I see system_id_ma = 170. Usually, that corresponds to sysid_final = 249 (249 is modal). In other words, I think that Ellie's numerical equivalent to that system is 249. So if I see that the sysid_final actually is 249, then I feel good about it. 
-		
-	* if they BOTH match I think there are no disagreements. 
-	gen bothmatch = system_id_ma == modal_system_id_ma & sysid_final == modal_sysid_final
-	tab bothmatch
-
-	* I also know that many won't match because Ellie's crosswalk just doesn't have systemID for independents. So first I'm going to try to identify system_id_ma observations that are independent hospitals. 
-	gen independent = 0
-	
-	* A few possible approaches:
-		* sysid_final is always missing
-			* obstacle: what if this is actually just a mistake, like Ellie missed true system membership? 
-			* obstacle: account for the 20 obs that didn't match to Ellie's dataset
-			
-			** find obs that are always missing sysid_final
-			gen missing_sysid_final = sysid_final ==. 
-			bysort system_id_ma: egen always_missing_sysid_final = min(missing_sysid_final) // missing.. = 1 if missing. So ALWAYS missing implies NEVER equal to 0. Therefore we need to use the minimum here: only ALWAYS missing if minimum is 1. 
-			
-		replace independent = 1 if always_missing_sysid_final == 1 & _merge_ps_entity == 3
-		
-			** look into some questionable observations
-			tab system_id_ma if countmodal_sysid_final > 8
-			replace independent = 0 if system_id_ma == 2681 // seems to be a missing system in ellie's data: Froedtert & Medical College of Wisconsin health network
-				* unclear what to do with this one:
-				*replace independent = 0 if inlist(entity_name,"viera hospital") // seems like it has the wrong AHA ID number in 2011?
-			
-		* another aproach we could add: only one CCN ever corresponds to the system_id_ma
-			* obstacle: one facility could have multiple CCNs (under-identifying the true # of independents)
-			* obstacle: need to account for missing CCNs
-			* obstacle: how to include mcrnum_y?
-			
-			* ADD CONDITION THAT SYSID_FINAL IS MISSING??
-			
-			** calc number of CCNs by system_id_final
-			bysort system_id_ma medicarenumber: gen tag_ccns = 1 if _n == 1
-			bysort system_id_ma: egen sum_ccns = total(tag_ccns)
-			drop tag_ccns
-			
-			** generate indicator for ONE total unique CCN
-			gen one_ccn = 0
-			replace one_ccn = 1 if sum_ccns == 1 & medicarenumber != "" // is this the right way to think about missing values?
-		
-		* another aproach we could add: only one facility name ever corresponds to the system_id_ma
-			* obstacle: one facility could have multiple names (under-identifying the true # of independents)
-
-* tag observations we don't have to worry about 			
-	gen looksgood = 0
-	replace looksgood = 1 if bothmatch
-	replace looksgood = 1 if independent 
-	replace looksgood = 1 if missing(system_id_ma) // we will just use the Ellie info in these cases
-	
-	bysort medicarenumber (year): egen always_good = min(looksgood)
-	replace always_good = looksgood if medicarenumber == "" // for the group of obs missing medicarenumber
-	
-	codebook medicarenumber if always_good 
-	codebook medicarenumber if !always_good 
-	
-* remaining observations: should we worry about them?
-	sort medicarenumber year
-	br medicarenumber year system_id_aha sysid sysname system_id_ma sysid_final merge_status entity_name sysid_final_partial_sysname *modal* *count* looksgood if always_good == 0
+* NEED TO UPDATE THIS TO ONLY LOOK AT HOSPITALS
+// 	preserve 
+// 		* collapse to counts by sysid_final system_id_ma
+// 		gen count = 1
+// 		collapse (count) count, by(system_id sysid)
+// 		tempfile collapsed
+// 		save `collapsed'
+//		
+// 		* modal system_id for each sysid
+// 		bysort sysid: gen countalt_system_id = _N
+// 		bysort sysid (count): keep if _n ==_N
+// 		rename system_id modal_system_id
+// 		rename count countmodal_system_id
+// 		save "${dbdata}/derived/temp/modal_system_id_bysysid.dta", replace
+//	
+// 		* modal sysid for each system_id
+// 		use `collapsed', clear
+// 		bysort system_id: gen countalt_sysid = _N
+// 		bysort system_id (count): keep if _n ==_N
+// 		rename sysid modal_sysid
+// 		rename count countmodal_sysid
+// 		save "${dbdata}/derived/temp/modal_sysid_bysystem_id.dta", replace
+// 	restore
+//		
+// * merge into full data		
+// 	merge m:1 sysid using "${dbdata}/derived/temp/modal_system_id_bysysid.dta", nogen
+// 	merge m:1 system_id using "${dbdata}/derived/temp/modal_sysid_bysystem_id.dta", nogen
+//	
 	
 * create system change variables _______________________________________________
 
+	* im going to create a filled sysid variable that uses campus information when entity is missing and campus isn't
+// 	gen sysid_harmonized = sysid
+// 	replace sysid_harmonized = sysid_campus if missing(sysid) & !missing(sysid_campus)
+	* unclear if I want to use this
+	
 	* first, make a variable to show when system is different from prior year within entity_uniqueid
-		
-	foreach sysvar in system_id_ma sysid_final sysid_coop {
+	foreach sysvar in sysid system_id {
 		bysort entity_uniqueid (year): gen syschng_`sysvar' = `sysvar' != `sysvar'[_n-1] if _n > 1
 	}
 	* replace uncertain years with missing 
 		* then any years following those missings also have to be missing because we didn't have system info for prior year
 	* system_id_ma missing means we really don't have any information about it (didn't merge)
-	replace syschng_system_id_ma = . if missing(system_id_ma)
-		replace syschng_system_id_ma = . if missing(system_id_ma[_n-1])
-	* if _merge_ps_entity == 1, then missing sysid_final means that we don't have information
-	replace syschng_sysid_final = . if _merge_ps_entity == 1
-		replace syschng_sysid_final = . if _merge_ps_entity[_n-1] == 1
-	* if _merge_coop == 1, then missing sysid_final means that we don't have information
-	replace syschng_sysid_coop = . if _merge_coop == 1
-		replace syschng_sysid_coop = . if _merge_coop[_n-1] == 1
+	replace syschng_system_id = . if missing(system_id)
+		replace syschng_system_id = . if missing(system_id[_n-1])
+	* if _merge_entity_aha == 1, then missing sysid means that we don't have information
+	replace syschng_sysid = . if _merge_entity_aha == 1
+		replace syschng_sysid = . if _merge_entity_aha[_n-1] == 1
  	
-	foreach sysvar in system_id_ma sysid_final sysid_coop {
+	foreach sysvar in system_id sysid {
 		* generate variable to count total # of cumulative system changes
 		gen syschng_ct_`sysvar' = 0 if !missing(syschng_`sysvar')
 		* replace with 1 system change if the second non-missing system observation is actually a change
@@ -175,9 +95,9 @@ Goal: 			Compare M&A system ID to Ellie's xwalk sysid
 	preserve
 		keep if is_hospital ==1
 		collapse (rawsum) syschng*, by(year)
-		drop if year == 2010
-		graph bar syschng_system_id_ma syschng_sysid_final, over(year) ///
-			legend(position(bottom) label(1 "M&A Data") label(2 "PS Data")) ///
+		drop if year == 2009
+		graph bar syschng_system_id syschng_sysid, over(year) ///
+			legend(position(bottom) label(1 "HIMSS Data") label(2 "M&A Data")) ///
 			title("Count of System M&A Events by Year") ///
 			blabel(bar, size(vsmall))
 		graph export "${overleaf}/notes/M&A Merge/figures/counts_syschng_byyear.pdf", as(pdf) name("Graph") replace
@@ -186,71 +106,43 @@ Goal: 			Compare M&A system ID to Ellie's xwalk sysid
 	preserve
 		keep if is_hospital ==1
 		collapse syschng*, by(year)
-		drop if year == 2010
-		graph bar syschng_system_id_ma syschng_sysid_final, over(year) ///
-			legend(position(bottom) label(1 "M&A Data") label(2 "PS Data")) ///
+		drop if year == 2009
+		graph bar syschng_system_id syschng_sysid, over(year) ///
+			legend(position(bottom) label(1 "HIMSS Data") label(2 "M&A Data")) ///
 			title("Share of Facilities With System M&A Events by Year") ///
 			blabel(bar, size(vsmall) format(%4.3f))
 		graph export "${overleaf}/notes/M&A Merge/figures/shares_syschng_byyear.pdf", as(pdf) name("Graph") replace
-	restore
-	
-	* now the same graphs from 2011-2014 with Cooper et al data
-	preserve
-		keep if is_hospital ==1
-		collapse (rawsum) syschng*, by(year)
-		keep if inrange(year,2011,2014)
-		graph bar syschng_system_id_ma syschng_sysid_final syschng_sysid_coop, over(year) ///
-			legend(position(bottom) label(1 "M&A Data") label(2 "PS Data") label(3 "Cooper et al Data")) ///
-			title("Count of System M&A Events by Year") ///
-			blabel(bar, size(vsmall))
-		graph export "${overleaf}/notes/M&A Merge/figures/counts_syschng_byyear_coop.pdf", as(pdf) name("Graph") replace
-	restore
-	* share of non-missing observations in a given year with an acquisition event
-	preserve
-		keep if is_hospital == 1
-		collapse syschng*, by(year)
-		keep if inrange(year,2011,2014)
-		graph bar syschng_system_id_ma syschng_sysid_final syschng_sysid_coop, over(year) ///
-			legend(position(bottom) label(1 "M&A Data") label(2 "PS Data") label(3 "Cooper et al Data")) ///
-			title("Share of Facilities With System M&A Events by Year") ///
-			blabel(bar, size(vsmall) format(%4.3f))
-		graph export "${overleaf}/notes/M&A Merge/figures/shares_syschng_byyear_coop.pdf", as(pdf) name("Graph") replace
 	restore
 	
 	
 * reduce sample to info needed for crosswalking to indiv. file _________________
 	 
 * fix variable names - eventually want to do this early in the code
-	* sysid_final -> sysid_ps
-	cap rename sysid_final sysid_ps
-	cap rename syschng_sysid_final syschng_sysid_ps
-	cap rename syschng_ct_sysid_final syschng_ct_sysid_ps
 	
-	* system_id_ma -> sysid_ma
-	cap rename system_id_ma sysid_ma
-	cap rename syschng_system_id_ma syschng_sysid_ma
-	cap rename syschng_ct_system_id_ma syschng_ct_sysid_ma
+	* sysid -> sysid_ma
+	cap rename sysid sysid_ma
+	cap rename syschng_sysid syschng_sysid_ma
+	cap rename syschng_ct_sysid syschng_ct_sysid_ma
 	
 	* medicarenumber -> ccn_himss
 // 	destring medicarenumber, gen(ccn_himss)
 	
-	* mcrnum_y -> ccn_aha
-	cap rename mcrnum ccn_aha
-	
-	* make sure all the for-profit variables from PS data are correctly named
-	foreach profvar in forprofit forprofit_lag forprofit_chng {
-		cap rename `profvar' `profvar'_ps
-	}
-	
+// 	* mcrnum_y -> ccn_aha
+// 	cap rename mcrnum ccn_aha
+//	
+// 	* make sure all the for-profit variables from PS data are correctly named
+// 	foreach profvar in forprofit forprofit_lag forprofit_chng {
+// 		cap rename `profvar' `profvar'_ps
+// 	}
+//	
 * keep key variables
-	keep 	/*ccn_himss*/ ccn_aha /// medicare number variables
-			*sysid_ps *sysid_ma /// system ID variables
-			ahanumber year entity_uniqueid is_hospital ///
-			forprofit_ps forprofit_lag_ps forprofit_chng_ps gov_priv_type_ps
+	keep 	entity_uniqueid year sysid_ma sysid_orig sysid_campus is_hospital ///
+			aha_* tar acq any hsanum hrrnum _merge_entity_aha _merge_campus_aha  ///
+			syschng_sysid_ma syschng_system_id syschng_ct_system_id syschng_ct_sysid_ma
 			
 * make unique by entity_uniqueid year
 	bysort entity_uniqueid year: keep if _n == 1
-		* 6 duplicate observations dropped
+		* 0 duplicate observations dropped
 			
 * save a crosswalk for merging with large file
 	save "${dbdata}/derived/temp/merged_ma_sysid_xwalk.dta", replace

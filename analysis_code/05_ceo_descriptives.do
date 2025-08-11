@@ -17,7 +17,7 @@ Goal: 			Compute descriptive stats for CEOs
 	
 * calculate CEO descriptive statistics _________________________________________
 
-* CEO MD and female shares (ownership variable: gov_priv_type_ps)
+* CEO MD and female shares (ownership variable: gov_priv_type)
 	preserve
 		* keep CEOs only
 		keep if char_ceo == 1
@@ -35,43 +35,43 @@ Goal: 			Compute descriptive stats for CEOs
 		gen count = 1
 		
 		* combine fed, state and local into one government category
-		replace gov_priv_type_ps = 1 if gov_priv_type_ps==2
+		replace gov_priv_type = 1 if gov_priv_type==2
 	
 		* make summary stats by hospital time
-		collapse char_md char_female count_ceo_roles* (rawsum) count, by(year gov_priv_type_ps)
-		drop if missing(gov_priv_type_ps)
+		collapse char_md char_female count_ceo_roles* (rawsum) count, by(year gov_priv_type)
+		drop if missing(gov_priv_type)
 		
 		* make MD line graph over time		
-		twoway line char_md year if gov_priv_type_ps == 1, lcolor(orange) ///
-		|| line char_md year if gov_priv_type_ps == 3, lcolor(green) ///
-		|| line char_md year if gov_priv_type_ps == 4, lcolor(blue) ///
+		twoway line char_md year if gov_priv_type == 1, lcolor(orange) ///
+		|| line char_md year if gov_priv_type == 3, lcolor(green) ///
+		|| line char_md year if gov_priv_type == 4, lcolor(blue) ///
 		legend(order(1 "Government" 2 "Private FP" 3 "Private NFP")) ///
-		title("Share with MD CEO") ///
+		title("Share of Hospitals with MD CEO") ///
 		xtitle("Year") ytitle("Share") ///
 		ylabel(0(0.025)0.1)
 		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_ceo_md_gov_priv_type.pdf", as(pdf) name("Graph") replace
 		
 		* make gender line graph over time
-		twoway line char_female year if gov_priv_type_ps == 1, lcolor(orange) ///
-		|| line char_female year if gov_priv_type_ps == 3, lcolor(green) ///
-		|| line char_female year if gov_priv_type_ps == 4, lcolor(blue) ///
+		twoway line char_female year if gov_priv_type == 1, lcolor(orange) ///
+		|| line char_female year if gov_priv_type == 3, lcolor(green) ///
+		|| line char_female year if gov_priv_type == 4, lcolor(blue) ///
 		legend(order(1 "Government" 2 "Private FP" 3 "Private NFP")) ///
-		title("Share with Female CEO") ///
+		title("Share of Hospitals with Female CEO") ///
 		xtitle("Year") ytitle("Share") ///
 		ylabel(0(0.05)0.35) 
 		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_ceo_female_gov_priv_type.pdf", as(pdf) name("Graph") replace
 		
 		* make line graph for CEO # roles
 		twoway ///
-			line count_ceo_roles_1 year if gov_priv_type_ps == 4, lcolor("198 219 239") || ///
-			line count_ceo_roles_2 year if gov_priv_type_ps == 4, lcolor("107 174 214") || ///
-			line count_ceo_roles_3 year if gov_priv_type_ps == 4, lcolor("8 81 156") || ///
-			line count_ceo_roles_1 year if gov_priv_type_ps == 3, lcolor("199 233 192") || ///
-			line count_ceo_roles_2 year if gov_priv_type_ps == 3, lcolor("116 196 118") || ///
-			line count_ceo_roles_3 year if gov_priv_type_ps == 3, lcolor("35 139 69") || ///
-			line count_ceo_roles_1 year if gov_priv_type_ps == 1, lcolor("253 208 162") || ///
-			line count_ceo_roles_2 year if gov_priv_type_ps == 1, lcolor("253 141 60") || ///
-			line count_ceo_roles_3 year if gov_priv_type_ps == 1, lcolor("217 72 16") ///
+			line count_ceo_roles_1 year if gov_priv_type == 4, lcolor("198 219 239") || ///
+			line count_ceo_roles_2 year if gov_priv_type == 4, lcolor("107 174 214") || ///
+			line count_ceo_roles_3 year if gov_priv_type == 4, lcolor("8 81 156") || ///
+			line count_ceo_roles_1 year if gov_priv_type == 3, lcolor("199 233 192") || ///
+			line count_ceo_roles_2 year if gov_priv_type == 3, lcolor("116 196 118") || ///
+			line count_ceo_roles_3 year if gov_priv_type == 3, lcolor("35 139 69") || ///
+			line count_ceo_roles_1 year if gov_priv_type == 1, lcolor("253 208 162") || ///
+			line count_ceo_roles_2 year if gov_priv_type == 1, lcolor("253 141 60") || ///
+			line count_ceo_roles_3 year if gov_priv_type == 1, lcolor("217 72 16") ///
 			legend(order(1 "Non-Profit, 1 Role" ///
 						 2 "Non-Profit, 2 Roles" ///
 						 3 "Non-Profit, 3+ Roles" ///
@@ -90,7 +90,7 @@ Goal: 			Compute descriptive stats for CEOs
 	restore
 
 	
-* CEO MD and female shares (ownership variable: forprofit_ps)
+* CEO MD and female shares (ownership variable: forprofit)
 	preserve
 		* keep CEOs only
 		keep if char_ceo == 1
@@ -108,35 +108,35 @@ Goal: 			Compute descriptive stats for CEOs
 		gen count = 1
 	
 		* make summary stats by hospital time
-		collapse char_md char_female count_ceo_roles* (rawsum) count, by(year forprofit_ps)
-		drop if missing(forprofit_ps)
+		collapse char_md char_female count_ceo_roles* (rawsum) count, by(year forprofit)
+		drop if missing(forprofit)
 		
 		* make MD line graph over time		
-		twoway line char_md year if forprofit_ps == 0, lcolor(blue) ///
-		|| line char_md year if forprofit_ps == 1, lcolor(green) ///
+		twoway line char_md year if forprofit == 0, lcolor(blue) ///
+		|| line char_md year if forprofit == 1, lcolor(green) ///
 		legend(order(1 "Non-Profit" 2 "For-Profit")) ///
-		title("Share with MD CEO") ///
+		title("Share of Hospitals with MD CEO") ///
 		xtitle("Year") ytitle("Share") ///
 		ylabel(0(0.025)0.1)
 		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_ceo_md_forprofit.pdf", as(pdf) name("Graph") replace
 		
 		* make gender line graph over time
-		twoway line char_female year if forprofit_ps == 0, lcolor(blue) ///
-		|| line char_female year if forprofit_ps == 1, lcolor(green) ///
+		twoway line char_female year if forprofit == 0, lcolor(blue) ///
+		|| line char_female year if forprofit == 1, lcolor(green) ///
 		legend(order(1 "Non-Profit" 2 "For-Profit")) ///
-		title("Share with Female CEO") ///
+		title("Share of Hospitals with Female CEO") ///
 		xtitle("Year") ytitle("Share") ///
 		ylabel(0(0.05)0.35) 
 		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_ceo_female_forprofit.pdf", as(pdf) name("Graph") replace
 		
 		* make line graph for CEO # roles
 		twoway ///
-			line count_ceo_roles_1 year if forprofit_ps == 0, lcolor("198 219 239") || ///
-			line count_ceo_roles_2 year if forprofit_ps == 0, lcolor("107 174 214") || ///
-			line count_ceo_roles_3 year if forprofit_ps == 0, lcolor("8 81 156") || ///
-			line count_ceo_roles_1 year if forprofit_ps == 1, lcolor("199 233 192") || ///
-			line count_ceo_roles_2 year if forprofit_ps == 1, lcolor("116 196 118") || ///
-			line count_ceo_roles_3 year if forprofit_ps == 1, lcolor("35 139 69") ///
+			line count_ceo_roles_1 year if forprofit == 0, lcolor("198 219 239") || ///
+			line count_ceo_roles_2 year if forprofit == 0, lcolor("107 174 214") || ///
+			line count_ceo_roles_3 year if forprofit == 0, lcolor("8 81 156") || ///
+			line count_ceo_roles_1 year if forprofit == 1, lcolor("199 233 192") || ///
+			line count_ceo_roles_2 year if forprofit == 1, lcolor("116 196 118") || ///
+			line count_ceo_roles_3 year if forprofit == 1, lcolor("35 139 69") ///
 			legend(order(1 "Non-Profit, 1 Role" ///
 						 2 "Non-Profit, 2 Roles" ///
 						 3 "Non-Profit, 3+ Roles" /// 
@@ -150,6 +150,52 @@ Goal: 			Compute descriptive stats for CEOs
 		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_ceo_roles1_forprofit.pdf", ///
 			as(pdf) name("Graph") replace
 	restore
+	
+* female and MD stats for hosps vs systems
+	preserve
+		* keep CEOs only
+		keep if char_ceo == 1
+		
+		* make sure unique
+		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
+		egen total_dup = total(duplicates)
+		tab total_dup
+// 		assert total_dup == 2 // 2 hospitals that end up with two CEOs in the same year
+		drop if duplicates == 1
+		drop total_dup duplicates 
+		
+		* make a count variable
+		gen count = 1
+	
+		* make summary stats by hospital time
+		collapse char_md char_female count_ceo_roles* (rawsum) count, by(year forprofit entity_type hospital)
+		drop if missing(forprofit)
+		
+		* make MD line graph over time		
+		twoway line char_md year if forprofit == 0 & hospital == 1, lcolor("8 81 156") ///
+		|| line char_md year if forprofit == 0 & entity_type=="IDS/RHA", lcolor("107 174 214") ///
+		|| line char_md year if forprofit == 1 & hospital==1, lcolor("35 139 69") ///
+		|| line char_md year if forprofit == 1 & entity_type=="IDS/RHA", lcolor("116 196 118") ///
+		legend(order(1 "Non-Profit Hospital" 2 "Non-Profit System" 3 "For-Profit Hospital" 4 "For-Profit System")) ///
+		title("Share with MD CEO") ///
+		xtitle("Year") ytitle("Share") ///
+		ylabel(0(0.05)0.35) 
+		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_ceo_md_forprofit_combsys.pdf", as(pdf) name("Graph") replace
+		
+		* make gender line graph over time
+		twoway line char_female year if forprofit == 0 & hospital == 1, lcolor("8 81 156") ///
+		|| line char_female year if forprofit == 0 & entity_type=="IDS/RHA", lcolor("107 174 214") ///
+		|| line char_female year if forprofit == 1 & hospital==1, lcolor("35 139 69") ///
+		|| line char_female year if forprofit == 1 & entity_type=="IDS/RHA", lcolor("116 196 118") ///
+		legend(order(1 "Non-Profit Hospital" 2 "Non-Profit System" 3 "For-Profit Hospital" 4 "For-Profit System")) ///
+		title("Share with Female CEO") ///
+		xtitle("Year") ytitle("Share") ///
+		ylabel(0(0.05)0.35) 
+		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_ceo_female_forprofit_combsys.pdf", as(pdf) name("Graph") replace
+		
+	restore
+	
+
 	
 * Count of CEO jobs using AHAID instead of HIMSS
 	* gov_priv_type
@@ -173,23 +219,23 @@ Goal: 			Compute descriptive stats for CEOs
 		bysort contact_uniqueid ahanumber year: keep if _n == 1
 		
 		* combine fed, state and local into one government category
-		replace gov_priv_type_ps = 1 if gov_priv_type_ps==2
+		replace gov_priv_type = 1 if gov_priv_type==2
 	
 		* make summary stats by hospital time
-		collapse count_ceo_roles_aha* (rawsum) count, by(year gov_priv_type_ps)
-		drop if missing(gov_priv_type_ps)
+		collapse count_ceo_roles_aha* (rawsum) count, by(year gov_priv_type)
+		drop if missing(gov_priv_type)
 	
 		* make line graph for CEO # roles
 		twoway ///
-			line count_ceo_roles_aha_1 year if gov_priv_type_ps == 4, lcolor("198 219 239") || ///
-			line count_ceo_roles_aha_2 year if gov_priv_type_ps == 4, lcolor("107 174 214") || ///
-			line count_ceo_roles_aha_3 year if gov_priv_type_ps == 4, lcolor("8 81 156") || ///
-			line count_ceo_roles_aha_1 year if gov_priv_type_ps == 3, lcolor("199 233 192") || ///
-			line count_ceo_roles_aha_2 year if gov_priv_type_ps == 3, lcolor("116 196 118") || ///
-			line count_ceo_roles_aha_3 year if gov_priv_type_ps == 3, lcolor("35 139 69") || ///
-			line count_ceo_roles_aha_1 year if gov_priv_type_ps == 1, lcolor("253 208 162") || ///
-			line count_ceo_roles_aha_2 year if gov_priv_type_ps == 1, lcolor("253 141 60") || ///
-			line count_ceo_roles_aha_3 year if gov_priv_type_ps == 1, lcolor("217 72 16") ///
+			line count_ceo_roles_aha_1 year if gov_priv_type == 4, lcolor("198 219 239") || ///
+			line count_ceo_roles_aha_2 year if gov_priv_type == 4, lcolor("107 174 214") || ///
+			line count_ceo_roles_aha_3 year if gov_priv_type == 4, lcolor("8 81 156") || ///
+			line count_ceo_roles_aha_1 year if gov_priv_type == 3, lcolor("199 233 192") || ///
+			line count_ceo_roles_aha_2 year if gov_priv_type == 3, lcolor("116 196 118") || ///
+			line count_ceo_roles_aha_3 year if gov_priv_type == 3, lcolor("35 139 69") || ///
+			line count_ceo_roles_aha_1 year if gov_priv_type == 1, lcolor("253 208 162") || ///
+			line count_ceo_roles_aha_2 year if gov_priv_type == 1, lcolor("253 141 60") || ///
+			line count_ceo_roles_aha_3 year if gov_priv_type == 1, lcolor("217 72 16") ///
 			legend(order(1 "Non-Profit, 1 Role" ///
 						 2 "Non-Profit, 2 Roles" ///
 						 3 "Non-Profit, 3+ Roles" ///
@@ -228,17 +274,17 @@ Goal: 			Compute descriptive stats for CEOs
 		bysort contact_uniqueid ahanumber year: keep if _n == 1
 	
 		* make summary stats by hospital time
-		collapse count_ceo_roles_aha* (rawsum) count, by(year forprofit_ps)
-		drop if missing(forprofit_ps)
+		collapse count_ceo_roles_aha* (rawsum) count, by(year forprofit)
+		drop if missing(forprofit)
 		
 		* make line graph for CEO # roles
 		twoway ///
-			line count_ceo_roles_aha_1 year if forprofit_ps == 0, lcolor("198 219 239") || ///
-			line count_ceo_roles_aha_2 year if forprofit_ps == 0, lcolor("107 174 214") || ///
-			line count_ceo_roles_aha_3 year if forprofit_ps == 0, lcolor("8 81 156") || ///
-			line count_ceo_roles_aha_1 year if forprofit_ps == 1, lcolor("199 233 192") || ///
-			line count_ceo_roles_aha_2 year if forprofit_ps == 1, lcolor("116 196 118") || ///
-			line count_ceo_roles_aha_3 year if forprofit_ps == 1, lcolor("35 139 69") ///
+			line count_ceo_roles_aha_1 year if forprofit == 0, lcolor("198 219 239") || ///
+			line count_ceo_roles_aha_2 year if forprofit == 0, lcolor("107 174 214") || ///
+			line count_ceo_roles_aha_3 year if forprofit == 0, lcolor("8 81 156") || ///
+			line count_ceo_roles_aha_1 year if forprofit == 1, lcolor("199 233 192") || ///
+			line count_ceo_roles_aha_2 year if forprofit == 1, lcolor("116 196 118") || ///
+			line count_ceo_roles_aha_3 year if forprofit == 1, lcolor("35 139 69") ///
 			legend(order(1 "Non-Profit, 1 Role" ///
 						 2 "Non-Profit, 2 Roles" ///
 						 3 "Non-Profit, 3+ Roles" ///
@@ -273,23 +319,23 @@ Goal: 			Compute descriptive stats for CEOs
 		gen count = 1
 		
 		* combine fed, state and local into one government category
-		replace gov_priv_type_ps = 1 if gov_priv_type_ps==2
+		replace gov_priv_type = 1 if gov_priv_type==2
 	
 		* make summary stats by hospital time
-		collapse count_csuite_roles_* (rawsum) count, by(year gov_priv_type_ps)
-		drop if missing(gov_priv_type_ps)
+		collapse count_csuite_roles_* (rawsum) count, by(year gov_priv_type)
+		drop if missing(gov_priv_type)
 	
 		* make line graph for CEO # roles
 		twoway ///
-			line count_csuite_roles_1 year if gov_priv_type_ps == 4, lcolor("198 219 239") || ///
-			line count_csuite_roles_2 year if gov_priv_type_ps == 4, lcolor("107 174 214") || ///
-			line count_csuite_roles_3 year if gov_priv_type_ps == 4, lcolor("8 81 156") || ///
-			line count_csuite_roles_1 year if gov_priv_type_ps == 3, lcolor("199 233 192") || ///
-			line count_csuite_roles_2 year if gov_priv_type_ps == 3, lcolor("116 196 118") || ///
-			line count_csuite_roles_3 year if gov_priv_type_ps == 3, lcolor("35 139 69") || ///
-			line count_csuite_roles_1 year if gov_priv_type_ps == 1, lcolor("253 208 162") || ///
-			line count_csuite_roles_2 year if gov_priv_type_ps == 1, lcolor("253 141 60") || ///
-			line count_csuite_roles_3 year if gov_priv_type_ps == 1, lcolor("217 72 16") ///
+			line count_csuite_roles_1 year if gov_priv_type == 4, lcolor("198 219 239") || ///
+			line count_csuite_roles_2 year if gov_priv_type == 4, lcolor("107 174 214") || ///
+			line count_csuite_roles_3 year if gov_priv_type == 4, lcolor("8 81 156") || ///
+			line count_csuite_roles_1 year if gov_priv_type == 3, lcolor("199 233 192") || ///
+			line count_csuite_roles_2 year if gov_priv_type == 3, lcolor("116 196 118") || ///
+			line count_csuite_roles_3 year if gov_priv_type == 3, lcolor("35 139 69") || ///
+			line count_csuite_roles_1 year if gov_priv_type == 1, lcolor("253 208 162") || ///
+			line count_csuite_roles_2 year if gov_priv_type == 1, lcolor("253 141 60") || ///
+			line count_csuite_roles_3 year if gov_priv_type == 1, lcolor("217 72 16") ///
 			legend(order(1 "Non-Profit, 1 Role" ///
 						 2 "Non-Profit, 2 Roles" ///
 						 3 "Non-Profit, 3+ Roles" ///
@@ -325,17 +371,17 @@ Goal: 			Compute descriptive stats for CEOs
 		gen count = 1
 	
 		* make summary stats by hospital time
-		collapse count_csuite_roles* (rawsum) count, by(year forprofit_ps)
-		drop if missing(forprofit_ps)
+		collapse count_csuite_roles* (rawsum) count, by(year forprofit)
+		drop if missing(forprofit)
 		
 		* make line graph for CEO # roles
 		twoway ///
-			line count_csuite_roles_1 year if forprofit_ps == 0, lcolor("198 219 239") || ///
-			line count_csuite_roles_2 year if forprofit_ps == 0, lcolor("107 174 214") || ///
-			line count_csuite_roles_3 year if forprofit_ps == 0, lcolor("8 81 156") || ///
-			line count_csuite_roles_1 year if forprofit_ps == 1, lcolor("199 233 192") || ///
-			line count_csuite_roles_2 year if forprofit_ps == 1, lcolor("116 196 118") || ///
-			line count_csuite_roles_3 year if forprofit_ps == 1, lcolor("35 139 69") ///
+			line count_csuite_roles_1 year if forprofit == 0, lcolor("198 219 239") || ///
+			line count_csuite_roles_2 year if forprofit == 0, lcolor("107 174 214") || ///
+			line count_csuite_roles_3 year if forprofit == 0, lcolor("8 81 156") || ///
+			line count_csuite_roles_1 year if forprofit == 1, lcolor("199 233 192") || ///
+			line count_csuite_roles_2 year if forprofit == 1, lcolor("116 196 118") || ///
+			line count_csuite_roles_3 year if forprofit == 1, lcolor("35 139 69") ///
 			legend(order(1 "Non-Profit, 1 Role" ///
 						 2 "Non-Profit, 2 Roles" ///
 						 3 "Non-Profit, 3+ Roles" ///
@@ -352,7 +398,7 @@ Goal: 			Compute descriptive stats for CEOs
 	restore
 
 	
-* turnover, share of hosps with CEO (ownership variable: gov_priv_type_ps)
+* turnover, share of hosps with CEO (ownership variable: gov_priv_type)
 	preserve
 		
 		* keep only hospital observations
@@ -365,13 +411,13 @@ Goal: 			Compute descriptive stats for CEOs
 		gen count = 1
 	
 		* make summary stats by hospital time
-		collapse hosp_has_ceo ceo_turnover1 (rawsum) count, by(year gov_priv_type_ps)
-		drop if missing(gov_priv_type_ps)
+		collapse hosp_has_ceo ceo_turnover1 (rawsum) count, by(year gov_priv_type)
+		drop if missing(gov_priv_type)
 		
 		* make "has CEO" line graph over time
-		twoway line hosp_has_ceo year if gov_priv_type_ps == 1, lcolor(orange) ///
-		|| line hosp_has_ceo year if gov_priv_type_ps == 3, lcolor(green) ///
-		|| line hosp_has_ceo year if gov_priv_type_ps == 4, lcolor(blue) ///
+		twoway line hosp_has_ceo year if gov_priv_type == 1, lcolor(orange) ///
+		|| line hosp_has_ceo year if gov_priv_type == 3, lcolor(green) ///
+		|| line hosp_has_ceo year if gov_priv_type == 4, lcolor(blue) ///
 		legend(order(1 "Government" 2 "Private FP" 3 "Private NFP")) ///
 		title("Share of Hospitals With CEO") ///
 		xtitle("Year") ytitle("Share") ///
@@ -380,9 +426,9 @@ Goal: 			Compute descriptive stats for CEOs
 		
 		* make CEO turnover line graph over time
 		merge m:1 year using "${dbdata}/derived/temp/ceoturnover_all"
-		twoway line ceo_turnover1 year if gov_priv_type_ps == 1, lcolor(orange) ///
-		|| line ceo_turnover1 year if gov_priv_type_ps == 3, lcolor(green) ///
-		|| line ceo_turnover1 year if gov_priv_type_ps == 4, lcolor(blue) ///
+		twoway line ceo_turnover1 year if gov_priv_type == 1, lcolor(orange) ///
+		|| line ceo_turnover1 year if gov_priv_type == 3, lcolor(green) ///
+		|| line ceo_turnover1 year if gov_priv_type == 4, lcolor(blue) ///
 		|| line ceo_turnover_govpriv year, lcolor(gray) ///
 		legend(order(1 "Government" 2 "Private FP" 3 "Private NFP" 4 "Aggregate")) ///
 		title("Share of Hospitals With CEO Turnover") ///
@@ -392,7 +438,7 @@ Goal: 			Compute descriptive stats for CEOs
 	
 	restore	
 	
-* turnover, share of hosps with CEO (ownership variable: forprofit_ps)
+* turnover, share of hosps with CEO (ownership variable: forprofit)
 	preserve
 	
 		* keep only hospital observations
@@ -403,17 +449,14 @@ Goal: 			Compute descriptive stats for CEOs
 		
 		* make a count variable
 		gen count = 1
-		
-		* combine fed, state and local into one government category
-		replace gov_priv_type_ps = 1 if gov_priv_type_ps==2
 	
 		* make summary stats by hospital time
-		collapse hosp_has_ceo ceo_turnover1 (rawsum) count, by(year forprofit_ps)
-		drop if missing(forprofit_ps)
+		collapse hosp_has_ceo ceo_turnover1 (rawsum) count, by(year forprofit)
+		drop if missing(forprofit)
 		
 		* make "has CEO" line graph over time
-		twoway line hosp_has_ceo year if forprofit_ps == 0, lcolor(blue) ///
-		|| line hosp_has_ceo year if forprofit_ps == 1, lcolor(green) ///
+		twoway line hosp_has_ceo year if forprofit == 0, lcolor(blue) ///
+		|| line hosp_has_ceo year if forprofit == 1, lcolor(green) ///
 		legend(order(1 "Non-Profit" 2 "For-Profit")) ///
 		title("Share of Hospitals With CEO") ///
 		xtitle("Year") ytitle("Share") ///
@@ -422,14 +465,88 @@ Goal: 			Compute descriptive stats for CEOs
 		
 		* make CEO turnover line graph over time
 		merge m:1 year using "${dbdata}/derived/temp/ceoturnover_all"
-		twoway line ceo_turnover1 year if forprofit_ps == 0, lcolor(blue) ///
-		|| line ceo_turnover1 year if forprofit_ps == 1, lcolor(green) ///
+		twoway line ceo_turnover1 year if forprofit == 0, lcolor(blue) ///
+		|| line ceo_turnover1 year if forprofit == 1, lcolor(green) ///
 		|| line ceo_turnover_forprofit year, lcolor(gray) ///
 		legend(order(1 "Non-Profit" 2 "For-Profit" 3 "Aggregate")) ///
 		title("Share of Hospitals With CEO Turnover") ///
 		xtitle("Year") ytitle("Share") ///
 		ylabel(0(0.05)0.35) 
 		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_hosp_ceoturnover_forprofit.pdf", as(pdf) name("Graph") replace
+	
+	restore
+	
+* share of hospital SYSTEMS with CEO
+	preserve
+	
+		* keep only hospital observations
+		keep if entity_type =="IDS/RHA"
+	
+		* keep one observation per hospital-year
+		bysort entity_uniqueid year: keep if _n == 1
+		
+		* make a count variable
+		gen count = 1
+		
+		* make summary stats by hospital time
+		collapse hosp_has_ceo ceo_turnover1 (rawsum) count, by(year forprofit)
+		drop if missing(forprofit)
+		
+		* make "has CEO" line graph over time
+		twoway line hosp_has_ceo year if forprofit == 0, lcolor(blue) ///
+		|| line hosp_has_ceo year if forprofit == 1, lcolor(green) ///
+		legend(order(1 "Non-Profit" 2 "For-Profit")) ///
+		title("Share of Hospital Systems With CEO") ///
+		xtitle("Year") ytitle("Share") ///
+		ylabel(0.5(0.1)1) 
+		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_sys_has_ceo_forprofit.pdf", as(pdf) name("Graph") replace
+		
+		* make CEO turnover line graph over time
+		merge m:1 year using "${dbdata}/derived/temp/ceoturnover_all"
+		twoway line ceo_turnover1 year if forprofit == 0, lcolor(blue) ///
+		|| line ceo_turnover1 year if forprofit == 1, lcolor(green) /// || line ceo_turnover_forprofit year, lcolor(gray) ///
+		legend(order(1 "Non-Profit" 2 "For-Profit" /* 3 "Aggregate"*/)) ///
+		title("Share of Hospital Systems With CEO Turnover") ///
+		xtitle("Year") ytitle("Share") ///
+		ylabel(0(0.05)0.35) 
+		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_sys_ceoturnover_forprofit.pdf", as(pdf) name("Graph") replace
+	
+	restore
+	
+* share with CEO at either hosp or system 
+	preserve
+	
+		* keep only hospital observations
+		keep if hospital==1
+	
+		* make a system CEO variable
+		gen comb_ceo_prelim = 1 if !missing(contact_uniqueid_parentceo)
+		
+		* max by year
+		bysort entity_uniqueid year: egen sys_ceo = max(comb_ceo_prelim)
+	
+		* keep one observation per hospital-year
+		bysort entity_uniqueid year: keep if _n == 1
+		
+		* make combined variable
+		gen comb_ceo = hosp_has_ceo
+		replace comb_ceo = 1 if sys_ceo == 1
+		
+		* make a count variable
+		gen count = 1
+		
+		* make summary stats by hospital time
+		collapse comb_ceo ceo_turnover1 (rawsum) count, by(year forprofit)
+		drop if missing(forprofit)
+		
+		* make "has CEO" line graph over time
+		twoway line comb_ceo year if forprofit == 0, lcolor(blue) ///
+		|| line comb_ceo year if forprofit == 1, lcolor(green) ///
+		legend(order(1 "Non-Profit" 2 "For-Profit")) ///
+		title("Share of Hospitals With Facility or System CEO") ///
+		xtitle("Year") ytitle("Share") ///
+		ylabel(0.5(0.1)1) 
+		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_comb_has_ceo_forprofit.pdf", as(pdf) name("Graph") replace
 	
 	restore
 	
@@ -450,19 +567,19 @@ Goal: 			Compute descriptive stats for CEOs
 		* summarize episode_length
 		bysort entity_uniqueid episode_num: keep if _n == 1
 		gen count = 1
-		collapse episode_length (rawsum) count, by(forprofit_ps episode_type)
-		keep if !missing(forprofit_ps)
+		collapse episode_length (rawsum) count, by(forprofit episode_type)
+		keep if !missing(forprofit)
 		
 		label define profit_lbl 0 "Non-Profit" 1 "For-Profit"
-		label values forprofit_ps profit_lbl
+		label values forprofit profit_lbl
 		
-		graph bar episode_length, over(episode_type) over(forprofit_ps) ///
+		graph bar episode_length, over(episode_type) over(forprofit) ///
 			ytitle("Mean Episode Length (Years)") ///
 			title("Episode Length by Profit Status and Episode Type") ///
 			blabel(bar, format(%3.2f))
 		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_avgepisodelength_forprofit.pdf", as(pdf) name("Graph") replace
 			
-		graph bar count, over(episode_type) over(forprofit_ps) ///
+		graph bar count, over(episode_type) over(forprofit) ///
 			ytitle("Count of Episodes") ///
 			title("Count of Episodes by Profit Status and Episode Type") ///
 			blabel(bar, format(%3.0f))
@@ -529,9 +646,9 @@ restore
 * do diff ownership types have different career transition types?
 preserve
 	tab career_transition_type if hospital ==1, gen(ct)
-	collapse (sum) ct*, by(forprofit_ps)
+	collapse (sum) ct*, by(forprofit)
 	
-	graph bar ct*, asyvars stack over(forprofit_ps) percent  		///
+	graph bar ct*, asyvars stack over(forprofit) percent  		///
 		legend(order(1 "External move" 2 "External promotion"       ///
                  3 "Internal move" 4 "Internal promotion"          	///
                  5 "Lateral move") cols(1) position(6))           	///
@@ -543,9 +660,9 @@ restore
 * career transition types by profit AND gender
 preserve
 	tab career_transition_type if hospital ==1, gen(ct)
-	collapse (sum) ct*, by(forprofit_ps char_female)
+	collapse (sum) ct*, by(forprofit char_female)
 	
-	graph bar ct* if char_female == 0, asyvars stack over(forprofit_ps) percent  		///
+	graph bar ct* if char_female == 0, asyvars stack over(forprofit) percent  		///
 		legend(order(1 "External move" 2 "External promotion"       ///
                  3 "Internal move" 4 "Internal promotion"          	///
                  5 "Lateral move") cols(1) position(6))           	///
@@ -553,7 +670,7 @@ preserve
 		title("Career Transition Distribution by Hospital Ownership: Men Only")
 	graph export "${overleaf}/notes/CEO Descriptives/figures/descr_transitions_forprofit_men.pdf", as(pdf) name("Graph") replace
 	
-	graph bar ct* if char_female == 1, asyvars stack over(forprofit_ps) percent  		///
+	graph bar ct* if char_female == 1, asyvars stack over(forprofit) percent  		///
 		legend(order(1 "External move" 2 "External promotion"       ///
                  3 "Internal move" 4 "Internal promotion"          	///
                  5 "Lateral move") cols(1) position(6))           	///
@@ -608,13 +725,13 @@ preserve
 		drop total_dup duplicates 
 		
 	* collapse 	
-		collapse bdtot, by(char_female forprofit_ps)
-		graph bar bdtot, over(char_female) over(forprofit_ps) ///
+		collapse bdtot, by(char_female forprofit)
+		graph bar bdtot, over(char_female) over(forprofit) ///
 			ytitle("Count") ///
 			title("Mean Bed Count by CEO Gender and Ownership") ///
 			subtitle("AHA Variable") ///
 			blabel(bar, format(%3.2f))
-		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_bdtot_female_forprofit_ps.pdf", as(pdf) name("Graph") replace
+		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_bdtot_female_forprofit.pdf", as(pdf) name("Graph") replace
 restore
 * entity_bedsize
 preserve
@@ -630,13 +747,13 @@ preserve
 		drop total_dup duplicates 
 		
 	* collapse 	
-		collapse entity_bedsize, by(char_female forprofit_ps)
-		graph bar entity_bedsize, over(char_female) over(forprofit_ps) ///
+		collapse entity_bedsize, by(char_female forprofit)
+		graph bar entity_bedsize, over(char_female) over(forprofit) ///
 			ytitle("Count") ///
 			title("Mean Bed Count by CEO Gender and Ownership") ///
 			subtitle("HIMSS Variable") ///
 			blabel(bar, format(%3.2f))
-		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_entity_bedsize_female_forprofit_ps.pdf", as(pdf) name("Graph") replace
+		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_entity_bedsize_female_forprofit.pdf", as(pdf) name("Graph") replace
 restore
 
 * TO-DO: redo first taking the sum by contact_uniqueid and then collapsing
@@ -680,19 +797,19 @@ preserve
 		drop total_dup duplicates 
 		
 	* what share of CEOs at each type?
-		sum forprofit_ps 
-		gen nonprofit_ps = 1- forprofit_ps
+		sum forprofit 
+		gen nonprofit_ps = 1- forprofit
 		
 	* share of CEOs of each type
 	gen count =1 
-	collapse forprofit_ps (rawsum) count, by(year char_female)
+	collapse forprofit (rawsum) count, by(year char_female)
 	
 	drop if year <= 2009
 	
 	* graph bar over gender/year
 	twoway ///
-    (line forprofit_ps year if char_female == 0, lcolor(blue) lpattern(solid)) ///
-    (line forprofit_ps year if char_female == 1, lcolor(red) lpattern(dash)) ///
+    (line forprofit year if char_female == 0, lcolor(blue) lpattern(solid)) ///
+    (line forprofit year if char_female == 1, lcolor(red) lpattern(dash)) ///
     , ///
     ytitle("Share") ///
     title("Share of CEOs at For-Profit Facilities by Gender") ///
@@ -715,10 +832,10 @@ preserve
 		drop total_dup duplicates 
 		
 	* make CEO fp/nfp variables
-	gen ceo_nfp = char_ceo == 1 & forprofit_ps == 0
-		replace ceo_nfp = . if missing(forprofit_ps)
-	gen ceo_forprofit = char_ceo == 1 & forprofit_ps == 1
-		replace ceo_forprofit = . if missing(forprofit_ps)
+	gen ceo_nfp = char_ceo == 1 & forprofit == 0
+		replace ceo_nfp = . if missing(forprofit)
+	gen ceo_forprofit = char_ceo == 1 & forprofit == 1
+		replace ceo_forprofit = . if missing(forprofit)
 	
 	* make EVER variables
 	bysort contact_uniqueid: egen ever_ceo_nfp = max(ceo_nfp)
@@ -773,7 +890,7 @@ preserve
 		title("Has the CEO Ever Worked in Each Ownership Type?") ///
 		legend(order(1 "Only Non-Profit" 2 "Only For-Profit" 3 "Both")) ///
 		blabel(bar, format(%3.2f))
-		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_everceo_forprofit_ps.pdf", as(pdf) name("Graph") replace
+		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_everceo_forprofit.pdf", as(pdf) name("Graph") replace
 	
 	* BY GENDER
 	use `base', clear
@@ -799,7 +916,7 @@ preserve
 		title("Has the CEO Ever Worked in Each Ownership Type, by Gender") ///
 		legend(order(1 "Only Non-Profit" 2 "Only For-Profit" 3 "Both")) ///
 		blabel(bar, format(%3.2f))
-		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_everceo_forprofit_ps_bygender.pdf", as(pdf) name("Graph") replace
+		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_everceo_forprofit_bygender.pdf", as(pdf) name("Graph") replace
 		
 	* BY MD
 	use `base', clear
@@ -828,7 +945,7 @@ preserve
 		title("Has the CEO Ever Worked in Each Ownership Type, by CEO MD") ///
 		legend(order(1 "Only Non-Profit" 2 "Only For-Profit" 3 "Both")) ///
 		blabel(bar, format(%3.2f))
-		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_everceo_forprofit_ps_bymd.pdf", as(pdf) name("Graph") replace
+		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_everceo_forprofit_bymd.pdf", as(pdf) name("Graph") replace
 	
 restore
 	

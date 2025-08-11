@@ -4,6 +4,7 @@ Program name: 	02_add_mergers_acq.do
 Programmer: 	Julia Paris
 
 Goal: 			Merge M&A data into hospital-level dataset
+				Updated to use the most recent version of the Cooper et al data
 
 *******************************************************************************/
 
@@ -12,201 +13,120 @@ Goal: 			Merge M&A data into hospital-level dataset
 * check setup is complete
 	check_setup
 	
+	
 * PREPARE FOR MERGE  ___________________________________________________________
 
 * load data
 	use "${dbdata}/derived/himss_aha_hospitals_final.dta", clear
 	
+	* make sure no duplicates
 	duplicates report
 	duplicates tag, gen(dup)
 	duplicates drop
 
-	* test merge variable
-	codebook medicarenumber
-	* missing for 492,276/566,329 observations
+	* check merge variable: AHA
+	codebook entity_aha
+	tab entity_type if !missing(entity_aha)
 	
-	* seems like the data have inconsistent medicarenumber formats; occasionally missing leading zeroes.
-		* this will add leading zeroes to short observations
-		gen ccn_6 = substr("000000" + medicarenumber, -6, .)
-		replace ccn_6 = "" if ccn_6 == "000000"
-		replace medicarenumber = ccn_6 if length(medicarenumber) < 6
-		drop ccn_6
-	
-	tab year
-	tab year if !missing(medicarenumber)
-		* there are way more non-missing observations in 2017 than any other year
-	tab year if !missing(medicarenumber) | !missing(mcrnum)
+	* keep our own sysid separate
+	rename sysid sysid_orig
 	
 	preserve
-		gen count_aha_all = 1 
-		gen count_aha_withmcrnum = 1 if !missing(medicarenumber) | !missing(mcrnum)
-		collapse (rawsum) count_aha_all count_aha_withmcrnum, by(year)
+		gen count_entity_aha_all = 1 if !missing(entity_aha)
+		gen count_entity_aha_hosp = 1 if !missing(entity_aha) & entity_type == "Hospital"
+		gen count_campus_aha_all = 1 if !missing(campus_aha)
+		gen count_campus_aha_hosp = 1 if !missing(campus_aha) & inlist(entity_type,"Single Hospital Health System","IDS/RHA")
+		collapse (rawsum) count_entity_aha* count_campus_aha*, by(year)
 		tempfile ccn_aha_counts
 		save `ccn_aha_counts'
 	restore
 	
-	rename system_id system_id_aha
+* TEMPORARY: making a harmonized AHA variable
+	gen aha_harmonized = campus_aha 
+		replace aha_harmonized = entity_aha if !missing(entity_aha) & entity_aha != campus_aha	
 	
-* Prepare M&A data for merge	
-	preserve 
-		use "${dbdata}/supplemental/strategic_ma_db_v2/strategic_ma_db_v2.dta", clear
-		rename medicare_ccn_str medicarenumber
-		rename (system_id system_id_yr system_id_qtr) (system_id_ma system_id_yr_ma system_id_qtr_ma)
+* load M&A data
+	foreach var in entity_aha campus_aha {
+		preserve
 		
-		* collapse quarterly data to annual data
-		foreach var in bankruptcy system_exit system_split merger_of_equals target {
-			bysort medicarenumber year: egen `var'_yr = max(`var')
-			drop `var'
-			rename `var'_yr `var'
-		}
-		
-		* keep the last observation in the year
-		bysort medicarenumber year (year_qtr month): keep if _n == _N
-		
-		* ensure that data are now unique by CCN-year 
-		bysort medicarenumber year: gen dup = _N
-		assert dup == 1
-		drop dup
-		
-		tab year
-		keep if year <= 2017
-		
-		tempfile ma_data
-		save `ma_data'
-		
-		* make a graph with counts by year
-		gen count_ma = 1
-		collapse (rawsum) count_ma, by(year)
-		merge 1:1 year using `ccn_aha_counts'
-		keep if inrange(year,2010,2017)
-		graph bar count_ma count_aha_all count_aha_withmcrnum, over(year) ///
-			legend(position(bottom) label(1 "M&A Data") label(2 "All AHA/HIMSS") label(3 "AHA/HIMSS With Non-Missing CCN")) ///
-			title("Count of Observations by Year") ///
-			blabel(bar, size(vsmall))
-		graph export "${overleaf}/notes/M&A Merge/figures/counts_aha_ma_byyear.pdf", as(pdf) name("Graph") replace
-	restore
+			use "${dbdata}/supplemental/cooper_updated/HI_mergerbase_corr.dta", clear
 
-* MERGE ________________________________________________________________________	
+			destring aha_id, gen(`var') force // 198 missing obs created, all have "A" in the ID
+			
+			keep if !missing(`var') // eventually want to get rid of this
+			
+			gen system_id_ma = sysid
+			
+			* remove leading zeroes from sysid 
+			gen sysid_nolead = regexs(1) if regexm(sysid, "^0*(.+)")
+			replace sysid = sysid_nolead if !missing(sysid_nolead)
+			
+			* append campus to all variables if var == campus_aha
+			gen strvar = "`var'"
+			if strvar == "campus_aha" {
+				foreach ma_var of varlist * {
+					if "`ma_var'" != "campus_aha" & "`ma_var'" != "year" & "`ma_var'" != "aha_id" {
+						rename `ma_var' `ma_var'_campus
+					}
+				}
+			}
+			
+			tempfile ma_data
+			save `ma_data'
+			
+			* make a graph with counts by year
+			gen count_ma = 1
+			collapse (rawsum) count_ma, by(year)
+			merge 1:1 year using `ccn_aha_counts'
+			keep if inrange(year,2009,2017)
+			graph bar count_ma count_`var'_all count_`var'_hosp, over(year) ///
+				legend(position(bottom) label(1 "M&A Data") label(2 "All AHA/HIMSS") label(3 "AHA/HIMSS Validated")) ///
+				title("Count of Observations by Year: `var'") ///
+				blabel(bar, size(vsmall))
+			graph export "${overleaf}/notes/M&A Merge/figures/counts_`var'_ma_byyear.pdf", as(pdf) name("Graph") replace
+		
+		restore
 	
-	merge m:1 medicarenumber year using `ma_data'
-	* keep overlapping date ranges
-	keep if inrange(year,2010,2017)
+* merge
+		merge m:1 `var' year using `ma_data', gen(_merge_`var')
+	}
 	
-	tab _merge 
-	tab _merge if !missing(medicarenumber)
-	tab _merge if !missing(medicarenumber) | !missing(mcrnum)
+* keep overlapping date ranges
+	keep if inrange(year,2009,2017)
+	
+* what percent of observations from the M&A data never match to either?
+	preserve
+		keep if _merge_campus_aha == 2 
+		keep aha_id year 
+		tempfile unmerged_campus 
+		save `unmerged_campus'
+	restore
+	preserve
+		keep if _merge_entity_aha == 2 
+		keep aha_id year 
+		merge 1:1 aha_id year using `unmerged_campus', keep(3)
+		count
+		codebook aha_id
+	restore
+	drop if _merge_campus_aha == 2 | _merge_entity_aha == 2 
 	
 	* format and export merge results
 	label define mergelab 1 "Unmerged from AHA/HIMSS" 2 "Unmerged from M\&A" 3 "Merged"
-	label values _merge mergelab
-	export_merge, folder("M&A Merge") filename(merge1_tab) target(_merge)
-	
-	* unmerged observations from M&A data: 2,294
-	
-	* UNMERGED FROM AHA:
-		* check hospital types?
-		* could these be specialty centers that aren't included in M&A data?
-	tab type if _merge==1 & !missing(medicarenumber)
-	* should match: 
-		* general medical and surgical (6%)
-		* general medical (0.3%)
-		* critical access (3%)
-	* the M&A dataset is based on general and CAH "We included short-term acute care general hospitals (from here on: general hospitals) and critical access hospitals (CAHs) as classified by the Medicare provider of service files. There were 4896 unique AHA respondent hospitals in our sample spanning 2010–2019."
-	* look into CAH first:
-	br if type == "Critical Access" & _merge==1 & !missing(medicarenumber)
-	tab year if type == "Critical Access" & _merge==1 & !missing(medicarenumber)
-		* almost all observations are from 2010 - they are in the AHA data but not the M&A data
-	* in 2017, a lot of CCNs have F's in them. check what the correct CCN is (look at other CCNs with the same AHAID/HIMSS entity?)
-		* I'm noticing that these seem to be army hospitals (ACH - army community hospital; AMC - army medical center)
-		* F =FEDERAL?
-		* 2779E - Assigning Emergency Hospital CMS Certification Numbers (Non-Participating Hospitals) p. 13 https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r29soma.pdf 
-		* medicarenumber	entity_name
-		// 11032F	martin ach fort benning
-		// 11033F	eisenhower amc fort gordon
-		// 11035F	winn ach fort stewart
-		// 21006F	the national institutes of health clinical center
+	foreach var in entity_aha campus_aha {
+		label values _merge_`var' mergelab
+		export_merge, folder("M&A Merge") filename(merge1_tab_`var') target(_merge_`var')
 		
-		
-* LET'S INVESTIGATE 
-	sort medicarenumber
-	br ahanumber medicarenumber entity_city entity_state entity_name mname mcrnum sysname fac_name _merge if year == 2010 & _merge != 3
+		gen cleaned_merge_`var' = _merge_`var' if !missing(`var')
+		label values cleaned_merge_`var' mergelab
+		export_merge, folder("M&A Merge") filename(merge1_tab_`var'_cleaned) target(cleaned_merge_`var')
+	}
 	
-	* some should have matched but don't:
-		* ketchikan general hospital / KETCHIKAN GENERAL HOSPITAL
-			* medicarenumber in AHA is 020004 but in M&A it is 021311
-				* mcrnum is 21311 (matches M&A)
-		* south peninsula hospital / SOUTH PENINSULA HOSPITAL
-			* medicarenumber in AHA is 020014 but in M&A it is 021313
-				* BUT mcrnum is 21313 (matches M&A)
-				
-	* one potential approach: use the mcrnum and medicarenumber to create a list of linked CCNs
-		* try merging on each one. Maybe using interchangeable CCNs by accident.  
+	count if !missing(entity_aha) & entity_type == "Hospital" & type ==  "General Medical & Surgical" & !regexm(medicarenumber, "F") & _merge_entity_aha == 1
 	
-	preserve
-		keep if _merge == 2
-		drop _merge
-		keep fac_name year medicarenumber year_qtr medicare_ccn hrrcode month source_completed bankruptcy system_exit system_split merger_of_equals target notes system_id_ma system_id_qtr_ma system_id_yr
-		destring medicarenumber, gen(mcrnum)
-		tempfile unmerged1
-		save `unmerged1'
-	restore
-	
-	* keep a separate file of all the initial merges
-	preserve
-		keep if _merge == 3
-		gen merge_status = "Initially Merged"
-		tempfile merged1
-		save `merged1'
-	restore
-		
-	keep if _merge ==1
-	drop fac_name year_qtr medicare_ccn hrrcode month source_completed bankruptcy system_exit system_split merger_of_equals target notes system_id_ma system_id_qtr_ma system_id_yr
-	merge m:1 mcrnum year using `unmerged1', gen(_merge2)
-	gen merge_status = "Secondary Merge" if _merge2 == 3
-	replace merge_status = "Unmerged from AHA/HIMSS" if _merge2 == 1
-	replace merge_status = "Unmerged from M&A" if _merge2 == 2
-	append using `merged1'
-	
-	tab merge_status
-	tab merge_status if !missing(medicarenumber) | !missing(mcrnum)
-	
-	* format and export merge results
-	encode merge_status, gen(enc_merge_status)
-	label define enc_merge_status 4 "Unmerged From M\&A", modify
-	export_merge, folder("M&A Merge") filename(merge2_tab) target(enc_merge_status)
-	
-	* resolved the 2010 issue:
-	tab year if type == "Critical Access" & merge_status=="Unmerged from AHA/HIMSS" & !missing(medicarenumber)
+	* remove trailing zeroes and sort by sysid?
 
-* merge quality checks	
-	br _merge year medicarenumber entity_name mcrnum fac_name medicare_ccn merge_status type 	
-	
-* TEMPORARY: making a harmonized AHA variable
-gen aha_harmonized = campus_aha 
-		replace aha_harmonized = entity_aha if !missing(entity_aha) & entity_aha != campus_aha
-	
-	tostring aha_harmonized, gen(ahaid_noletter)	
-	preserve
-		use "${dbdata}/supplemental/hospital_ownership.dta", clear
-		replace ahaid_noletter = ahaid if missing(ahaid_noletter)
-		bysort ahaid_noletter year: drop if _n>1 // rare, but make unique
-		* rename profit variables to make source clear
-		foreach profvar in forprofit forprofit_lag forprofit_chng gov_priv_type mcrnum {
-			rename `profvar' `profvar'_ps
-		}
-		tempfile ellie_xwalk
-		save `ellie_xwalk'
-	restore
-	
-	merge m:1 ahaid_noletter year using `ellie_xwalk', gen(_merge_ps_entity) keepusing(ahaid sysid_final mcrnum_ps sysid_final_partial_sysname forprofit* gov_priv_type_ps) keep(1 3)
-	
-* TESTING A WAY TO USE ENTITY_PARENTID TO FILL IN MORE AHA INFO
-sort entity_uniqueid year
-br himss_entityid system_id_aha campus_aha entity_aha mname ahanumber entity_parentid entity_uniqueid year is_hospital	
-	
-// * prepare Ellie's data
-// 	* DO ENTITY MERGE FIRST
-// 	tostring entity_aha, gen(ahaid_noletter)	
+* PULL IN ELLIE (PS) XWALK	
+// 	tostring aha_harmonized, gen(ahaid_noletter)	
 // 	preserve
 // 		use "${dbdata}/supplemental/hospital_ownership.dta", clear
 // 		replace ahaid_noletter = ahaid if missing(ahaid_noletter)
@@ -219,237 +139,121 @@ br himss_entityid system_id_aha campus_aha entity_aha mname ahanumber entity_par
 // 		save `ellie_xwalk'
 // 	restore
 //	
-// * merge Ellie's xwalk
 // 	merge m:1 ahaid_noletter year using `ellie_xwalk', gen(_merge_ps_entity) keepusing(ahaid sysid_final mcrnum_ps sysid_final_partial_sysname forprofit* gov_priv_type_ps) keep(1 3)
-//	
-// 	* NOW CAMPUS MERGE 
-// 	drop ahaid_noletter
-// 	tostring campus_aha, gen(ahaid_noletter)
-// 	preserve
-// 		use "${dbdata}/supplemental/hospital_ownership.dta", clear
-// 		replace ahaid_noletter = ahaid if missing(ahaid_noletter)
-// 		bysort ahaid_noletter year: drop if _n>1 // rare, but make unique
-// 		* rename profit variables to make source clear
-// 		foreach profvar in forprofit forprofit_lag forprofit_chng gov_priv_type mcrnum {
-// 			rename `profvar' `profvar'_campus_ps
-// 		}
-// 		tempfile ellie_campus_xwalk
-// 		save `ellie_campus_xwalk'
-// 	restore
-// 	merge m:1 ahaid_noletter year using `ellie_campus_xwalk', gen(_merge_ps_campus) keepusing(ahaid sysid_final mcrnum_campus_ps sysid_final_partial_sysname forprofit* gov_priv_type_campus_ps) keep(1 3)
-//
-* prepare Cooper et al data
-	preserve
-		use "${dbdata}/supplemental/coop_20190108_mergerdata/HC_ext_mergerdata_public.dta", clear
-		rename id_defunct ahaid_noletter
-		foreach var in id sysid target acquirer id_parent {
-			rename `var' `var'_coop
-		}
-		keep if inrange(year,2010,2017)
-		tempfile coop_xwalk
-		save`coop_xwalk'
-	restore
-	
-* merge in Cooper et al data
-	merge m:1 ahaid_noletter year using `coop_xwalk', gen(_merge_coop) keep(1 3)
 
-* need to add variable cleaning and renaming
+
+* MISC DATA CLEANING ___________________________________________________________
+
+	codebook medicarenumber
+	* seems like the data have inconsistent medicarenumber formats; occasionally missing leading zeroes.
+		* this will add leading zeroes to short observations
+		gen ccn_6 = substr("000000" + medicarenumber, -6, .)
+		replace ccn_6 = "" if ccn_6 == "000000"
+		replace medicarenumber = ccn_6 if length(medicarenumber) < 6
+		drop ccn_6	
+
+
+* SAVE _________________________________________________________________________ 
+
 * save merged file
 	preserve
 		drop if merge_status == "Unmerged from M&A"
 		save "${dbdata}/derived/temp/merged_ma_nonharmonized.dta", replace
 	restore
-
-* narrow down
-	keep fac_name year medicarenumber year_qtr medicare_ccn hrrcode month source_completed bankruptcy sysid_final_partial_sysname system_exit system_split merger_of_equals target notes system_id_ma system_id_aha system_id_qtr_ma system_id_yr_ma merge_status type ahanumber ahaid_noletter entity_uniqueid x himss_entityid surveyid entity_parentid entityno entity_name haentitytypeid entity_type medicarenumber yearopened ownershipstatus county mcrnum_x cleaned_mcr address_clean zip clean_name ahanumber_filled mcrnum mname hospn sysid sysname sysid_final
-
-	sort medicarenumber year (mcrnum)
-
-	br ahanumber himss_entityid entity_uniqueid medicarenumber entity_name year mcrnum type sysid_final_partial_sysname sysid sysid_final system_id_ma system_id_aha medicare_ccn fac_name merge_status system_id_qtr_ma system_id_yr_ma bankruptcy system_exit system_split merger_of_equals target if (inlist(type,"General Medical & Surgical","Critical Access","General Medical") | merge_status!="Unmerged from AHA/HIMSS") & (!missing(medicarenumber) | !missing(mcrnum))
-	
-	
-* MERGE QUALITY INSPECTIONS ____________________________________________________
-
-exit // so that real code doesn't run into this		
-
-gen unmerg_ma = merge_status == "Unmerged from M&A"
-bysort medicarenumber: egen ever_unmerg_ma = max(unmerg_ma)
-br ahanumber himss_entityid entity_uniqueid medicarenumber entity_name year mcrnum type sysid sysid_final system_id_mamedicare_ccn fac_name merge_status system_id_qtr_ma system_id_yr_ma bankruptcy system_exit system_split merger_of_equals target if ever_unmerg_ma == 1
-
-
-* CASE STUDIES _________________________________________________________________
-
-* Tri-county hospital 	
-	* this one matches for multiple years except 2013 - is it in the M&A data in 2013?
-ahanumber	himss_entityid	entity_uniqueid	medicarenumber	entity_name	year	mcrnum	type	sysid	sysid_final	system_id	medicare_ccn	fac_name	merge_status	system_id_qtr	system_id_yr	bankruptcy	system_exit	system_split	merger_of_equals	target
-6391146	497954	46900	100139	nature coast regional hospital	2010	100139	General Medical & Surgical			46739	100139	TRI COUNTY HOSPITAL - WILLISTON	Initially Merged	935	935	0	1	0	0	0
-6391146	541449	46900	100139	tri county hospital in williston	2011	100139	General Medical & Surgical			46739	100139	TRI COUNTY HOSPITAL - WILLISTON	Initially Merged	935	935	0	0	0	0	0
-6391146	587836	46900	100139	tri county hospital in williston	2012	100139	General Medical & Surgical			46739	100139	TRI COUNTY HOSPITAL - WILLISTON	Initially Merged	935	935	0	0	0	0	0
-6391146	639498	46900	100139	regional general hospital williston	2013	100322	General Medical & Surgical						Unmerged from AHA/HIMSS							
-6391146	697595	46900	100139	regional general hospital williston	2014	100322	General Medical & Surgical			935	100322	REGIONAL GENERAL HOSPITAL WILLISTON	Secondary Merge	935	935	0	0	0	0	0
-6391146	768041	46900	100139	regional general hospital williston	2015	100322	General Medical & Surgical			935	100322	REGIONAL GENERAL HOSPITAL WILLISTON	Secondary Merge	935	935	0	0	0	0	0
-6391146	845370	46900	100139	regional general hospital of williston	2016	100322	General Medical & Surgical			935	100322	REGIONAL GENERAL HOSPITAL WILLISTON	Secondary Merge	935	935	0	0	0	0	0
-6391146	932686	46900	100322	regional general hospital of williston	2017	100322	General Medical & Surgical			46739	100322	REGIONAL GENERAL HOSPITAL WILLISTON	Initially Merged	935	935	0	0	0	0	0
-
-* Doctors specialty hospital 
-	* this one drops out of M&A data after 2014
-	_merge	year	medicarenumber	entity_name	mcrnum_x	cleaned_mcr	mcrnum	fac_name	medicare_ccn	merge_status	type
-Matched (3)	2013	110186	doctors specialty hospital	110186	110186	110186	DOCTORS SPECIALTY HOSPITAL	110186	Initially Merged	General Medical & Surgical
-Matched (3)	2013	110186	doctors specialty hospital	110186	110186	110186	DOCTORS SPECIALTY HOSPITAL	110186	Initially Merged	General Medical & Surgical
-Master only (1)	2014	110186	doctors specialty hospital	110186	110186				Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2014	110186	doctors specialty hospital	110186	110186				Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2015	110186	midtown medical center west campus	110186	110186				Unmerged from AHA/HIMSS	General Medical & Surgical
-Master only (1)	2016	110186	midtown medical center west	110186	110186				Unmerged from AHA/HIMSS	General Medical
-Master only (1)	2017	110186	midtown medical center west	110186	110186				Unmerged from AHA/HIMSS	General Medical
-	* listed as a "never claimer" hospital on GME reporting from GA: https://nosorh.org/wp-content/uploads/2022/05/GME131Elig_GA.pdf
-	* seems likely it's actually closed?
-	* https://www.ahd.com/free_profile/110186/Midtown_Medical_Center_-_West_Campus/Columbus/Georgia/
-		* says that this facility became an urgent care center on april 16 2015
-		* now at the same address is Columbus Specialty Hospital (CCN 112012)
 		
-* HAND-CHECKING UNMERGED FROM M&A ______________________________________________ 
+		
+exit 
 
-* many of these hospitals look like IHS - our data may have an F in the CCN?
-* ex 1
-mcrnum	sysid	sysname	fac_name	year_qtr	medicare_ccn
-30113			WHITERIVER PHS INDIAN HOSPITAL	20104	30113
-30113			WHITERIVER PHS INDIAN HOSPITAL	20114	30113
-30113			WHITERIVER PHS INDIAN HOSPITAL	20124	30113
-30113			WHITERIVER PHS INDIAN HOSPITAL	20134	30113
-30113			WHITERIVER PHS INDIAN HOSPITAL	20144	30113
-30113			WHITERIVER PHS INDIAN HOSPITAL	20154	30113
-30113			WHITERIVER PHS INDIAN HOSPITAL	20164	30113
-30113			WHITERIVER PHS INDIAN HOSPITAL	20174	30113
-	* U. S. Public Health Service Indian Hospital-Whiteriver
-	* ID 6860550
-* ex 2 
-mcrnum	sysid	sysname	fac_name	year_qtr	medicare_ccn
-30078			PHOENIX INDIAN MEDICAL CENTER	20104	30078
-30078			PHOENIX INDIAN MEDICAL CENTER	20114	30078
-30078			PHOENIX INDIAN MEDICAL CENTER	20124	30078
-30078			PHOENIX INDIAN MEDICAL CENTER	20134	30078
-30078			PHOENIX INDIAN MEDICAL CENTER	20144	30078
-30078			PHOENIX INDIAN MEDICAL CENTER	20154	30078
-30078			PHOENIX INDIAN MEDICAL CENTER	20164	30078
-30078			PHOENIX INDIAN MEDICAL CENTER	20174	30078
-	* ID	6860260
-	* U. S. Public Health Service Phoenix Indian Medical Center
+* LOAD DATA ______________________________________________
 
-* ex 3
-mcrnum	sysid	sysname	fac_name	year_qtr	medicare_ccn
-30071			FORT DEFIANCE INDIAN HOSPITAL	20104	30071
-30071			FORT DEFIANCE INDIAN HOSPITAL	20114	30071
-30071			FORT DEFIANCE INDIAN HOSPITAL	20124	30071
-30071			FORT DEFIANCE INDIAN HOSPITAL	20134	30071
-30071			FORT DEFIANCE INDIAN HOSPITAL	20144	30071
-30071			FORT DEFIANCE INDIAN HOSPITAL	20154	30071
-30071			FORT DEFIANCE INDIAN HOSPITAL	20164	30071
-30071			FORT DEFIANCE INDIAN HOSPITAL	20174	30071
-	* Tsehootsooi Medical Center
-	* ID 6860090
-* ex 4
-30074			SELLS INDIAN HEALTH SERVICE HOSPITAL	20104	30074
-30074			SELLS INDIAN HEALTH SERVICE HOSPITAL	20114	30074
-30074			SELLS INDIAN HEALTH SERVICE HOSPITAL	20124	30074
-30074			SELLS INDIAN HEALTH SERVICE HOSPITAL	20134	30074
-30074			SELLS INDIAN HEALTH SERVICE HOSPITAL	20144	30074
-30074			SELLS INDIAN HEALTH SERVICE HOSPITAL	20154	30074
-30074			SELLS INDIAN  HOSPITAL	20164	30074
-30074			SELLS HOSPITAL	20174	30074
-	* ID 6860369
-	* U. S. Public Health Service Indian Hospital-Sells
-* ex 5
-30077			PHS INDIAN HOSPITAL-SAN CARLOS	20104	30077
-30077			SAN CARLOS INDIAN HOSPITAL	20114	30077
-30077			SAN CARLOS INDIAN HOSPITAL	20124	30077
-30077			SAN CARLOS INDIAN HOSPITAL	20134	30077
-30077			SAN CARLOS INDIAN HOSPITAL	20144	30077
-30077			SAN CARLOS INDIAN HOSPITAL	20154	30077
-30077			SAN CARLOS APACHE HEALTHCARE	20164	30077
-30077			SAN CARLOS APACHE HEALTHCARE	20174	30077
-	* ID 6860370
-	* U. S. Public Health Service Indi
-	* San Carlos Apache Healthcare Cor
+use "${dbdata}/supplemental/coop_20190108_mergerdata/HC_ext_mergerdata_public.dta", clear
 
-* ex 6 
-mcrnum	sysid	sysname	fac_name	year_qtr	medicare_ccn
-241358			CASS LAKE INDIAN HEALTH SERVICES HOSPITAL	20104	241358
-241358			CASS LAKE INDIAN HEALTH SERVICES HOSPITAL	20114	241358
-241358			CASS LAKE INDIAN HEALTH SERVICES HOSPITAL	20124	241358
-241358			CASS LAKE INDIAN HEALTH SERVICES HOSPITAL	20134	241358
-241358			CASS LAKE INDIAN HEALTH SERVICES HOSPITAL	20144	241358
-241358			CASS LAKE INDIAN HEALTH SERVICES HOSPITAL	20154	241358
-241358			CASS LAKE INDIAN HEALTH SERVICES HOSPITAL	20164	241358
-241358			CASS LAKE INDIAN HEALTH SERVICES HOSPITAL	20174	241358
-* ex 7
-mcrnum	sysid	sysname	fac_name	year_qtr	medicare_ccn
-250127			CHOCTAW HEALTH CENTER	20104	250127
-250127			CHOCTAW HEALTH CENTER	20114	250127
-250127			CHOCTAW HEALTH CENTER	20124	250127
-250127			CHOCTAW HEALTH CENTER	20134	250127
-250127			CHOCTAW HEALTH CENTER	20144	250127
-250127			CHOCTAW HEALTH CENTER	20154	250127
-250127			CHOCTAW HEALTH CENTER	20164	250127
-250127			CHOCTAW HEALTH CENTER	20174	250127
-	* ID 6540710
-* ex 8
-mcrnum	sysid	sysname	fac_name	year_qtr	medicare_ccn
-270074			P H S INDIAN HOSPITAL AT BROWNING - BLACKFEET	20104	270074
-270074			P H S INDIAN HOSPITAL AT BROWNING - BLACKFEET	20114	270074
-270074			P H S INDIAN HOSPITAL AT BROWNING - BLACKFEET	20124	270074
-270074			P H S INDIAN HOSPITAL AT BROWNING - BLACKFEET	20134	270074
-270074			P H S INDIAN HOSPITAL AT BROWNING - BLACKFEET	20144	270074
-270074			P H S INDIAN HOSPITAL AT BROWNING - BLACKFEET	20154	270074
-270074			P H S INDIAN HOSPITAL AT BROWNING - BLACKFEET	20164	270074
-270074			P H S INDIAN HOSPITAL AT BROWNING - BLACKFEET	20174	270074
-* ex 9
-mcrnum	sysid	sysname	fac_name	year_qtr	medicare_ccn
-271315			P H S INDIAN HOSPITAL-FT BELKNAP AT HARLEM - CAH	20104	271315
-271315			P H S INDIAN HOSPITAL-FT BELKNAP AT HARLEM - CAH	20114	271315
-271315			P H S INDIAN HOSPITAL-FT BELKNAP AT HARLEM - CAH	20124	271315
-271315			P H S INDIAN HOSPITAL-FT BELKNAP AT HARLEM - CAH	20134	271315
-271315			P H S INDIAN HOSPITAL-FT BELKNAP AT HARLEM - CAH	20144	271315
-271315			P H S INDIAN HOSPITAL-FT BELKNAP AT HARLEM - CAH	20154	271315
-271315			P H S INDIAN HOSPITAL-FT BELKNAP AT HARLEM - CAH	20164	271315
-271315			P H S INDIAN HOSPITAL-FT BELKNAP AT HARLEM - CAH	20174	271315
-* ex 10
-271339			P H S INDIAN HOSPITAL CROW / NORTHERN CHEYENNE	20104	271339
-271339			P H S INDIAN HOSPITAL CROW / NORTHERN CHEYENNE	20114	271339
-271339			P H S INDIAN HOSPITAL CROW / NORTHERN CHEYENNE	20124	271339
-271339			P H S INDIAN HOSPITAL CROW / NORTHERN CHEYENNE	20134	271339
-271339			P H S INDIAN HOSPITAL CROW / NORTHERN CHEYENNE	20144	271339
-271339			P H S INDIAN HOSPITAL CROW / NORTHERN CHEYENNE	20154	271339
-271339			P H S INDIAN HOSPITAL CROW / NORTHERN CHEYENNE	20164	271339
-271339			P H S INDIAN HOSPITAL CROW / NORTHERN CHEYENNE	20174	271339
-* ex 11
-mcrnum	sysid	sysname	fac_name	year_qtr	medicare_ccn
-280119			WINNEBAGO IHS HOSPITAL	20104	280119
-280119			WINNEBAGO IHS HOSPITAL	20114	280119
-280119			WINNEBAGO IHS HOSPITAL	20124	280119
-280119			WINNEBAGO IHS HOSPITAL	20134	280119
-280119			WINNEBAGO IHS HOSPITAL	20144	280119
-280119			WINNEBAGO IHS HOSPITAL	20154	280119
-280119			WINNEBAGO IHS HOSPITAL	20164	280119
-280119			WINNEBAGO IHS HOSPITAL	20174	280119
+use "${dbdata}/supplemental/cooper_updated/HI_mergerbase_corr.dta", clear
+
+* any means that tar and/or acq == 1 in that year
 
 
+* CASE 1 ______________________________________________
+ 
+* UPDATED
+aha_id	year	sysid	tar	acq
+6141570	2000	6141570	0	0
+6141570	2001	6141570	0	0
+6141570	2002	6141570	0	0
+6141570	2003	6141570	0	0
+6141570	2004	6141570	0	0
+6141570	2005	6141570	0	0
+6141570	2006	6141570	0	0
+6141570	2007	6141570	0	0
+6141570	2008	6141570	0	0
+6141570	2009	6141570	0	0
+6141570	2010	6141570	0	0
+6141570	2011	6141570	0	0
+6141570	2012	6141570	0	0
+6141570	2013	1785	1	0
+6141570	2014	1785	0	0
+6141570	2015	1785	0	0
+6141570	2016	1785	0	0
+6141570	2017	1785	0	1
 
 
-* other ex 1
-mcrnum	sysid	sysname	fac_name	year_qtr	medicare_ccn
-370225			SUMMIT MEDICAL CENTER	20104	370225
-370225			SUMMIT MEDICAL CENTER	20114	370225
-370225			SUMMIT MEDICAL CENTER	20124	370225
-370225			SUMMIT MEDICAL CENTER	20134	370225
-370225			SUMMIT MEDICAL CENTER	20144	370225
-370225			SUMMIT MEDICAL CENTER	20154	370225
-370225			SUMMIT MEDICAL CENTER	20164	370225
-370225			SUMMIT MEDICAL CENTER	20174	370225
-	* ID 6730073
-	* Foundation Bariatric Hospital
-	* Summit Medical Center
+* ORIGINAL
+id	year	sysid	lat	lon	target	acquirer	id_defunct	id_parent
+6141570	2001	6141570	42.331893	-72.654053	0	0	6141570	6141570
+6141570	2002	6141570	42.331893	-72.654053	0	0	6141570	6141570
+6141570	2003	6141570	42.331893	-72.654053	0	0	6141570	6141570
+6141570	2004	6141570	42.331893	-72.654053	0	0	6141570	6141570
+6141570	2005	6141570	42.331893	-72.654053	0	0	6141570	6141570
+6141570	2006	6141570	42.331893	-72.654053	0	0	6141570	6141570
+6141570	2007	6141570	42.331893	-72.654053	0	0	6141570	6141570
+6141570	2008	6141570	42.331893	-72.654053	0	0	6141570	6141570
+6141570	2009	6141570	42.331893	-72.654053	0	0	6141570	6141570
+6141570	2010	6141570	42.331893	-72.654053	0	0	6141570	6141570
+6141570	2011	6141570	42.331893	-72.654053	0	0	6141570	6141570
+6141570	2012	6141570	42.331893	-72.654053	0	0	6141570	6141570
+6141570	2013	1785	42.331893	-72.654053	1	0	6141570	6141570
+6141570	2014	1785	42.331893	-72.654053	0	0	6141570	6141570
 
+* they line up
 
+* CASE 2 ______________________________________________
 
-	
+* UPDATED
+aha_id	year	sysid	tar	acq
+6142000	2000	6142000	0	0
+6142000	2001	6142000	0	0
+6142000	2002	6142000	0	0
+6142000	2003	6142000	0	0
+6142000	2004	6142000	0	0
+6142000	2005	6142000	0	0
+6142000	2006	6142000	0	0
+6142000	2007	6142000	0	0
+6142000	2008	6142000	0	0
+6142000	2009	6142000	0	0
+6142000	2010	6142000	0	0
+6142000	2011	0141	1	0
+6142000	2012	0141	0	0
+6142000	2013	0141	0	0
+6142000	2014	0141	0	0
+6142000	2015	0141	0	0
+6142000	2016	0141	0	0
+6142000	2017	0141	0	1
+
+* ORIGINAL
+id	year	sysid	target	acquirer
+6142000	2001	6142000	0	0
+6142000	2002	6142000	0	0
+6142000	2003	6142000	0	0
+6142000	2004	6142000	0	0
+6142000	2005	6142000	0	0
+6142000	2006	6142000	0	0
+6142000	2007	6142000	0	0
+6142000	2008	6142000	0	0
+6142000	2009	6142000	0	0
+6142000	2010	6142000	0	0
+6142000	2011	0141	1	0
+6142000	2012	0141	0	0
+6142000	2013	0141	0	0
+6142000	2014	0141	0	0
+
 
