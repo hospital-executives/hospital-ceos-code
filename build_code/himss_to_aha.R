@@ -1,5 +1,4 @@
 
-
 ## load and format data
 library(dplyr)
 library(stringr)
@@ -9,64 +8,20 @@ library(data.table)
 library(arrow)
 library(geosphere)
 
-# take inputs from Makefile
-args <- commandArgs(trailingOnly = TRUE)
-code_path <- setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+## libraries
+library(rstudioapi)
 
-data_path <- paste0(args[2], "/_data/")
+rm(list = ls())
 
-cat(paste0("CODE PATH: ", code_path))
-cat(paste0("DATA PATH: ", data_path))
-
-# set up script directory
-get_script_directory <- function() {
-  # Try to get the path of the current Rmd file during rendering
-  if (!is.null(knitr::current_input())) {
-    script_directory <- dirname(normalizePath(knitr::current_input()))
-    return(script_directory)
-  }
-  
-  # Fallback to params$code_dir if provided
-  if (!is.null(code_path) && code_path != "None") {
-    return(code_path)
-  }
-  
-  # Try to get the script path when running via Rscript
-  args <- commandArgs(trailingOnly = FALSE)
-  file_arg_index <- grep("--file=", args)
-  if (length(file_arg_index) > 0) {
-    # Running via Rscript
-    file_arg <- args[file_arg_index]
-    script_path <- normalizePath(sub("--file=", "", file_arg))
-    return(dirname(script_path))
-  } else if (interactive()) {
-    # Running interactively in RStudio
-    if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
-      script_path <- rstudioapi::getActiveDocumentContext()$path
-      if (nzchar(script_path)) {
-        return(dirname(normalizePath(script_path)))
-      } else {
-        stop("Cannot determine script directory: No active document found in RStudio.")
-      }
-    } else {
-      stop("Cannot determine script directory: Not running in RStudio or rstudioapi not available.")
-    }
-  } else {
-    # Fallback to current working directory
-    script_directory <- getwd()
-    return(script_directory)
-  }
+## set up scripts
+if (rstudioapi::isAvailable()) {
+  script_directory <- dirname(rstudioapi::getActiveDocumentContext()$path)
+} else {
+  script_directory <- params$code_dir
 }
-
-# Detect the script directory
-script_directory <- get_script_directory()
-
-# Construct the path to the config.R file
 config_path <- file.path(script_directory, "config.R")
-
-# Source the config file dynamically
 source(config_path)
-
+rm(script_directory, config_path)
 
 #### Pull in AHA<>MCR Crosswalk 2 - it should be the case that after updating
 #### zip codes that all assigned AHAs in haentityhosp are assigned here
@@ -327,11 +282,13 @@ step3 <- step2 %>%
       max(jw_sim[valid_jw & haentitytypeid == "1"], na.rm = TRUE)
     } else NA_real_,
     
-    is_best_type1 = valid_jw & haentitytypeid == "1" & jw_sim == max_type1_sim
+    is_best_type1 = valid_jw & haentitytypeid == "1" & jw_sim == max_type1_sim,
+    is_best_type1 = is_best_type1 & n_distinct(entity_uniqueid[is_best_type1], na.rm = TRUE) == 1
+    
   ) %>%
   mutate(
     clean_aha = case_when(
-      is.na(clean_aha) & is_best & haentitytypeid == "1" ~ ahanumber,                                   # 1. top priority
+      is.na(clean_aha) & is_best & is_best_type1 & haentitytypeid == "1" ~ ahanumber,                                   # 1. top priority
       is.na(clean_aha) & is_best_type1 ~ ahanumber,                                                     # 2. fallback to best type1 match
       is.na(clean_aha) & is_best & max_type1_sim < 0.8 & n_best_type1 == 0 ~ ahanumber,                                       # 3. fallback if no type1 match at all
       is.na(clean_aha) & valid_jw & !is_best ~ 0,                                                       # 4. valid but not best
@@ -375,7 +332,9 @@ step4 <- step3 %>%
   left_join(uid_clean, by = "entity_uniqueid") %>%
   group_by(sys_aha, year) %>%
   mutate(
-    fillable_group = all(is.na(clean_aha) | clean_aha == 0)
+    fillable_group = all(is.na(clean_aha) | clean_aha == 0),
+    fillable_group = fillable_group &
+      n_distinct(entity_uniqueid[fillable_group], na.rm = TRUE) == 1
   ) %>%
   ungroup() %>%
   group_by(entity_uniqueid) %>%
@@ -461,7 +420,9 @@ step6 <- step5 %>%
   group_by(ahanumber) %>%
   mutate(
     n_type2_entities = sum(has_type2),
-    assign_aha = if_else(n_type2_entities == 2 & has_type2, TRUE, FALSE)
+    assign_aha = if_else(n_type2_entities == 2 & has_type2, TRUE, FALSE),
+    assign_aha = assign_aha &
+      n_distinct(entity_uniqueid[assign_aha], na.rm = TRUE) == 1
   ) %>%
   filter(assign_aha) %>%
   select(ahanumber, entity_uniqueid) %>% mutate(clean_aha = ahanumber) %>%
@@ -489,11 +450,13 @@ step7 <- step6 %>%
       max(jw_sim[valid_jw & (haentitytypeid == "1" | haentitytypeid == "2")], na.rm = TRUE)
     } else NA_real_,
     
-    is_best_hospital = valid_jw & (haentitytypeid == "1" | haentitytypeid == "2") & jw_sim == max_type2_sim
+    is_best_hospital = valid_jw & (haentitytypeid == "1" | haentitytypeid == "2") & jw_sim == max_type2_sim,
+    is_best_hospital = is_best_hospital & 
+      n_distinct(entity_uniqueid[is_best_hospital], na.rm = TRUE) == 1
   ) %>%
   mutate(
     clean_aha = case_when(
-      is.na(clean_aha) & is_best & haentitytypeid == "1" ~ ahanumber,                                   # 1. top priority
+      is.na(clean_aha) & is_best & is_best_hospital & haentitytypeid == "1" ~ ahanumber,                                   # 1. top priority
       is.na(clean_aha) & is_best_hospital ~ ahanumber,                                                     # 2. fallback to best type1 match
       is.na(clean_aha) & is_best & max_type2_sim < 0.8 & n_best_type2 == 0 ~ ahanumber,                                       # 3. fallback if no type1 match at all
       is.na(clean_aha) & valid_jw & !is_best ~ 0,                                                       # 4. valid but not best
@@ -513,14 +476,19 @@ step7 <- step6 %>%
   ungroup()
 
 step8 <- step7 %>% arrange(entity_uniqueid, year) %>%  # Ensure correct ordering for locf
+  group_by(sys_aha, year) %>%
+  mutate(
+    fillable_group = all(is.na(clean_aha) | clean_aha == 0),
+    fillable_group = fillable_group &
+      n_distinct(entity_uniqueid[fillable_group], na.rm = TRUE) == 1
+  ) %>%
   group_by(entity_uniqueid) %>%
   mutate(
     aha_before = zoo::na.locf(clean_aha, na.rm = FALSE),
     aha_after  = zoo::na.locf(clean_aha, fromLast = TRUE, na.rm = FALSE),
     clean_filled = case_when(
-      is.na(clean_aha) &
-        !is.na(aha_before) &
-        !is.na(aha_after) &
+      is.na(clean_aha) & fillable_group & 
+      !is.na(aha_before) & !is.na(aha_after) &
         aha_before == aha_after ~ aha_before,
       TRUE ~ clean_aha
     )
@@ -531,7 +499,9 @@ step8 <- step7 %>% arrange(entity_uniqueid, year) %>%  # Ensure correct ordering
 
 step9 <- step8 %>%
   group_by(ahanumber, year) %>%
-  mutate(still_unfilled = all(is.na(clean_aha))) %>%
+  mutate(still_unfilled = all(is.na(clean_aha)),
+         still_unfilled = still_unfilled &
+           n_distinct(entity_uniqueid[still_unfilled], na.rm = TRUE) == 1) %>%
   ungroup() %>% 
   arrange(entity_uniqueid, year) %>%  # Ensure correct ordering for locf
   group_by(entity_uniqueid) %>%
@@ -550,103 +520,6 @@ step9 <- step8 %>%
   )) %>%
   ungroup() %>%
   mutate(clean_aha = clean_filled) %>% select(-clean_filled,-aha_before, -aha_after )
-
-  
-step_dropped <- step8 %>%
-  group_by(ahanumber, year) %>%
-  mutate(still_unfilled = all(is.na(clean_aha)))%>%
-  ungroup() %>%
-  mutate(
-    add_sim = ifelse(
-      !is.na(mlocaddr),
-      1 - stringdist::stringdist(entity_address, mlocaddr, method = "jw", p = 0.1),
-      NA_real_),
-    clean_aha = case_when(
-      is.na(clean_aha) & jw_sim >= .95 & haentitytypeid == "3" & still_unfilled ~ ahanumber,
-      TRUE ~ clean_aha
-    )
-  ) %>% ungroup() %>%
-  select(-still_unfilled) %>% 
-  group_by(ahanumber, year) %>%
-  mutate(still_unfilled = all(is.na(clean_aha)))%>%
-  ungroup() %>%
-  mutate(
-    clean_aha = case_when(
-      is.na(clean_aha) & add_sim >= .95 & haentitytypeid == "3" & still_unfilled ~ ahanumber,
-      TRUE ~ clean_aha
-    )
-  ) %>%select(-still_unfilled) %>% 
-  group_by(ahanumber ,year ) %>%
-  mutate(
-    has_match = any(clean_aha == sys_aha, na.rm = TRUE),
-    clean_aha = case_when(
-      has_match & is.na(clean_aha) ~ 0,
-      TRUE ~ clean_aha
-    )
-  ) %>%
-  ungroup()
-
-step10 <- step9  %>%
-  group_by(ahanumber, year) %>%
-  mutate(still_unfilled = all(is.na(clean_aha)|clean_aha == 0))%>%
-  ungroup() %>%
-  mutate(
-    clean_aha = case_when(
-      is.na(clean_aha) & add_sim >= .925 & jw_sim >= .925 & still_unfilled ~ ahanumber,
-      TRUE ~ clean_aha
-    )
-  ) %>% 
-  group_by(ahanumber, year) %>%
-  mutate(still_unfilled = all(is.na(clean_aha)|clean_aha == 0))%>%
-  ungroup() %>%
-  mutate(
-    clean_aha = case_when(
-      is.na(clean_aha) & add_sim >= .85 & jw_sim ==1 & still_unfilled ~ ahanumber,
-      TRUE ~ clean_aha
-    )
-  )  %>%
-  group_by(ahanumber ,year ) %>%
-  mutate(
-    has_match = any(clean_aha == sys_aha, na.rm = TRUE),
-    clean_aha = case_when(
-      has_match & is.na(clean_aha) ~ 0,
-      TRUE ~ clean_aha
-    )
-  ) %>%
-  ungroup()
-
-step11 <- step10 %>%
-  group_by(entity_uniqueid) %>%
-  mutate(
-    max_jw_sim = sapply(mname, function(m) {
-      if (is.na(m)) return(NA_real_)
-      group_names <- entity_name[!is.na(entity_name)]
-      if (length(group_names) == 0) return(NA_real_)
-      sims <- stringsim(m, group_names, method = "jw", p = 0.1)
-      max(sims, na.rm = TRUE)
-    })
-  ) %>%
-  ungroup()  %>%
-  group_by(ahanumber, year) %>%
-  mutate(still_unfilled = all(is.na(clean_aha)|clean_aha == 0))%>%
-  ungroup() %>%
-  mutate(
-    clean_aha = case_when(
-      is.na(clean_aha) & (max_jw_sim >= .95 |(max_jw_sim >= 0.9 & add_sim >= 0.9)) & still_unfilled ~ ahanumber,
-      TRUE ~ clean_aha
-    )
-  )  %>%
-  group_by(ahanumber ,year ) %>%
-  mutate(
-    has_match = any(clean_aha == sys_aha, na.rm = TRUE),
-    clean_aha = case_when(
-      has_match & is.na(clean_aha) ~ 0,
-      TRUE ~ clean_aha
-    )
-  ) %>%
-  ungroup()
-
-
 
 ### CHECK OUTPUT
 temp_export <- step9 %>% 
@@ -777,7 +650,7 @@ final_merged <- final_merged %>%
       is.na(py_fuzzy_flag) ~ NA, 
       TRUE ~ !is.na(clean_aha) & py_fuzzy_flag == 1
     ),
-    is_hospital = !is.na(entity_uniqueid),
+    is_hospital = !is.na(clean_aha),
     entity_aha = if_else(clean_aha == 0, NA_real_, clean_aha))
     
 
