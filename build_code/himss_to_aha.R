@@ -153,7 +153,6 @@ merged <- not_na %>% left_join(aha_data,
 
 ## step 1 - assign aha id if mname == entity_name
 step1 <- merged %>%
-  #filter(entity_uniqueid == 10349) %>%
   mutate(sys_aha = ahanumber) %>%
   group_by(ahanumber, year) %>%
   mutate(
@@ -170,21 +169,10 @@ step1 <- merged %>%
       n_match == 1 ~ 0,
       TRUE ~ NA_real_
     )
-  ) %>% #select( clean_aha, sys_aha, year, mname, entity_name, entity_address, address)
+  ) %>% 
   ungroup() %>%
   select(-n_match, -is_unique_match)   %>%
- # group_by(entity_uniqueid) %>%
-  #mutate(
-    #override_aha = if (any(!is.na(clean_aha) & clean_aha != 0)) {
-      # use the first non-zero, non-NA clean_aha
-      #clean_aha[which(!is.na(clean_aha) & clean_aha != 0)[1]]
-   # } else {
-     # NA_real_
-    #},
-   # clean_aha = override_aha
- # ) %>% 
- # ungroup() %>%
-  #select(-override_aha) %>% 
+  # if an aha number is assigned for a given year, set all other entity_aha to 0
   group_by(ahanumber,year) %>%
   mutate(
     has_match = any(clean_aha == sys_aha, na.rm = TRUE),
@@ -194,6 +182,8 @@ step1 <- merged %>%
     )
   ) %>%
   ungroup()
+
+## step 1 - assign aha id if mloccity == entity_city and is unique
 
 step1b <- step1 %>%
   group_by(ahanumber, year) %>%
@@ -254,21 +244,16 @@ step2 <- step1b %>%
   ) %>%
   ungroup()
 
-library(dplyr)
-library(stringdist)
-
-## step 3 - assign ids by if closest jw distance
-
+## step 3 - assign ids by closest jw distance
 step3 <- step2 %>%
   mutate(mname = as.character(mname), entity_name = as.character(entity_name)) %>%
   mutate(
     jw_sim = ifelse(
       !is.na(mname),
-      1 - stringdist::stringdist(entity_name, mname, method = "jw", p = 0.1),
+      1 - stringdist(entity_name, mname, method = "jw", p = 0.1),
       NA_real_
     )
   ) %>%
-  #group_by(a)
   group_by(ahanumber, year) %>%
   mutate(
     valid_jw = jw_sim >= 0.8,
@@ -288,15 +273,23 @@ step3 <- step2 %>%
   ) %>%
   mutate(
     clean_aha = case_when(
-      is.na(clean_aha) & is_best & is_best_type1 & haentitytypeid == "1" ~ ahanumber,                                   # 1. top priority
-      is.na(clean_aha) & is_best_type1 ~ ahanumber,                                                     # 2. fallback to best type1 match
-      is.na(clean_aha) & is_best & max_type1_sim < 0.8 & n_best_type1 == 0 ~ ahanumber,                                       # 3. fallback if no type1 match at all
-      is.na(clean_aha) & valid_jw & !is_best ~ 0,                                                       # 4. valid but not best
+
+      # get best match across all cases and best match for typeid == 1
+      is.na(clean_aha) & is_best & is_best_type1 & haentitytypeid == "1" ~ ahanumber,
+
+      # get best match for typeid == 1, not necessarily across all cases
+      is.na(clean_aha) & is_best_type1 ~ ahanumber,
+      
+      # get best match across all cases if typeid==1 matches are poor
+      is.na(clean_aha) & is_best & max_type1_sim < 0.8 & n_best_type1 == 0 ~ ahanumber,
+      
+      # fill all other cases with 0/NA
+      is.na(clean_aha) & valid_jw & !is_best ~ 0,
       TRUE ~ clean_aha
     )
   ) %>%
   ungroup() %>%
-  select( -n_best_type1) %>% 
+  select(-n_best_type1) %>% 
   group_by(ahanumber,year) %>%
   mutate(
     has_match = any(clean_aha == sys_aha, na.rm = TRUE),
@@ -306,13 +299,6 @@ step3 <- step2 %>%
     )
   ) %>%
   ungroup()
-
-
-remaining <- step3 %>% group_by(ahanumber) %>%
-  filter(all(is.na(clean_aha))) %>%
-  distinct(year, ahanumber, clean_aha, entity_uniqueid, entity_name, mname, haentitytypeid,
-           madmin, latitude_aha) 
-cat(n_distinct(remaining$entity_uniqueid))
 
 ### clean up and backfill ahas
 uid_clean <- step3 %>%
@@ -330,50 +316,57 @@ name_clean <- step3 %>%
 # Step 3: Left join both, with entity_uniqueid taking priority
 step4 <- step3 %>%
   left_join(uid_clean, by = "entity_uniqueid") %>%
+  left_join(name_clean, by = "entity_name") %>%
   group_by(sys_aha, year) %>%
   mutate(
     fillable_group = all(is.na(clean_aha) | clean_aha == 0),
     fillable_group = fillable_group &
-      n_distinct(entity_uniqueid[fillable_group], na.rm = TRUE) == 1
+      n_distinct(entity_uniqueid[fillable_group], na.rm = TRUE) == 1,
+    
+    # get num distinct vals and vals for consistency
+    uid_u    = n_distinct(clean_aha_uid,  na.rm = TRUE),
+    name_u   = n_distinct(clean_aha_name, na.rm = TRUE),
+    uid_val  = pluck(na.omit(clean_aha_uid),  1, .default = NA_real_),
+    name_val = pluck(na.omit(clean_aha_name), 1, .default = NA_real_),
+    
+    
+    # both sides are constant (0 or 1 unique non-NA), and if both present, they match
+    valid_aha = uid_u <= 1 & name_u <= 1 &
+      (uid_u == 0 | name_u == 0 | uid_val == name_val)
   ) %>%
   ungroup() %>%
   group_by(entity_uniqueid) %>%
   mutate(
     # Compute potential fill values
-    potential_fill = case_when(
+    new_aha = case_when(
       !fillable_group ~ clean_aha,
-      is.na(mname) ~ NA_real_,
-      TRUE ~ {
-        vals <- c(clean_aha, clean_aha_uid)
-        if (any(vals != 0, na.rm = TRUE)) {
-          vals[which(vals != 0 & !is.na(vals))[1]]
-        } else {
-          coalesce(clean_aha, clean_aha_uid)
-        }
-      }
+      is.na(mname)    ~ NA_real_,
+      
+      # prefer UID when the pair is consistent
+      valid_aha & uid_u == 1                 ~ uid_val,
+      valid_aha & uid_u == 0 & name_u == 1   ~ name_val,
+      
+      # fallback: prioritize uid, then name, then existing
+      TRUE ~ coalesce(na_if(clean_aha_uid, 0),
+                      na_if(clean_aha_name, 0),
+                      clean_aha)
     ),
     # Count how many would be filled
     n_to_fill = sum(!is.na(potential_fill) & (is.na(clean_aha) | clean_aha == 0))
   ) %>%
   mutate(
-    clean_aha = case_when(
-      n_to_fill == 1 & !is.na(potential_fill) & (is.na(clean_aha) | clean_aha == 0) ~ potential_fill,
-      TRUE ~ clean_aha
-    )
-  ) %>%
+    clean_aha = new_aha
+    ) %>%
   select(-potential_fill, -n_to_fill) %>%
   ungroup() %>%
-  select(-c(fillable_group,clean_aha_uid)) 
+  select(-c(fillable_group,clean_aha_uid, valid_aha, uid_u, name_u, uid_val, name_val)) 
 
-
-remove_terms <- "\\b(center|ctr|health|hlth|care|healthcare|system|clinic|hospital|university|rehabilitation)\\b"
 
 step5 <- step4 %>% group_by(ahanumber, year) %>%
   mutate(
     n_match = sum(entity_name == mname & haentitytypeid == 2, na.rm = TRUE),
     is_unique_match = (n_match == 1 & entity_name == mname & haentitytypeid == 2)
-  ) %>% #filter(ahanumber == 6142120)  %>%
-  # select(ahanumber, clean_aha, year, entity_name, mname, n_match, is_unique_match)
+  ) %>% 
   mutate(
     clean_aha = case_when(
       !is.na(clean_aha) ~ clean_aha,
@@ -398,7 +391,7 @@ step5 <- step4 %>% group_by(ahanumber, year) %>%
         TRUE ~ NA_real_
       )
     } else {
-      clean_aha  # leave it unchanged if any clean_aha is non-NA
+      clean_aha
     }
   ) %>%
   ungroup() %>%
@@ -420,7 +413,7 @@ step6 <- step5 %>%
   group_by(ahanumber) %>%
   mutate(
     n_type2_entities = sum(has_type2),
-    assign_aha = if_else(n_type2_entities == 2 & has_type2, TRUE, FALSE),
+    assign_aha = if_else(n_type2_entities == 1 & has_type2, TRUE, FALSE),
     assign_aha = assign_aha &
       n_distinct(entity_uniqueid[assign_aha], na.rm = TRUE) == 1
   ) %>%
@@ -445,21 +438,23 @@ step7 <- step6 %>%
     n_best_type2 = sum(is_best & haentitytypeid == "2", na.rm = TRUE),
     any_type2 = any(haentitytypeid == "2", na.rm = TRUE),
     
-    # find max jw_sim among haentitytypeid == "1" and valid_jw
+    # find max jw_sim among haentitytypeid == "1" and "2" valid_jw
     max_type2_sim = if (any(valid_jw & (haentitytypeid == "1" | haentitytypeid == "2"), na.rm = TRUE)) {
       max(jw_sim[valid_jw & (haentitytypeid == "1" | haentitytypeid == "2")], na.rm = TRUE)
     } else NA_real_,
-    
+  
     is_best_hospital = valid_jw & (haentitytypeid == "1" | haentitytypeid == "2") & jw_sim == max_type2_sim,
     is_best_hospital = is_best_hospital & 
       n_distinct(entity_uniqueid[is_best_hospital], na.rm = TRUE) == 1
+    
   ) %>%
   mutate(
     clean_aha = case_when(
-      is.na(clean_aha) & is_best & is_best_hospital & haentitytypeid == "1" ~ ahanumber,                                   # 1. top priority
-      is.na(clean_aha) & is_best_hospital ~ ahanumber,                                                     # 2. fallback to best type1 match
-      is.na(clean_aha) & is_best & max_type2_sim < 0.8 & n_best_type2 == 0 ~ ahanumber,                                       # 3. fallback if no type1 match at all
-      is.na(clean_aha) & valid_jw & !is_best ~ 0,                                                       # 4. valid but not best
+      is.na(clean_aha) & is_best & is_best_hospital & haentitytypeid == "1" ~ ahanumber,
+      is.na(clean_aha) & is_best & is_best_hospital & haentitytypeid == "2" ~ ahanumber,
+      is.na(clean_aha) & is_best_hospital ~ ahanumber,
+      is.na(clean_aha) & is_best & max_type2_sim < 0.8 & n_best_type2 == 0 ~ ahanumber,
+      is.na(clean_aha) & valid_jw & !is_best ~ 0,
       TRUE ~ clean_aha
     )
   ) %>%
@@ -475,7 +470,7 @@ step7 <- step6 %>%
   ) %>%
   ungroup()
 
-step8 <- step7 %>% arrange(entity_uniqueid, year) %>%  # Ensure correct ordering for locf
+step8 <- step7 %>% arrange(entity_uniqueid, year) %>%
   group_by(sys_aha, year) %>%
   mutate(
     fillable_group = all(is.na(clean_aha) | clean_aha == 0),
