@@ -94,10 +94,10 @@ Goal: 			Clean system ID variable from Cooper et al data
 	* mean number of acquisitions over period by entity_uniqueid
 	preserve
 		keep if is_hospital ==1
-		collapse (rawsum) syschng*, by(year)
+		collapse (rawsum) syschng* tar, by(year)
 		drop if year == 2009
-		graph bar syschng_system_id syschng_sysid, over(year) ///
-			legend(position(bottom) label(1 "HIMSS Data") label(2 "M&A Data")) ///
+		graph bar syschng_system_id syschng_sysid tar, over(year) ///
+			legend(position(bottom) label(1 "HIMSS Data - Sytem ID Change") label(2 "M&A Data - Sytem ID Change") label(3 "M&A Data Target")) ///
 			title("Count of System M&A Events by Year") ///
 			blabel(bar, size(vsmall))
 		graph export "${overleaf}/notes/M&A Merge/figures/counts_syschng_byyear.pdf", as(pdf) name("Graph") replace
@@ -105,14 +105,39 @@ Goal: 			Clean system ID variable from Cooper et al data
 	* share of non-missing observations in a given year with an acquisition event
 	preserve
 		keep if is_hospital ==1
-		collapse syschng*, by(year)
+		collapse syschng* tar, by(year)
 		drop if year == 2009
-		graph bar syschng_system_id syschng_sysid, over(year) ///
-			legend(position(bottom) label(1 "HIMSS Data") label(2 "M&A Data")) ///
+		graph bar syschng_system_id syschng_sysid tar, over(year) ///
+			legend(position(bottom) label(1 "HIMSS Data - Sytem ID Change") label(2 "M&A Data - Sytem ID Change") label(3 "M&A Data Target")) ///
 			title("Share of Facilities With System M&A Events by Year") ///
 			blabel(bar, size(vsmall) format(%4.3f))
 		graph export "${overleaf}/notes/M&A Merge/figures/shares_syschng_byyear.pdf", as(pdf) name("Graph") replace
 	restore
+	
+* make a forprofit variable that excludes government hospitals
+	gen forprofit = aha_own_fp
+	replace forprofit = aha_own_fp_campus if missing(aha_own_fp) & !missing(aha_own_fp_campus)
+	replace forprofit = . if aha_own_gov == 1
+	replace forprofit = . if missing(aha_own_gov) & aha_own_gov_campus == 1
+	
+* make an ownership variable that includes govt
+	gen gov_priv_type = 1 if aha_own_gov == 1
+	replace gov_priv_type = 3 if aha_own_fp == 1
+	replace gov_priv_type = 4 if aha_own_np == 1
+	replace gov_priv_type = 1 if missing(aha_own_gov) & aha_own_gov_campus == 1
+	replace gov_priv_type = 3 if missing(aha_own_fp) & aha_own_fp_campus == 1
+	replace gov_priv_type = 4 if missing(aha_own_np) & aha_own_np_campus == 1
+	
+* how many FP/NFP conversions?
+	bysort entity_uniqueid year: gen test_to_fp = forprofit == 0 & forprofit[_n+1] == 1
+		replace test_to_fp = . if missing(forprofit) | missing(forprofit[_n+1])
+	bysort entity_uniqueid year: gen test_to_nfp = forprofit == 1 & forprofit[_n+1] == 0
+		replace test_to_nfp = . if missing(forprofit) | missing(forprofit[_n+1])
+
+	bysort entity_uniqueid year: gen nfp_to_fp = tar == 1 & forprofit[_n-1] == 0 & forprofit[_n+1] == 1
+		replace nfp_to_fp = . if tar != 1 | missing(forprofit[_n-1]) | missing(forprofit[_n+1])
+	bysort entity_uniqueid year: gen fp_to_nfp = tar == 1 & forprofit[_n-1] == 1 & forprofit[_n+1] == 0
+		replace fp_to_nfp = . if tar != 1 | missing(forprofit[_n-1]) | missing(forprofit[_n+1])
 	
 	
 * reduce sample to info needed for crosswalking to indiv. file _________________
@@ -138,7 +163,8 @@ Goal: 			Clean system ID variable from Cooper et al data
 * keep key variables
 	keep 	entity_uniqueid year sysid_ma sysid_orig sysid_campus is_hospital ///
 			aha_* tar acq any hsanum hrrnum _merge_entity_aha _merge_campus_aha  ///
-			syschng_sysid_ma syschng_system_id syschng_ct_system_id syschng_ct_sysid_ma
+			syschng_sysid_ma syschng_system_id syschng_ct_system_id syschng_ct_sysid_ma ///
+			forprofit gov_priv_type
 			
 * make unique by entity_uniqueid year
 	bysort entity_uniqueid year: keep if _n == 1

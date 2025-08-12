@@ -105,10 +105,10 @@ Goal: 			Merge M&A data into hospital-level dataset
 		keep if _merge_entity_aha == 2 
 		keep aha_id year 
 		merge 1:1 aha_id year using `unmerged_campus', keep(3)
+		tab year
 		count
 		codebook aha_id
 	restore
-	drop if _merge_campus_aha == 2 | _merge_entity_aha == 2 
 	
 	* format and export merge results
 	label define mergelab 1 "Unmerged from AHA/HIMSS" 2 "Unmerged from M\&A" 3 "Merged"
@@ -120,6 +120,8 @@ Goal: 			Merge M&A data into hospital-level dataset
 		label values cleaned_merge_`var' mergelab
 		export_merge, folder("M&A Merge") filename(merge1_tab_`var'_cleaned) target(cleaned_merge_`var')
 	}
+	
+	drop if _merge_campus_aha == 2 | _merge_entity_aha == 2 
 	
 	count if !missing(entity_aha) & entity_type == "Hospital" & type ==  "General Medical & Surgical" & !regexm(medicarenumber, "F") & _merge_entity_aha == 1
 	

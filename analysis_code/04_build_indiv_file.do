@@ -59,20 +59,6 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 * identify hospitals
 	gen hospital = entity_type=="Hospital"
 	gen hospital_network = inlist(entity_type,"Hospital","Single Hospital Health System","IDS/RHA") 
-	
-* make a forprofit variable that excludes government hospitals
-	gen forprofit = aha_own_fp
-	replace forprofit = aha_own_fp_campus if missing(aha_own_fp) & !missing(aha_own_fp_campus)
-	replace forprofit = . if aha_own_gov == 1
-	replace forprofit = . if missing(aha_own_gov) & aha_own_gov_campus == 1
-	
-* make an ownership variable that includes govt
-	gen gov_priv_type = 1 if aha_own_gov == 1
-	replace gov_priv_type = 3 if aha_own_fp == 1
-	replace gov_priv_type = 4 if aha_own_np == 1
-	replace gov_priv_type = 1 if missing(aha_own_gov) & aha_own_gov_campus == 1
-	replace gov_priv_type = 3 if missing(aha_own_fp) & aha_own_fp_campus == 1
-	replace gov_priv_type = 4 if missing(aha_own_np) & aha_own_np_campus == 1
 		
 * hospital has CEO
 	* individual
