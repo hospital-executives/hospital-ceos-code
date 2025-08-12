@@ -186,19 +186,32 @@ step1 <- merged %>%
 ## step 1 - assign aha id if mloccity == entity_city and is unique
 
 step1b <- step1 %>%
+  mutate(mname = as.character(mname), entity_name = as.character(entity_name),
+    jw_sim = ifelse(
+      !is.na(mname),
+      1 - stringdist(entity_name, mname, method = "jw", p = 0.1),
+      NA_real_
+    )
+  ) %>%
   group_by(ahanumber, year) %>%
   mutate(
+      valid_jw = jw_sim >= 0.8,
+      max_sim = if (any(valid_jw, na.rm = TRUE)) max(jw_sim[valid_jw], na.rm = TRUE) else NA_real_,
+      is_best = valid_jw & jw_sim == max_sim,
+    # get entities in city
     # Count how many rows meet the match criteria
     n_match = sum(entity_city == mloccity & haentitytypeid == 1, na.rm = TRUE),
     
     # Mark the unique matching row (TRUE only if it's the one valid match)
-    is_unique_match = (n_match == 1 & entity_city == mloccity & haentitytypeid == 1)
+    is_unique_match = (n_match == 1 & entity_city == mloccity),
+    is_unique_match = is_unique_match &
+      n_distinct(entity_uniqueid[is_unique_match], na.rm = TRUE) == 1,
   ) %>%
   mutate(
     clean_aha = if (all(is.na(clean_aha))) {
       case_when(
-        is_unique_match ~ ahanumber,
-        n_match == 1 ~ 0,
+        is_unique_match & haentitytypeid == 1 & jw_sim == max_sim ~ ahanumber,
+        is_unique_match & haentitytypeid == 1 & jw_sim != max_sim ~ 0,
         TRUE ~ NA_real_
       )
     } else {
@@ -246,19 +259,8 @@ step2 <- step1b %>%
 
 ## step 3 - assign ids by closest jw distance
 step3 <- step2 %>%
-  mutate(mname = as.character(mname), entity_name = as.character(entity_name)) %>%
-  mutate(
-    jw_sim = ifelse(
-      !is.na(mname),
-      1 - stringdist(entity_name, mname, method = "jw", p = 0.1),
-      NA_real_
-    )
-  ) %>%
   group_by(ahanumber, year) %>%
   mutate(
-    valid_jw = jw_sim >= 0.8,
-    max_sim = if (any(valid_jw, na.rm = TRUE)) max(jw_sim[valid_jw], na.rm = TRUE) else NA_real_,
-    is_best = valid_jw & jw_sim == max_sim,
     n_best_type1 = sum(is_best & haentitytypeid == "1", na.rm = TRUE),
     any_type1 = any(haentitytypeid == "1", na.rm = TRUE),
     
@@ -329,7 +331,6 @@ step4 <- step3 %>%
     uid_val  = pluck(na.omit(clean_aha_uid),  1, .default = NA_real_),
     name_val = pluck(na.omit(clean_aha_name), 1, .default = NA_real_),
     
-    
     # both sides are constant (0 or 1 unique non-NA), and if both present, they match
     valid_aha = uid_u <= 1 & name_u <= 1 &
       (uid_u == 0 | name_u == 0 | uid_val == name_val)
@@ -350,17 +351,14 @@ step4 <- step3 %>%
       TRUE ~ coalesce(na_if(clean_aha_uid, 0),
                       na_if(clean_aha_name, 0),
                       clean_aha)
-    ),
-    # Count how many would be filled
-    n_to_fill = sum(!is.na(potential_fill) & (is.na(clean_aha) | clean_aha == 0))
+    )
   ) %>%
+  ungroup() %>%
   mutate(
     clean_aha = new_aha
     ) %>%
-  select(-potential_fill, -n_to_fill) %>%
-  ungroup() %>%
-  select(-c(fillable_group,clean_aha_uid, valid_aha, uid_u, name_u, uid_val, name_val)) 
-
+  select(-c(fillable_group,clean_aha_uid, valid_aha, uid_u, name_u, uid_val, 
+            name_val)) 
 
 step5 <- step4 %>% group_by(ahanumber, year) %>%
   mutate(
@@ -516,8 +514,23 @@ step9 <- step8 %>%
   ungroup() %>%
   mutate(clean_aha = clean_filled) %>% select(-clean_filled,-aha_before, -aha_after )
 
+step10 <- step9 %>% 
+  group_by(entity_uniqueid) %>%
+  mutate(
+    aha_before = zoo::na.locf(clean_aha, na.rm = FALSE),
+    aha_after  = zoo::na.locf(clean_aha, fromLast = TRUE, na.rm = FALSE)
+  ) %>%
+  ungroup() %>%
+  group_by(ahanumber, year) %>%
+  mutate(
+    clean_filled = case_when(
+      is.na(clean_aha) & !is.na(aha_before) & !is.na(aha_after) & aha_before == aha_after ~ aha_before,
+      TRUE ~ clean_aha)) %>%
+  ungroup() %>% 
+  mutate(clean_aha = clean_filled) %>% select(-clean_filled,-aha_before, -aha_after )
+
 ### CHECK OUTPUT
-temp_export <- step9 %>% 
+temp_export <- step10 %>% 
   rename(str_ccn_himss = medicarenumber,
          ccn_himss = mcrnum.x,
          ccn_aha = mcrnum.y,
