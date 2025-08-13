@@ -345,18 +345,25 @@ step4 <- step3 %>%
       
       # prefer UID when the pair is consistent
       valid_aha & uid_u == 1                 ~ uid_val,
-      valid_aha & uid_u == 0 & name_u == 1   ~ name_val,
+      valid_aha & uid_u == 0 & name_u == 1 & jw_sim >=.85 ~ name_val,
       
       # fallback: prioritize uid, then name, then existing
-      TRUE ~ coalesce(na_if(clean_aha_uid, 0),
-                      na_if(clean_aha_name, 0),
-                      clean_aha)
+      TRUE ~ clean_aha #coalesce(na_if(clean_aha_uid, 0),
+                     # na_if(clean_aha_name, 0),
+                     # clean_aha)
     )
   ) %>%
   ungroup() %>%
+  select(-fillable_group) %>%
+  group_by(new_aha, year) %>%
   mutate(
-    clean_aha = new_aha
+    fillable_group = n_distinct(entity_uniqueid[new_aha], na.rm = TRUE) == 1
     ) %>%
+  ungroup() %>%
+  mutate(
+    clean_aha = ifelse(fillable_group, new_aha, clean_aha)
+    ) %>% #%>% filter(clean_aha == 6431790) %>% 
+  #select(year, sys_aha, clean_aha, new_aha, clean_aha_uid,clean_aha_name, entity_name, mname, uid_u, name_u)
   select(-c(fillable_group,clean_aha_uid, valid_aha, uid_u, name_u, uid_val, 
             name_val)) 
 
