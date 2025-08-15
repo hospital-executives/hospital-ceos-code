@@ -150,12 +150,6 @@ hospitals.loc[
 
 ## (ZIP, NAME) : AHA - removed; did not add filled_ahas
 
-
-## delete when done
-import copy
-hospitals_backup = copy.deepcopy(hospitals)
-## delete o here
-
 ## USE NAME TO FIND CLOSE MATCH ON ADDRESS
 name_to_addresses = defaultdict(list)
 for _, row in df1.iterrows():
@@ -297,6 +291,10 @@ with open(key_path, 'r') as file:
 filled_google = hlp.geocode_addresses(unfilled_api, data_path, api_key)
 
 ### create list of missing aha numbers and their coordinates
+filled_census['geocoded'] = False
+filled_api['geocoded'] = False
+filled_google['geocoded'] = True
+
 locations = pd.concat([filled_census, filled_api,filled_google], ignore_index=True)
 
 hospitals['_row_id'] = range(len(hospitals))
