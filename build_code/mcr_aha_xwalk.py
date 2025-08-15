@@ -291,10 +291,6 @@ with open(key_path, 'r') as file:
 filled_google = hlp.geocode_addresses(unfilled_api, data_path, api_key)
 
 ### create list of missing aha numbers and their coordinates
-filled_census['geocoded'] = False
-filled_api['geocoded'] = False
-filled_google['geocoded'] = True
-
 locations = pd.concat([filled_census, filled_api,filled_google], ignore_index=True)
 
 hospitals['_row_id'] = range(len(hospitals))
@@ -324,6 +320,10 @@ filled_na.loc[
     'fuzzy_flag'
 ] = 0
 pre_filled = hospitals[hospitals['filled_aha'].notna()]
+
+# indicator for geocoding
+pre_filled['geocoded'] = False
+filled_na['geocoded'] = True
 
 combined_df = pd.concat([pre_filled, filled_na], ignore_index=True)\
 .drop_duplicates()
