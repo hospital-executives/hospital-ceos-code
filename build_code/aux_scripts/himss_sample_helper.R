@@ -76,7 +76,10 @@ extract_sampled_data <- function(df, sampled_results) {
     # Filter the original dataset for the sampled IDs
     sampled_dfs[[title]] <- df %>%
       filter(contact_uniqueid %in% sampled_ids) %>%
-      select(contact_uniqueid,firstname,lastname, year, title_standardized, title, entity_name, entity_state)
+      select(contact_uniqueid,firstname,lastname, year, 
+             title_standardized, title, entity_name, entity_state, 
+             mname, entity_type) %>%
+      rename(himss_name = entity_name, aha_name = mname)
   }
   
   return(sampled_dfs)

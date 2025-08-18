@@ -33,10 +33,16 @@ source(paste0(code_directory,"/himss_sample_helper.R"))
 # load cleaned data
 df <- read_feather(paste0(derived_data, '/final_confirmed_aha_final.feather'))
 
+updated_df <- df %>%
+  group_by(contact_uniqueid, year) %>%
+  mutate(num_titles = n_distinct(title_standardized)) %>%
+  ungroup() %>%
+  filter(!(title_standardized == "CIO Reports to" & num_titles > 1))
+
 ## process titles
-check_titles(df, sample_dict)
+check_titles(updated_df, sample_dict)
 valid_titles <- names(sample_dict)[sample_dict > 0]
-df_indicators <- df %>%
+df_indicators <- updated_df %>%
   mutate(value = 1) %>%
   distinct(contact_uniqueid, title_standardized, .keep_all = TRUE) %>%
   pivot_wider(names_from = title_standardized, 
@@ -46,12 +52,11 @@ df_indicators <- df %>%
   group_by(contact_uniqueid) %>%
   summarise(across(starts_with("has_"), max))
 
-years <- unique(df$year)
-
+years <- unique(updated_df$year)
 
 # Apply function
 sampled_results <- sample_ids_by_title(df_indicators, sample_dict)
-sampled_dataframes <- extract_sampled_data(df, sampled_results)
+sampled_dataframes <- extract_sampled_data(updated_df, sampled_results)
 
 # Apply to each subset in sampled_dataframes
 sampled_dataframes_filled <- lapply(sampled_dataframes, fill_missing_years, years = years)
