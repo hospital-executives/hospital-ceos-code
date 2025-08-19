@@ -13,11 +13,15 @@ library(rstudioapi)
 
 rm(list = ls())
 
+args <- commandArgs(trailingOnly = TRUE)
+code_path <- args[1]
+data_path <- paste0(args[2], "/_data/")
+
 ## set up scripts
 if (rstudioapi::isAvailable()) {
   script_directory <- dirname(rstudioapi::getActiveDocumentContext()$path)
 } else {
-  script_directory <- params$code_dir
+  script_directory <- code_path
 }
 config_path <- file.path(script_directory, "config.R")
 source(config_path)
@@ -245,7 +249,10 @@ step2 <- step1b %>%
   filter(assign_aha) %>%
   select(ahanumber, entity_uniqueid) %>% mutate(clean_aha = ahanumber) %>%
   right_join(step1b %>% mutate(ahanumber = sys_aha), by = c("ahanumber", "entity_uniqueid")) %>%
-  mutate(clean_aha = coalesce(clean_aha.y, clean_aha.x)) %>%
+  mutate(clean_aha = coalesce(
+    clean_aha.y,
+    if_else(jw_sim >= 0.7, clean_aha.x, NA)
+  )) %>%
   select(-clean_aha.x, -clean_aha.y) %>%
   group_by(ahanumber, year) %>%
   mutate(
@@ -391,7 +398,7 @@ step5 <- step4 %>% group_by(ahanumber, year) %>%
   mutate(
     clean_aha = if (all(is.na(clean_aha))) {
       case_when(
-        is_unique_match ~ ahanumber,
+        is_unique_match & jw_sim >= .75 ~ ahanumber,
         n_match == 1 ~ 0,
         TRUE ~ NA_real_
       )
@@ -534,10 +541,12 @@ step10 <- step9 %>%
       is.na(clean_aha) & !is.na(aha_before) & !is.na(aha_after) & aha_before == aha_after ~ aha_before,
       TRUE ~ clean_aha)) %>%
   ungroup() %>% 
-  mutate(clean_aha = clean_filled) %>% select(-clean_filled,-aha_before, -aha_after )
+  mutate(clean_aha = clean_filled) %>% 
+  select(-clean_filled,-aha_before, -aha_after )
 
-### CHECK OUTPUT
-temp_export <- step10 %>% 
+#### Clean Campus AHA
+hospital_df <- step10 %>% 
+  # clean + create var names for export
   rename(str_ccn_himss = medicarenumber,
          ccn_himss = mcrnum.x,
          ccn_aha = mcrnum.y,
@@ -553,13 +562,168 @@ temp_export <- step10 %>%
       is.na(py_fuzzy_flag) ~ NA, 
       TRUE ~ !is.na(clean_aha) & py_fuzzy_flag == 1
     )
-  )
+  ) %>%
+  # subset variables
+  distinct(year, campus_aha, entity_aha, entity_uniqueid, himss_entityid,
+           haentitytypeid, system_id, sysid,
+           entity_name, mname, entity_address, mlocaddr,
+           entity_zip, mloczip_five, latitude, longitude, geocoded,
+           ccn_himss, ccn_aha,entity_fuzzy_flag,campus_fuzzy_flag, py_fuzzy_flag) 
+
+# create var for "true" system id 
+hospital_df <- hospital_df %>% 
+  mutate(himss_sysid = as.numeric(system_id),
+         entity_aha = as.numeric(entity_aha),
+         campus_aha = as.numeric(campus_aha)) %>%
+  group_by(entity_aha, year) %>%
+  mutate(entity_himss_sys =  ifelse(is.na(entity_aha), NA, himss_sysid)) %>%
+  ungroup() %>%
+  group_by(campus_aha, year) %>%
+  mutate(
+    campus_himss_sys = dplyr::first(
+      entity_himss_sys[dplyr::near(entity_aha, campus_aha) & !is.na(entity_himss_sys)],
+      default = NA_real_
+    )
+  ) %>% ungroup() %>%
+  mutate(real_campus_aha = 
+           ifelse(
+             himss_sysid == campus_himss_sys, campus_aha, NA))
+
+# matched to campus since himss system ID matches "true" hospital
+sys_matches <- hospital_df %>% filter(himss_sysid == campus_himss_sys)
+
+# matched to campus since entity is assigned
+assigned_matches <- hospital_df %>% filter(!is.na(campus_aha)) %>%
+  filter((!is.na(entity_aha)))
+
+name_matches <-  hospital_df %>% 
+  select(campus_aha, entity_aha, entity_name, mname, entity_address, mlocaddr,
+         year, entity_uniqueid, haentitytypeid, himss_entityid) %>%
+  mutate(
+    add_sim = stringsim(entity_address, mlocaddr, method = "jw", p = 0.1), 
+    name_sim = stringsim(entity_name, mname, method = "jw", p = 0.1),
+    real_campus_aha = ifelse(name_sim >= .85, campus_aha, NA)) %>% 
+  filter(is.na(entity_aha) & real_campus_aha == campus_aha & !is.na(campus_aha))
+
+## aggregate all currently matched
+curr_matches <- rbind(assigned_matches %>% 
+                        distinct(entity_uniqueid, year, campus_aha, himss_entityid),
+                      name_matches %>% 
+                        distinct(entity_uniqueid, year,campus_aha, himss_entityid),
+                      sys_matches %>% 
+                        distinct(entity_uniqueid, year,campus_aha, himss_entityid)) %>%
+  distinct()
+
+## matched on name + address similarity (lower name threshold)
+add_name_matches <- hospital_df %>% filter(!is.na(campus_aha)) %>% 
+  anti_join(curr_matches)  %>% 
+  select(campus_aha, entity_aha, entity_name, mname, entity_address, mlocaddr,
+         year, entity_uniqueid, haentitytypeid, himss_entityid) %>%  
+  mutate(
+           add_sim = stringsim(entity_address, mlocaddr, method = "jw", p = 0.1), 
+           name_sim = stringsim(entity_name, mname, method = "jw", p = 0.1),
+           real_campus_aha = ifelse(add_sim >= .95 & name_sim >= .75, campus_aha, NA)) %>% 
+  filter(is.na(entity_aha) & real_campus_aha == campus_aha & !is.na(campus_aha))
+
+post_add_matches <- rbind(curr_matches, 
+                          add_name_matches %>% 
+                            distinct(entity_uniqueid, year, campus_aha, himss_entityid)) %>%
+  distinct()
+
+## matched on name (lower name threshold) if campus_aha not assigned via geocoding
+not_geocoded <- hospital_df %>% filter(!is.na(campus_aha)) %>%
+  anti_join(post_add_matches) %>%
+  filter(geocoded == "False") %>% 
+  select(mname, entity_name, mlocaddr, entity_address, 
+         entity_aha, year, entity_uniqueid, campus_aha, himss_entityid) %>%
+  mutate(mname = as.character(mname), entity_name = as.character(entity_name),
+         jw_sim = ifelse(
+           !is.na(mname),
+           1 - stringdist(entity_name, mname, method = "jw", p = 0.1),
+           NA_real_
+         )
+  ) %>% filter(jw_sim >= .75)
+post_geo_matches <- rbind(post_add_matches, 
+                          not_geocoded %>% 
+                            distinct(entity_uniqueid, year, campus_aha, himss_entityid)) %>%
+  distinct()
+
+## match on additional name similarities
+name_sim_matches <- hospital_df %>% filter(!is.na(campus_aha)) %>%
+  anti_join(post_geo_matches) %>%
+  left_join(aha_data) %>%
+  distinct(entity_name, mname, campus_aha, entity_aha, mlocaddr, entity_address, 
+           mloccity, himss_sysid, campus_himss_sys, year, entity_uniqueid,
+           himss_entityid)  %>%  
+  mutate(
+    entity_name = as.character(entity_name),
+    mname = as.character(mname),
+    
+    # tokenize into words (letters/numbers only, lowercased)
+    tokens1 = str_split(str_squish(str_to_lower(str_replace_all(entity_name, "[^\\p{L}\\p{N}]+", " "))), " "),
+    tokens2 = str_split(str_squish(str_to_lower(str_replace_all(mname, "[^\\p{L}\\p{N}]+", " "))), " "),
+    
+    # choose "first word", skipping saint variants
+    first_himss = map_chr(tokens1, ~{
+      if (length(.x) == 0) return(NA_character_)
+      if (.x[1] %in% c("st","st.","saint") && length(.x) > 1) .x[2] else .x[1]
+    }),
+    first_aha = map_chr(tokens2, ~{
+      if (length(.x) == 0) return(NA_character_)
+      if (.x[1] %in% c("st","st.","saint") && length(.x) > 1) .x[2] else .x[1]
+    }),
+    
+    # JW similarity and flag
+    jw_first = stringsim(first_aha, first_himss, method = "jw"),
+    jw_first_flag  = !is.na(jw_first) & jw_first >= .95,
+    
+    # create variables and flag for mname is in entity_name
+    mname_clean   = str_to_lower(str_replace_all(mname, "[[:punct:]]", "")),
+    entity_clean  = str_to_lower(str_replace_all(entity_name, "[[:punct:]]", "")),
+    name_in_flag  = str_detect(entity_clean, fixed(mname_clean))
+  ) %>% filter(jw_first_flag|name_in_flag)
+
+post_sim_matches <- rbind(post_geo_matches, 
+                          name_sim_matches %>% 
+                            distinct(entity_uniqueid, year, campus_aha, himss_entityid)) %>%
+  distinct()
+
+cleaned_hospitals <- hospital_df %>%
+  left_join(post_sim_matches %>% rename(real_campus_aha = campus_aha)) %>%
+  group_by(entity_uniqueid) %>%
+  mutate(
+    campus_before = zoo::na.locf(real_campus_aha, na.rm = FALSE),
+    campus_after  = zoo::na.locf(real_campus_aha, fromLast = TRUE, na.rm = FALSE),
+    real_campus_aha = case_when(
+      is.na(real_campus_aha) &
+        ((!is.na(campus_before) & !is.na(campus_after) & campus_before == campus_after) | 
+           (!is.na(campus_before) & is.na(campus_after))) ~ campus_before,
+      is.na(real_campus_aha) &is.na(campus_before) & !is.na(campus_after) ~ campus_after,
+      TRUE ~ real_campus_aha
+    )
+  ) %>% 
+  filter(!is.na(real_campus_aha)) %>%
+  distinct(entity_name, mname, campus_aha, entity_aha, mlocaddr, entity_address,
+           real_campus_aha, year, entity_uniqueid, himss_entityid) %>% 
+  arrange(real_campus_aha, entity_uniqueid)
+
+post_entity_matches <- rbind(post_sim_matches, 
+                             cleaned_hospitals %>% 
+                             distinct(entity_uniqueid, year, real_campus_aha, himss_entityid) %>%
+                             rename(campus_aha = real_campus_aha)) %>%
+  distinct()
 
 
-xwalk_export <- temp_export %>%
-  distinct(year, entity_uniqueid, entity_name, mname, entity_address, mlocaddr,
-           entity_zip, mloczip_five,
-           ccn_himss, ccn_aha, campus_aha,entity_fuzzy_flag,campus_fuzzy_flag) %>%
+### CHECK OUTPUT
+xwalk_export <- hospital_df %>%
+  rename(unfiltered_campus_aha = campus_aha) %>%
+  left_join(post_entity_matches) %>%
+  mutate(haentitytypeid = as.numeric(haentitytypeid),
+        campus_aha = ifelse(haentitytypeid <= 3 | haentitytypeid == 6,campus_aha,NA)) %>%
+  distinct(year, himss_entityid, unfiltered_campus_aha, campus_aha, entity_aha,
+           entity_uniqueid, entity_name, mname, entity_address, mlocaddr,
+           entity_zip, mloczip_five, latitude, longitude,
+           ccn_himss, ccn_aha,entity_fuzzy_flag,campus_fuzzy_flag, py_fuzzy_flag) %>%
   rename(
          name_himss = entity_name,
          name_aha = mname,
@@ -569,115 +733,4 @@ xwalk_export <- temp_export %>%
          zip_aha = mloczip_five) 
 
 write_feather(xwalk_export, paste0(derived_data,'/himss_aha_xwalk.feather'))
-
-# CREATE HIMSS MERGE
-export_xwalk <- temp_export %>% distinct(himss_entityid, campus_aha, entity_aha, 
-                                         latitude, longitude, 
-                                         campus_fuzzy_flag, entity_fuzzy_flag, py_fuzzy_flag ) %>%
-  group_by(himss_entityid) %>%
-  slice(1) %>% 
-  ungroup() %>%
-  mutate(ahanumber = campus_aha) %>%
-  rename(geo_lat = latitude,
-         geo_lon = longitude)
-
-haentity <- read_feather(paste0(auxiliary_data,"/haentity.feather"))
-
-merged_haentity <- haentity %>% select(-ahanumber) %>%
-  mutate(himss_entityid = as.numeric(himss_entityid),
-         entity_uniqueid = as.numeric(entity_uniqueid),
-         year = as.numeric(year)) %>%
-  left_join(export_xwalk) %>% 
-  select(-any_of(setdiff(names(aha_data), c("year", "ahanumber")))) %>%
-  left_join(aha_data) %>%
-  mutate(is_hospital = !is.na(entity_aha))
-
-write_feather(merged_haentity, paste0(derived_data,'/himss_aha_hospitals_final.feather'))
-merged_haentity <- merged_haentity %>% clean_names() 
-#write_dta(merged_haentity, paste0(derived_data,'/himss_aha_hospitals_final.dta'))
-
-## CREATE LEVEL EXPORT
-himss <- read_feather(paste0(derived_data, '/final_himss.feather'))
-himss_mini <- himss %>% # confirmed
-  select(himss_entityid, year, id, entity_uniqueid) %>%
-  mutate(
-    himss_entityid = as.numeric(himss_entityid),
-    year = as.numeric(year)
-  )
-
-himss_to_aha_xwalk <- temp_export %>% distinct(himss_entityid, entity_uniqueid, year, 
-                                      clean_aha, campus_aha, py_fuzzy_flag, latitude, longitude) %>%
-  group_by(himss_entityid) %>%
-             slice(1) %>% ungroup() %>%
-  mutate(ahanumber = campus_aha)  %>%
-  rename(geo_lat = latitude,
-         geo_lon = longitude)
-
-
-# Step 1: Convert both data frames to data.table
-setDT(himss_mini)
-setDT(himss_to_aha_xwalk)
-setDT(aha_data)
-setDT(himss)
-
-# Step 3: Perform the left join using data.table syntax
-merged_ahanumber <- merge(
-  himss_mini,
-  himss_to_aha_xwalk,
-  by = c("himss_entityid", "year", "entity_uniqueid"),
-  all.x = TRUE
-)
-
-## left join: 
-merged_ahanumber <- himss_mini %>%
-  left_join(
-    himss_to_aha_xwalk,
-    by = c("himss_entityid", "year", "entity_uniqueid")
-  )
-
-merged_aha <- merged_ahanumber %>%
-  left_join(
-    aha_data %>% mutate(
-      ahanumber = as.numeric(str_remove_all(ahanumber, "[A-Za-z]")),
-      year = as.numeric(year)),
-    by = c("ahanumber", "year")
-  )
-
-himss_without_aha <-  himss %>%
-  select(-all_of(setdiff(intersect(names(himss), names(merged_aha)), 
-                         c("id", "year", "himss_entityid", "entity_uniqueid"))))
-
-final_merged <- himss_without_aha %>%
-  left_join(
-    merged_aha %>% select(-c("year", "himss_entityid", "entity_uniqueid")),
-    by = "id"
-  )
-
-final_merged <- final_merged %>%
-  rename(ccn_aha = mcrnum,
-         ccn_himss = medicarenumber) %>%
-  mutate(
-    campus_fuzzy_flag = case_when(
-      is.na(py_fuzzy_flag) ~ NA, 
-      TRUE ~ !is.na(campus_aha) & py_fuzzy_flag == 1
-    ),
-    entity_fuzzy_flag = case_when(
-      is.na(py_fuzzy_flag) ~ NA, 
-      TRUE ~ !is.na(clean_aha) & py_fuzzy_flag == 1
-    ),
-    is_hospital = !is.na(clean_aha),
-    entity_aha = if_else(clean_aha == 0, NA_real_, clean_aha))
-    
-
-write_feather(final_merged,paste0(derived_data,'/final_aha.feather'))
-#write_feather(final_merged,paste0(derived_data,'/final_confirmed_aha_update_530.feather'))
-
-final_merged <- final_merged %>% clean_names() 
-write_dta(final_merged,paste0(derived_data, '/final_aha.dta'))
-#write_dta(final_merged,paste0(derived_data, '/final_confirmed_aha_update_530.dta'))
-
-final_confirmed <- final_merged %>% filter(confirmed) %>% clean_names() 
-write_feather(final_confirmed,paste0(derived_data,'/final_confirmed_aha.feather'))
-write_dta(final_confirmed,paste0(derived_data, '/final_confirmed_aha.dta'))
-
 

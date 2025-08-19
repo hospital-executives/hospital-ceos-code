@@ -1,0 +1,136 @@
+## libraries
+library(rstudioapi)
+
+rm(list = ls())
+
+args <- commandArgs(trailingOnly = TRUE)
+code_path <- args[1]
+data_path <- paste0(args[2], "/_data/")
+
+## set up scripts
+if (rstudioapi::isAvailable()) {
+  script_directory <- dirname(rstudioapi::getActiveDocumentContext()$path)
+} else {
+  script_directory <- code_path
+}
+config_path <- file.path(script_directory, "config.R")
+source(config_path)
+rm(script_directory, config_path)
+
+temp_export <- read_feather(paste0(derived_data,'/himss_aha_xwalk.feather'))
+export_xwalk <- temp_export %>% 
+  distinct(himss_entityid, campus_aha, entity_aha, latitude, longitude, 
+           campus_fuzzy_flag, entity_fuzzy_flag, py_fuzzy_flag, unfiltered_campus_aha) %>%
+  group_by(himss_entityid) %>%
+  slice(1) %>% 
+  ungroup() %>%
+  mutate(ahanumber = campus_aha) %>%
+  rename(geo_lat = latitude,
+         geo_lon = longitude)
+
+haentity <- read_feather(paste0(auxiliary_data,"/haentity.feather"))
+
+merged_haentity <- haentity %>% select(-ahanumber) %>%
+  mutate(himss_entityid = as.numeric(himss_entityid),
+         entity_uniqueid = as.numeric(entity_uniqueid),
+         year = as.numeric(year)) %>%
+  left_join(export_xwalk) %>% 
+  select(-any_of(setdiff(names(aha_data), c("year", "ahanumber")))) %>%
+  left_join(aha_data) %>%
+  mutate(is_hospital = !is.na(entity_aha))
+
+write_feather(merged_haentity, paste0(derived_data,'/himss_aha_hospitals_final.feather'))
+merged_haentity <- merged_haentity %>% clean_names() 
+write_dta(merged_haentity, paste0(derived_data,'/himss_aha_hospitals_final.dta'))
+
+## CREATE LEVEL EXPORT
+himss <- read_feather(paste0(derived_data, '/final_himss.feather'))
+
+drop_cio_reports_to <- himss %>%
+  group_by(contact_uniqueid, year) %>%
+  mutate(num_titles = n_distinct(title_standardized)) %>%
+  ungroup() %>%
+  filter(!(title_standardized == "CIO Reports to" & num_titles > 1))
+
+himss_mini <- drop_cio_reports_to %>% # confirmed
+  select(himss_entityid, year, id, entity_uniqueid) %>%
+  mutate(
+    himss_entityid = as.numeric(himss_entityid),
+    year = as.numeric(year)
+  )
+
+himss_to_aha_xwalk <- temp_export %>% rename(clean_aha = entity_aha) %>%
+  distinct(himss_entityid, entity_uniqueid, year, clean_aha, campus_aha, 
+           py_fuzzy_flag, latitude, longitude, unfiltered_campus_aha) %>%
+  group_by(himss_entityid) %>%
+  slice(1) %>% ungroup() %>%
+  mutate(ahanumber = campus_aha)  %>%
+  rename(geo_lat = latitude,
+         geo_lon = longitude)
+
+
+# Step 1: Convert both data frames to data.table
+setDT(himss_mini)
+setDT(himss_to_aha_xwalk)
+setDT(aha_data)
+setDT(himss)
+
+# Step 3: Perform the left join using data.table syntax
+merged_ahanumber <- merge(
+  himss_mini,
+  himss_to_aha_xwalk,
+  by = c("himss_entityid", "year", "entity_uniqueid"),
+  all.x = TRUE
+)
+
+## left join: 
+merged_ahanumber <- himss_mini %>%
+  left_join(
+    himss_to_aha_xwalk,
+    by = c("himss_entityid", "year", "entity_uniqueid")
+  )
+
+merged_aha <- merged_ahanumber %>%
+  left_join(
+    aha_data %>% mutate(
+      ahanumber = as.numeric(str_remove_all(ahanumber, "[A-Za-z]")),
+      year = as.numeric(year)),
+    by = c("ahanumber", "year")
+  )
+
+himss_without_aha <-  himss %>%
+  select(-all_of(setdiff(intersect(names(himss), names(merged_aha)), 
+                         c("id", "year", "himss_entityid", "entity_uniqueid"))))
+
+final_merged <- himss_without_aha %>%
+  left_join(
+    merged_aha %>% select(-c("year", "himss_entityid", "entity_uniqueid")),
+    by = "id"
+  )
+
+final_merged <- final_merged %>%
+  rename(ccn_aha = mcrnum,
+         ccn_himss = medicarenumber) %>%
+  mutate(
+    campus_fuzzy_flag = case_when(
+      is.na(py_fuzzy_flag) ~ NA, 
+      TRUE ~ !is.na(campus_aha) & py_fuzzy_flag == 1
+    ),
+    entity_fuzzy_flag = case_when(
+      is.na(py_fuzzy_flag) ~ NA, 
+      TRUE ~ !is.na(clean_aha) & py_fuzzy_flag == 1
+    ),
+    is_hospital = !is.na(clean_aha),
+    entity_aha = if_else(clean_aha == 0, NA_real_, clean_aha))
+
+
+write_feather(final_merged,paste0(derived_data,'/final_aha.feather'))
+
+final_merged <- final_merged %>% clean_names() 
+write_dta(final_merged,paste0(derived_data, '/final_aha.dta'))
+
+final_confirmed <- final_merged %>% filter(confirmed) %>% clean_names() 
+write_feather(final_confirmed,paste0(derived_data,'/final_confirmed_aha.feather'))
+write_dta(final_confirmed,paste0(derived_data, '/final_confirmed_aha.dta'))
+
+
