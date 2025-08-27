@@ -29,13 +29,19 @@ export_xwalk <- temp_export %>%
          geo_lon = longitude)
 
 haentity <- read_feather(paste0(auxiliary_data,"/haentity.feather"))
+aha_data <- read_feather(paste0(auxiliary_data, "/aha_data_clean.feather"))
 
 merged_haentity <- haentity %>% select(-ahanumber) %>%
   mutate(himss_entityid = as.numeric(himss_entityid),
          entity_uniqueid = as.numeric(entity_uniqueid),
          year = as.numeric(year)) %>%
   left_join(export_xwalk) %>% 
-  select(-any_of(setdiff(names(aha_data), c("year", "ahanumber")))) %>%
+  select(-any_of(setdiff(names(aha_data), c("year")))) %>%
+  mutate(ahanumber = case_when(
+    !is.na(entity_aha) ~ entity_aha,
+    !is.na(campus_aha) ~ campus_aha,
+    TRUE ~ unfiltered_campus_aha
+  )) %>%
   left_join(aha_data) %>%
   mutate(is_hospital = !is.na(entity_aha))
 

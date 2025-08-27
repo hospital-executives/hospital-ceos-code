@@ -190,7 +190,7 @@ $(FINAL_INDIVIDUAL_STAMP): $(FUZZY_STAMP)
 # Step 10: 
 assign_aha: $(MAKE_AHA_STAMP)
 $(MAKE_AHA_STAMP): $(FINAL_INDIVIDUAL_STAMP)
-	$(call safe_run,python3 mcr_aha_xwalk.py $(DATA_DIR) $(AHA_OUTPUT))
+	$(call safe_run,python mcr_aha_xwalk.py $(DATA_DIR) $(AHA_OUTPUT))
 	touch $(MAKE_AHA_STAMP)
 
 clean_aha: $(CLEAN_AHA_STAMP)

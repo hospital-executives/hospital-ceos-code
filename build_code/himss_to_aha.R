@@ -29,7 +29,7 @@ rm(script_directory, config_path)
 
 #### Pull in AHA<>MCR Crosswalk 2 - it should be the case that after updating
 #### zip codes that all assigned AHAs in haentityhosp are assigned here
-raw_xwalk <- read.csv(paste0(auxiliary_data, "/aha_himss_xwalk.csv"))
+raw_xwalk <- read.csv(paste0(auxiliary_data, "/aha_himss_xwalk_old.csv"))
 xwalk2 <- raw_xwalk %>%
   mutate(ahanumber = filled_aha) %>%
   group_by(entity_uniqueid) %>%
@@ -136,6 +136,8 @@ aha_data <- aha_data %>%
          mcrnum = str_remove_all(mcrnum, "[A-Za-z]"),
          mcrnum = as.numeric(mcrnum))
 
+write_feather(aha_data , paste0(auxiliary_data, "/aha_data_clean.feather"))
+
 ##### finish xwalk clean #####
 combined_ha <- xwalk2 %>% 
   mutate(clean_name = entity_name %>%
@@ -155,23 +157,35 @@ merged <- not_na %>% left_join(aha_data,
                                by = c("ahanumber", "year")) %>%
   mutate(not_in_aha = if_else(is.na(mname) & is.na(mloczip), 1L, 0L))
 
+# step 0 - assign if fuzzy_flag = 0
+step0 <- merged %>%
+  group_by(ahanumber, year) %>%
+  mutate(unique_flag = sum(exact_match) == 1) %>%
+  ungroup() %>%
+  mutate(sys_aha = ahanumber,
+         clean_aha = ifelse(exact_match == 1 & !is.na(exact_match) & unique_flag, sys_aha, NA)) %>%
+  select(-unique_flag)
+
 ## step 1 - assign aha id if mname == entity_name
-step1 <- merged %>%
-  mutate(sys_aha = ahanumber) %>%
+step1 <- step0 %>%
+  #mutate(sys_aha = ahanumber) %>%
   group_by(ahanumber, year) %>%
   mutate(
     # Count how many rows meet the match criteria
     n_match = sum(entity_name == mname & haentitytypeid == 1, na.rm = TRUE),
     
     # Mark the unique matching row (TRUE only if it's the one valid match)
-    is_unique_match = (n_match == 1 & entity_name == mname & haentitytypeid == 1)
+    is_unique_match = (n_match == 1 & entity_name == mname & haentitytypeid == 1),
+    
+    empty_aha = all(is.na(clean_aha))
   ) %>%
+  ungroup() %>%
   mutate(
     # Assign clean_aha: ahanumber to the unique match, 0 to others in same group if a match exists
     clean_aha = case_when(
-      is_unique_match ~ ahanumber,
-      n_match == 1 ~ 0,
-      TRUE ~ NA_real_
+      is_unique_match & empty_aha ~ ahanumber,
+      n_match & empty_aha == 1 ~ 0,
+      TRUE ~ clean_aha
     )
   ) %>% 
   ungroup() %>%
@@ -199,7 +213,7 @@ step1b <- step1 %>%
   ) %>%
   group_by(ahanumber, year) %>%
   mutate(
-      valid_jw = jw_sim >= 0.8,
+      valid_jw = jw_sim >= 0.85,
       max_sim = if (any(valid_jw, na.rm = TRUE)) max(jw_sim[valid_jw], na.rm = TRUE) else NA_real_,
       is_best = valid_jw & jw_sim == max_sim,
     # get entities in city
@@ -251,7 +265,7 @@ step2 <- step1b %>%
   right_join(step1b %>% mutate(ahanumber = sys_aha), by = c("ahanumber", "entity_uniqueid")) %>%
   mutate(clean_aha = coalesce(
     clean_aha.y,
-    if_else(jw_sim >= 0.7, clean_aha.x, NA)
+    if_else(jw_sim >= 0.85, clean_aha.x, NA)
   )) %>%
   select(-clean_aha.x, -clean_aha.y) %>%
   group_by(ahanumber, year) %>%
@@ -309,21 +323,55 @@ step3 <- step2 %>%
   ) %>%
   ungroup()
 
+
+step4 <- step3 %>%
+  mutate(
+    entity_name = as.character(entity_name),
+    mname = as.character(mname),
+    mname_clean   = str_to_lower(str_replace_all(mname, "[[:punct:]]", "")),
+    entity_clean  = str_to_lower(str_replace_all(entity_name, "[[:punct:]]", "")),
+    name_in_flag  = str_detect(entity_clean, fixed(mname_clean)) | str_detect(mname_clean, fixed(entity_clean))
+  ) %>%
+  group_by(ahanumber, year) %>%
+  mutate(
+    fillable_group = all(is.na(clean_aha) | clean_aha == 0 | clean_aha != ahanumber),
+    n_hospital_match = sum(name_in_flag & haentitytypeid == 1 & fillable_group, na.rm = TRUE),
+    is_unique_match = (n_hospital_match == 1 & name_in_flag & haentitytypeid == 1 & fillable_group)
+  ) %>%
+  ungroup() %>%
+  mutate(
+    clean_aha = case_when(
+      n_hospital_match == 1 & is_unique_match ~ ahanumber,
+      n_hospital_match == 1 & !is_unique_match ~ 0,
+      TRUE ~ clean_aha
+    )) %>%
+  select(-fillable_group) %>% 
+  group_by(ahanumber, year) %>%
+  mutate(
+    has_match = any(clean_aha == sys_aha, na.rm = TRUE),
+    clean_aha = case_when(
+      has_match & is.na(clean_aha) ~ 0,
+      TRUE ~ clean_aha
+    )
+  ) %>%
+  ungroup()
+
+
 ### clean up and backfill ahas
-uid_clean <- step3 %>%
+uid_clean <- step4 %>%
   filter(!is.na(clean_aha), clean_aha != 0) %>%
   select(entity_uniqueid, clean_aha_uid = clean_aha) %>%
   distinct()
 
 # Step 2: Get clean_aha values by entity_name
-name_clean <- step3 %>%
+name_clean <- step4 %>%
   filter(haentitytypeid == 1) %>%
   filter(!is.na(clean_aha), clean_aha != 0) %>%
   select(entity_name, clean_aha_name = clean_aha) %>%
   distinct()
 
 # Step 3: Left join both, with entity_uniqueid taking priority
-step4 <- step3 %>%
+step5 <- step4 %>%
   left_join(uid_clean, by = "entity_uniqueid") %>%
   left_join(name_clean, by = "entity_name") %>%
   group_by(sys_aha, year) %>%
@@ -374,7 +422,51 @@ step4 <- step3 %>%
   select(-c(fillable_group,clean_aha_uid, valid_aha, uid_u, name_u, uid_val, 
             name_val)) 
 
-step5 <- step4 %>% group_by(ahanumber, year) %>%
+step6 <- step5 %>% arrange(entity_uniqueid, year) %>%
+  group_by(sys_aha, year) %>%
+  mutate(
+    fillable_group = all(is.na(clean_aha) | clean_aha == 0),
+    
+    # prioritize haentitytypeid == 1
+    n_hospital_match = sum(haentitytypeid == 1 & fillable_group, na.rm = TRUE),
+    is_unique_match = (n_hospital_match == 1 & haentitytypeid == 1 & fillable_group),
+    
+    fillable_group = fillable_group &
+      n_distinct(entity_uniqueid[fillable_group], na.rm = TRUE) == 1
+  ) %>%
+  arrange(entity_uniqueid, year) %>%
+  group_by(entity_uniqueid) %>%
+  mutate(
+    aha_before = zoo::na.locf(clean_aha, na.rm = FALSE),
+    aha_after  = zoo::na.locf(clean_aha, fromLast = TRUE, na.rm = FALSE),
+    clean_filled = case_when(
+      is_unique_match & aha_before == aha_after ~ aha_before,
+      is_unique_match & is.na(aha_after) ~ aha_before,
+      is_unique_match & is.na(aha_before) ~ aha_after,
+      is.na(clean_aha) & fillable_group & !is.na(aha_before) & !is.na(aha_after) & aha_before == aha_after ~ aha_before,
+      is.na(clean_aha) & fillable_group & is.na(aha_before) ~ aha_after,
+      is.na(clean_aha) & fillable_group & is.na(aha_after) ~ aha_before,
+      TRUE ~ clean_aha
+    )
+  ) %>%
+  ungroup() %>%
+  mutate(clean_aha = clean_filled) %>%
+  select(-fillable_group, -aha_before, -aha_after, - clean_filled) %>%
+  # clean up rare cases where an entity_aha != sys_aha is assigned
+  group_by(clean_aha, year) %>%
+  mutate(multiple_assignment_flag = n_distinct(entity_uniqueid) > 1 & !is.na(clean_aha) & clean_aha != 0) %>%
+  ungroup() %>%
+  group_by(entity_uniqueid) %>%
+  mutate(same_name_flag = any(jw_sim == 1)) %>%
+  ungroup() %>%
+  mutate(clean_aha = case_when(
+    !multiple_assignment_flag ~ clean_aha,
+    multiple_assignment_flag & same_name_flag & !is.na(same_name_flag) ~ clean_aha,
+    multiple_assignment_flag & (!same_name_flag | is.na(same_name_flag)) ~ 0,
+    TRUE ~ clean_aha
+  )) %>% select(-multiple_assignment_flag, -same_name_flag)
+
+step7 <- step6 %>% group_by(ahanumber, year) %>%
   mutate(
     n_match = sum(entity_name == mname & haentitytypeid == 2, na.rm = TRUE),
     is_unique_match = (n_match == 1 & entity_name == mname & haentitytypeid == 2)
@@ -419,7 +511,7 @@ step5 <- step4 %>% group_by(ahanumber, year) %>%
   ) %>%
   ungroup()
 
-step6 <- step5 %>%
+step8 <- step7 %>%
   group_by(ahanumber, entity_uniqueid) %>%
   summarise(has_type2 = any(haentitytypeid == "2"), .groups = "drop") %>%
   group_by(ahanumber) %>%
@@ -431,8 +523,8 @@ step6 <- step5 %>%
   ) %>%
   filter(assign_aha) %>%
   select(ahanumber, entity_uniqueid) %>% mutate(clean_aha = ahanumber) %>%
-  right_join(step5 %>% mutate(ahanumber = sys_aha), by = c("ahanumber", "entity_uniqueid")) %>%
-  mutate(clean_aha = coalesce(clean_aha.y, clean_aha.x)) %>%
+  right_join(step7 %>% mutate(ahanumber = sys_aha), by = c("ahanumber", "entity_uniqueid")) %>%
+  mutate(clean_aha = ifelse(jw_sim >= .85, coalesce(clean_aha.y, clean_aha.x), clean_aha.y)) %>%
   select(-clean_aha.x, -clean_aha.y) %>%
   group_by(ahanumber, year) %>%
   mutate(
@@ -444,7 +536,7 @@ step6 <- step5 %>%
   ) %>%
   ungroup()
 
-step7 <- step6 %>%
+step9 <- step8 %>%
   group_by(ahanumber, year) %>%
   mutate(
     n_best_type2 = sum(is_best & haentitytypeid == "2", na.rm = TRUE),
@@ -482,7 +574,31 @@ step7 <- step6 %>%
   ) %>%
   ungroup()
 
-step8 <- step7 %>% arrange(entity_uniqueid, year) %>%
+step10 <- step9 %>%
+  group_by(ahanumber, year) %>%
+  mutate(
+    fillable_group = all(is.na(clean_aha) | clean_aha == 0 | clean_aha != ahanumber),
+    fillable_group = fillable_group &
+      n_distinct(entity_uniqueid[fillable_group], na.rm = TRUE) == 1
+  ) %>%
+  ungroup() %>%
+  mutate(
+    clean_aha = case_when(
+      fillable_group == 1 & (haentitytypeid <= 3 | haentitytypeid == 6) & jw_sim >= .85 ~ ahanumber,
+      TRUE ~ clean_aha
+    )) %>%
+  select(-fillable_group) %>% 
+  group_by(ahanumber, year) %>%
+  mutate(
+    has_match = any(clean_aha == sys_aha, na.rm = TRUE),
+    clean_aha = case_when(
+      has_match & is.na(clean_aha) ~ 0,
+      TRUE ~ clean_aha
+    )
+  ) %>%
+  ungroup()
+
+step11 <- step10 %>% arrange(entity_uniqueid, year) %>%
   group_by(sys_aha, year) %>%
   mutate(
     fillable_group = all(is.na(clean_aha) | clean_aha == 0),
@@ -504,7 +620,7 @@ step8 <- step7 %>% arrange(entity_uniqueid, year) %>%
   mutate(clean_aha = clean_filled) %>%
   select(-aha_before, -aha_after, -clean_filled)
 
-step9 <- step8 %>%
+step12 <- step11 %>% # ~ 91k before
   group_by(ahanumber, year) %>%
   mutate(still_unfilled = all(is.na(clean_aha)),
          still_unfilled = still_unfilled &
@@ -528,24 +644,8 @@ step9 <- step8 %>%
   ungroup() %>%
   mutate(clean_aha = clean_filled) %>% select(-clean_filled,-aha_before, -aha_after )
 
-step10 <- step9 %>% 
-  group_by(entity_uniqueid) %>%
-  mutate(
-    aha_before = zoo::na.locf(clean_aha, na.rm = FALSE),
-    aha_after  = zoo::na.locf(clean_aha, fromLast = TRUE, na.rm = FALSE)
-  ) %>%
-  ungroup() %>%
-  group_by(ahanumber, year) %>%
-  mutate(
-    clean_filled = case_when(
-      is.na(clean_aha) & !is.na(aha_before) & !is.na(aha_after) & aha_before == aha_after ~ aha_before,
-      TRUE ~ clean_aha)) %>%
-  ungroup() %>% 
-  mutate(clean_aha = clean_filled) %>% 
-  select(-clean_filled,-aha_before, -aha_after )
-
 #### Clean Campus AHA
-hospital_df <- step10 %>% 
+hospital_df <- step12 %>% 
   # clean + create var names for export
   rename(str_ccn_himss = medicarenumber,
          ccn_himss = mcrnum.x,
@@ -574,7 +674,8 @@ hospital_df <- step10 %>%
 hospital_df <- hospital_df %>% 
   mutate(himss_sysid = as.numeric(system_id),
          entity_aha = as.numeric(entity_aha),
-         campus_aha = as.numeric(campus_aha)) %>%
+         campus_aha = as.numeric(campus_aha),
+         campus_aha = ifelse(campus_aha != entity_aha & !is.na(entity_aha), entity_aha, campus_aha)) %>%
   group_by(entity_aha, year) %>%
   mutate(entity_himss_sys =  ifelse(is.na(entity_aha), NA, himss_sysid)) %>%
   ungroup() %>%
@@ -714,7 +815,7 @@ post_entity_matches <- rbind(post_sim_matches,
   distinct()
 
 
-### CHECK OUTPUT
+### CHECK OUTPUT (19486 cases)
 xwalk_export <- hospital_df %>%
   rename(unfiltered_campus_aha = campus_aha) %>%
   left_join(post_entity_matches) %>%
