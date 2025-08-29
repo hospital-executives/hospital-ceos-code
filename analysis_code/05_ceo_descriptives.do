@@ -164,6 +164,9 @@ Goal: 			Compute descriptive stats for CEOs
 		drop if duplicates == 1
 		drop total_dup duplicates 
 		
+		* how many are we working with here?
+		tab forprofit if entity_type=="IDS/RHA"
+		
 		* make a count variable
 		gen count = 1
 	

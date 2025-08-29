@@ -13,7 +13,6 @@ Goal: 			Merge M&A data into hospital-level dataset
 * check setup is complete
 	check_setup
 	
-	
 * PREPARE FOR MERGE  ___________________________________________________________
 
 * load data
@@ -31,19 +30,59 @@ Goal: 			Merge M&A data into hospital-level dataset
 	* keep our own sysid separate
 	rename sysid sysid_orig
 	
+	* pull in SYSTEM information from HIMSS PARENT _____________________________ 
+	preserve 
+	
+		* then tempfile the systems - keep only CEO ID and name, rename to parent
+		glob keepvars entity_uniqueid entity_type entity_name campus_aha
+		* make unique 
+			bysort himss_entityid year: keep if _n == 1
+		keep himss_entityid year $keepvars
+		foreach var in $keepvars {
+			rename `var' `var'_parent
+		}
+		tostring himss_entityid, gen(entity_parentid)
+		drop himss_entityid 
+		tempfile parent_obs
+		save `parent_obs'
+		
+	restore
+	
+	* merge parents onto children
+	merge m:1 entity_parentid year using `parent_obs', gen(_merge_parent) keep(1 3)	
+	
+	* generate system membership variable
+	gen sys_member = 1 if entity_type_parent == "IDS/RHA"
+	replace sys_member = 0 if entity_type_parent == "Single Hospital Health System"
+	
+	* how often is the campus_aha missing for is_hosp and single hos health system parent?
+	count if is_hospital == 1 & missing(campus_aha) & entity_type_parent == "Single Hospital Health System" // never missing
+	
+	* how often is campus_aha not the same for is_hosp and single hos health system parent
+	gen same_entity_aha = entity_aha == campus_aha_parent if entity_type_parent == "Single Hospital Health System"
+	tab same_entity_aha if is_hospital == 1 & entity_type_parent == "Single Hospital Health System" & !missing(campus_aha_parent) // 660 cases where they are different
+	drop same_campus_aha
+	
+	* separate out systems - SAVE AS SEPARATE FILE
+	preserve
+		keep if regexm(entity_type,"IDS/RHA|Single Hospital Health System")
+		keep if inrange(year,2009,2017)
+		drop entity_parentid
+		tostring himss_entityid, gen(entity_parentid)
+		save "${dbdata}/derived/temp/systems_nonharmonized.dta", replace
+	restore
+	drop if regexm(entity_type,"IDS/RHA|Single Hospital Health System")
+	
+	* prepare counts for graphing after merge
 	preserve
 		gen count_entity_aha_all = 1 if !missing(entity_aha)
-		gen count_entity_aha_hosp = 1 if !missing(entity_aha) & entity_type == "Hospital"
+		gen count_entity_aha_hosp = 1 if !missing(entity_aha) & is_hospital == 1
 		gen count_campus_aha_all = 1 if !missing(campus_aha)
-		gen count_campus_aha_hosp = 1 if !missing(campus_aha) & inlist(entity_type,"Single Hospital Health System","IDS/RHA")
+		gen count_campus_aha_hosp = 1 if !missing(campus_aha) & is_hospital == 1
 		collapse (rawsum) count_entity_aha* count_campus_aha*, by(year)
 		tempfile ccn_aha_counts
 		save `ccn_aha_counts'
 	restore
-	
-* TEMPORARY: making a harmonized AHA variable
-	gen aha_harmonized = campus_aha 
-		replace aha_harmonized = entity_aha if !missing(entity_aha) & entity_aha != campus_aha	
 	
 * load M&A data
 	foreach var in entity_aha campus_aha {
@@ -96,18 +135,20 @@ Goal: 			Merge M&A data into hospital-level dataset
 	
 * what percent of observations from the M&A data never match to either?
 	preserve
-		keep if _merge_campus_aha == 2 
+		keep if _merge_campus_aha == 2 // unmerged from M&A on campus
 		keep aha_id year 
 		tempfile unmerged_campus 
 		save `unmerged_campus'
 	restore
 	preserve
-		keep if _merge_entity_aha == 2 
+		keep if _merge_entity_aha == 2 // unmerged from M&A on campus
 		keep aha_id year 
-		merge 1:1 aha_id year using `unmerged_campus', keep(3)
-		tab year
-		count
-		codebook aha_id
+		merge 1:1 aha_id year using `unmerged_campus', keep(3) 
+		* unmerged from BOTH
+		tab year if _merge == 3
+		count if _merge == 3
+		codebook aha_id if _merge == 3
+		* unmerged on entity_aha but does merge on campus_aha: _merge == 1
 	restore
 	
 	* format and export merge results
@@ -122,6 +163,30 @@ Goal: 			Merge M&A data into hospital-level dataset
 	}
 	
 	drop if _merge_campus_aha == 2 | _merge_entity_aha == 2 
+	
+	* what aha IDs merge on campus but not on entity?
+	preserve
+		keep if _merge_campus_aha == 3
+		bysort campus_aha: keep if _n == 1
+		keep campus_aha
+		rename campus_aha aha
+		tempfile campus_merged
+		save `campus_merged'
+	restore
+	preserve
+		keep if _merge_entity_aha == 3
+		bysort entity_aha: keep if _n == 1
+		keep entity_aha
+		rename entity_aha aha
+		merge 1:1 aha using `campus_merged'
+		keep if _merge == 2
+		drop _merge
+		rename aha campus_aha
+		tempfile merge_campus_only
+		save `merge_campus_only'
+	restore
+	merge m:1 campus_aha using `merge_campus_only', gen(_merge_campus_only)
+	br if _merge_campus_only == 3
 	
 	count if !missing(entity_aha) & entity_type == "Hospital" & type ==  "General Medical & Surgical" & !regexm(medicarenumber, "F") & _merge_entity_aha == 1
 	
@@ -169,7 +234,7 @@ use "${dbdata}/supplemental/coop_20190108_mergerdata/HC_ext_mergerdata_public.dt
 
 use "${dbdata}/supplemental/cooper_updated/HI_mergerbase_corr.dta", clear
 
-* any means that tar and/or acq == 1 in that year
+* "any" means that tar and/or acq == 1 in that year
 
 
 * CASE 1 ______________________________________________

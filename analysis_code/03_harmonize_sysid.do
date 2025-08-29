@@ -95,7 +95,6 @@ Goal: 			Clean system ID variable from Cooper et al data
 	preserve
 		keep if is_hospital ==1
 		collapse (rawsum) syschng* tar, by(year)
-		drop if year == 2009
 		graph bar syschng_system_id syschng_sysid tar, over(year) ///
 			legend(position(bottom) label(1 "HIMSS Data - Sytem ID Change") label(2 "M&A Data - Sytem ID Change") label(3 "M&A Data Target")) ///
 			title("Count of System M&A Events by Year") ///
@@ -106,7 +105,6 @@ Goal: 			Clean system ID variable from Cooper et al data
 	preserve
 		keep if is_hospital ==1
 		collapse syschng* tar, by(year)
-		drop if year == 2009
 		graph bar syschng_system_id syschng_sysid tar, over(year) ///
 			legend(position(bottom) label(1 "HIMSS Data - Sytem ID Change") label(2 "M&A Data - Sytem ID Change") label(3 "M&A Data Target")) ///
 			title("Share of Facilities With System M&A Events by Year") ///
@@ -164,7 +162,7 @@ Goal: 			Clean system ID variable from Cooper et al data
 	keep 	entity_uniqueid year sysid_ma sysid_orig sysid_campus is_hospital ///
 			aha_* tar acq any hsanum hrrnum _merge_entity_aha _merge_campus_aha  ///
 			syschng_sysid_ma syschng_system_id syschng_ct_system_id syschng_ct_sysid_ma ///
-			forprofit gov_priv_type
+			forprofit gov_priv_type *_parent
 			
 * make unique by entity_uniqueid year
 	bysort entity_uniqueid year: keep if _n == 1
@@ -173,6 +171,39 @@ Goal: 			Clean system ID variable from Cooper et al data
 * save a crosswalk for merging with large file
 	save "${dbdata}/derived/temp/merged_ma_sysid_xwalk.dta", replace
 	
+* SYSTEM info __________________________________________________________________ 
+	
+* get forprofit system descriptives 
+	bysort entity_uniqueid_parent year forprofit: gen count_fp = _N
+	drop if missing(forprofit)
+	bysort entity_uniqueid_parent year (count_fp): keep if _n == _N
+	keep entity_uniqueid_parent year forprofit
+	rename entity_uniqueid_parent entity_uniqueid
+	merge 1:1 entity_uniqueid year using "${dbdata}/derived/temp/systems_nonharmonized.dta", gen(_merge_sys) 
+	gen himss_forprofit = entity_profitstatus == "For Profit" 
+	replace himss_forprofit = . if missing(entity_profitstatus)
+	* within a entity_uniqueid_parent year, assign most common non-missing for-profit status
+	* check against HIMSS for profit variable
+	gen sameprofit = himss_forprofit == forprofit
+	tab sameprofit if !missing(himss_forprofit) & !missing(forprofit)
+	
+	* does HIMSS forprofit variable change from year to year?
+	foreach var in forprofit himss_forprofit {
+		bysort entity_uniqueid year: gen change`var' = `var' != `var'[_n-1] & !missing(`var') & !missing(`var'[_n-1])
+	}
+	tab change* // NEVER any changes within IDs
+	
+	gen forprofit_imputed = forprofit
+	tab forprofit, m
+	replace forprofit_imputed = himss_forprofit if missing(forprofit)
+	
+	foreach var in forprofit_imputed {
+		bysort entity_uniqueid year: gen change`var' = `var' != `var'[_n-1] & !missing(`var') & !missing(`var'[_n-1])
+	}
+	tab changeforprofit_imputed
+	drop change* himss_forprofit
+	
+	save "${dbdata}/derived/temp/systems_nonharmonized_withprofit.dta", replace
 	
 * case studies _________________________________________________________________
 

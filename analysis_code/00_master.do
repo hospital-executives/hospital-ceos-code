@@ -39,4 +39,7 @@ Goal: 			Master do-file for Hospital CEOs analysis.
 * CEO descriptives
 	do "${github}/analysis_code/05_ceo_descriptives.do"
 
+* M&A descriptives
+	do "${github}/analysis_code/06_mergers_acq_descriptives.do"
+
 

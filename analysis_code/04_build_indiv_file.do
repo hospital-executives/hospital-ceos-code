@@ -21,11 +21,25 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 	assert dup_tag == 0
 	drop dup_tag
 	
-* merge in M&A data	
+* merge in cleaned M&A data for FACILITIES
 	merge m:1 entity_uniqueid year using "${dbdata}/derived/temp/merged_ma_sysid_xwalk.dta", gen(_merge_ma_xwalk) keep(1 3)
 	* there are still 178,980 observations in the final_confirmed dataset that should be merging
 	* DOUBLE CHECK NONE ARE MISSING ID:	
 		keep if !missing(entity_uniqueid)
+		
+	* pull in parent profit info
+	preserve
+		use "${dbdata}/derived/temp/systems_nonharmonized_withprofit.dta", clear 
+		keep himss_entityid year forprofit_imputed
+		rename himss_entityid entity_parentid 
+		rename forprofit_imputed forprofit_imputed_parent
+		tempfile sysprofit
+		save `sysprofit'
+	restore
+	merge m:1 entity_parentid using `sysprofit', gen(_merge_profit) keep(1 3)
+		
+* merge in cleaned M&A data for SYSTEMS
+	merge m:1 entity_uniqueid year using "${dbdata}/derived/temp/systems_nonharmonized_withprofit.dta", gen(_merge_ma_sys) keep(1 3) force
 		
 * remove "CIO Reports to" as a role
  	drop if title_standardized == "CIO Reports to" 		
@@ -83,54 +97,56 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 * label FP/NFP variable
 	label define ind_fp 0 "Non-Profit" 1 "For-Profit"
 	label values forprofit ind_fp
+	label values forprofit_imputed ind_fp
+	label values forprofit_imputed_parent ind_fp
 	
 * add parents
-	preserve 
-	
-	* keep only CEOs
-		keep if char_ceo == 1
-		* keep hospitals and IDS/RHA or Single Hospital Health Systems
-		keep if regexm(entity_type,"Hospital|IDS/RHA|Single Hospital Health System")
-		
-		* by CEO's unique ID and year, count unique HIMSS IDs:
-			* make sure unique
-			bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
-			egen total_dup = total(duplicates)
-			assert total_dup == 6 // 6 hosps that end up with two CEOs in the same year
-			drop if duplicates == 1
-			drop total_dup duplicates 
-		
-		* then tempfile the systems - keep only CEO ID and name, rename to parent
-		keep if regexm(entity_type,"IDS/RHA|Single Hospital Health System")
-		glob keepvars contact_uniqueid title title_standardized entity_type firstname lastname full_name
-		* make unique 
-			bysort himss_entityid year: gen count = 1 if _n > 1
-			egen total_dup = total(count)
-			assert total_dup == 1 // there is 1 system in 2017 with co-CEOs (both female). The same two co-CEOs for both facilities. Just keeping one.
-			drop if count ==1 
-			drop count total_dup
-		keep himss_entityid year $keepvars
-		foreach var in $keepvars {
-			rename `var' `var'_parentceo
-		}
-		rename himss_entityid entity_parentid
-		tempfile parent_obs
-		save `parent_obs'
-		
-	restore
-	
-	* descriptives
-	preserve
-		bysort entity_uniqueid year: keep if _n == 1
-		tab entity_type
-		gen count = 1
-		collapse (rawsum) count, by(entity_parentid)
-		codebook count if !missing(entity_parentid)
-		codebook count if !missing(entity_parentid) & count>1
-	restore
-				
-	* merge parents onto children
-	merge m:1 entity_parentid year using `parent_obs', gen(_merge_parent) keep(1 3)	
+// 	preserve 
+//	
+// 	* keep only CEOs
+// 		keep if char_ceo == 1
+// 		* keep hospitals and IDS/RHA or Single Hospital Health Systems
+// 		keep if regexm(entity_type,"Hospital|IDS/RHA|Single Hospital Health System")
+//		
+// 		* by CEO's unique ID and year, count unique HIMSS IDs:
+// 			* make sure unique
+// 			bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
+// 			egen total_dup = total(duplicates)
+// 			assert total_dup == 6 // 6 hosps that end up with two CEOs in the same year
+// 			drop if duplicates == 1
+// 			drop total_dup duplicates 
+//		
+// 		* then tempfile the systems - keep only CEO ID and name, rename to parent
+// 		keep if regexm(entity_type,"IDS/RHA|Single Hospital Health System")
+// 		glob keepvars contact_uniqueid entity_uniqueid title title_standardized entity_type firstname lastname full_name
+// 		* make unique 
+// 			bysort himss_entityid year: gen count = 1 if _n > 1
+// 			egen total_dup = total(count)
+// 			assert total_dup == 1 // there is 1 system in 2017 with co-CEOs (both female). The same two co-CEOs for both facilities. Just keeping one.
+// 			drop if count ==1 
+// 			drop count total_dup
+// 		keep himss_entityid year $keepvars
+// 		foreach var in $keepvars {
+// 			rename `var' `var'_parentceo
+// 		}
+// 		rename himss_entityid entity_parentid
+// 		tempfile parent_obs
+// 		save `parent_obs'
+//		
+// 	restore
+//	
+// 	* descriptives
+// 	preserve
+// 		bysort entity_uniqueid year: keep if _n == 1
+// 		tab entity_type
+// 		gen count = 1
+// 		collapse (rawsum) count, by(entity_parentid)
+// 		codebook count if !missing(entity_parentid)
+// 		codebook count if !missing(entity_parentid) & count>1
+// 	restore
+//				
+// 	* merge parents onto children
+// 	merge m:1 entity_parentid year using `parent_obs', gen(_merge_parent) keep(1 3)	
 		
 	
 * do CEOs drop out of the sample and then come back? ___________________________ 
