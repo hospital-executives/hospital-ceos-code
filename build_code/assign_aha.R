@@ -19,7 +19,7 @@ rm(script_directory, config_path)
 
 temp_export <- read_feather(paste0(derived_data,'/himss_aha_xwalk.feather'))
 export_xwalk <- temp_export %>% 
-  distinct(himss_entityid, campus_aha, entity_aha, latitude, longitude, 
+  distinct(himss_entityid, himss_sysid, campus_aha, entity_aha, latitude, longitude, 
            campus_fuzzy_flag, entity_fuzzy_flag, py_fuzzy_flag, unfiltered_campus_aha) %>%
   group_by(himss_entityid) %>%
   slice(1) %>% 

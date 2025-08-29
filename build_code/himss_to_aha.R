@@ -376,7 +376,7 @@ step5 <- step4 %>%
   left_join(name_clean, by = "entity_name") %>%
   group_by(sys_aha, year) %>%
   mutate(
-    fillable_group = all(is.na(clean_aha) | clean_aha == 0),
+    fillable_group = all(is.na(clean_aha) | clean_aha == 0 | clean_aha != sys_aha),
     fillable_group = fillable_group &
       n_distinct(entity_uniqueid[fillable_group], na.rm = TRUE) == 1,
     
@@ -425,7 +425,7 @@ step5 <- step4 %>%
 step6 <- step5 %>% arrange(entity_uniqueid, year) %>%
   group_by(sys_aha, year) %>%
   mutate(
-    fillable_group = all(is.na(clean_aha) | clean_aha == 0),
+    fillable_group = all(is.na(clean_aha) | clean_aha == 0 | clean_aha != sys_aha),
     
     # prioritize haentitytypeid == 1
     n_hospital_match = sum(haentitytypeid == 1 & fillable_group, na.rm = TRUE),
@@ -601,7 +601,7 @@ step10 <- step9 %>%
 step11 <- step10 %>% arrange(entity_uniqueid, year) %>%
   group_by(sys_aha, year) %>%
   mutate(
-    fillable_group = all(is.na(clean_aha) | clean_aha == 0),
+    fillable_group = all(is.na(clean_aha) | clean_aha == 0 | clean_aha != ahanumber),
     fillable_group = fillable_group &
       n_distinct(entity_uniqueid[fillable_group], na.rm = TRUE) == 1
   ) %>%
@@ -622,7 +622,7 @@ step11 <- step10 %>% arrange(entity_uniqueid, year) %>%
 
 step12 <- step11 %>% # ~ 91k before
   group_by(ahanumber, year) %>%
-  mutate(still_unfilled = all(is.na(clean_aha)),
+  mutate(still_unfilled  = all(is.na(clean_aha) | clean_aha == 0 | clean_aha != ahanumber),
          still_unfilled = still_unfilled &
            n_distinct(entity_uniqueid[still_unfilled], na.rm = TRUE) == 1) %>%
   ungroup() %>% 
@@ -644,8 +644,40 @@ step12 <- step11 %>% # ~ 91k before
   ungroup() %>%
   mutate(clean_aha = clean_filled) %>% select(-clean_filled,-aha_before, -aha_after )
 
+remove_pattern <- regex(
+  "\\b(st\\.?|saint|hosp\\w*|center\\w*|ctr\\w*|health|hlth|system)\\b",
+  ignore_case = TRUE
+)
+
+step13 <- step12 %>%
+  group_by(sys_aha, year) %>%
+  mutate(
+    to_fill = all(is.na(clean_aha) | clean_aha == 0 | clean_aha != sys_aha),
+    num_hosp  = n_distinct(entity_uniqueid[to_fill & haentitytypeid == 1], na.rm = TRUE),
+    num_entity = n_distinct(entity_uniqueid[to_fill],                     na.rm = TRUE)
+  ) %>%
+  ungroup() %>%
+  mutate(
+    entity_name_clean = str_squish(str_remove_all(entity_name, remove_pattern)),
+    mname_clean       = str_squish(str_remove_all(mname,       remove_pattern)),
+    clean_sim = stringsim(entity_name_clean, mname_clean, method = "jw", p = 0.1), 
+    add_sim = stringsim(entity_address, mlocaddr, method = "jw", p = 0.1), 
+    fill_flag = !is.na(mname) & (clean_sim >= .95 | (clean_sim >= .875 & add_sim >= .875)),
+  ) %>% 
+  group_by(sys_aha, year) %>%
+  mutate(will_fill_hospital = n_distinct(entity_uniqueid[fill_flag & haentitytypeid == 1 & num_hosp == 1]) == 1,
+         will_fill_entity = n_distinct(entity_uniqueid[fill_flag & num_entity == 1])
+  ) %>%
+  ungroup() %>%
+  mutate(clean_aha = case_when(
+    (is.na(clean_aha) | clean_aha == 0) & will_fill_hospital & haentitytypeid == 1 ~ sys_aha,
+    to_fill & will_fill_entity == 1 ~ sys_aha,
+    TRUE ~ clean_aha
+  )) %>% select(- will_fill_hospital, -will_fill_entity)
+
+
 #### Clean Campus AHA
-hospital_df <- step12 %>% 
+hospital_df <- step13 %>% 
   # clean + create var names for export
   rename(str_ccn_himss = medicarenumber,
          ccn_himss = mcrnum.x,
@@ -814,17 +846,17 @@ post_entity_matches <- rbind(post_sim_matches,
                              rename(campus_aha = real_campus_aha)) %>%
   distinct()
 
-
-### CHECK OUTPUT (19486 cases)
+### FINAL DF WITH CLEANED CAMPUS_AHA
 xwalk_export <- hospital_df %>%
   rename(unfiltered_campus_aha = campus_aha) %>%
   left_join(post_entity_matches) %>%
   mutate(haentitytypeid = as.numeric(haentitytypeid),
         campus_aha = ifelse(haentitytypeid <= 3 | haentitytypeid == 6,campus_aha,NA)) %>%
-  distinct(year, himss_entityid, unfiltered_campus_aha, campus_aha, entity_aha,
+  distinct(year, himss_entityid, himss_sysid, unfiltered_campus_aha, campus_aha, entity_aha,
            entity_uniqueid, entity_name, mname, entity_address, mlocaddr,
            entity_zip, mloczip_five, latitude, longitude,
-           ccn_himss, ccn_aha,entity_fuzzy_flag,campus_fuzzy_flag, py_fuzzy_flag) %>%
+           ccn_himss, ccn_aha,entity_fuzzy_flag,campus_fuzzy_flag, py_fuzzy_flag,
+           haentitytypeid) %>%
   rename(
          name_himss = entity_name,
          name_aha = mname,
@@ -832,6 +864,19 @@ xwalk_export <- hospital_df %>%
          add_aha = mlocaddr,
          zip_himss = entity_zip,
          zip_aha = mloczip_five) 
+
+sys_xwalk <- xwalk_export %>% distinct(himss_sysid, year, campus_aha)
+
+final_export <- xwalk_export %>% 
+  left_join(sys_xwalk, by = c("himss_sysid", "year")) %>%
+  filter(unfiltered_campus_aha == campus_aha.y) %>%
+  mutate(entity_condition = haentitytypeid <= 3 | haentitytypeid == 6, 
+         campus_aha = case_when(
+           unfiltered_campus_aha == campus_aha.y & entity_condition ~ unfiltered_campus_aha,
+           TRUE ~ campus_aha.x
+         )) %>%
+  select(-campus_aha.x, -campus_aha.y, -entity_condition) %>%
+  distinct()
 
 write_feather(xwalk_export, paste0(derived_data,'/himss_aha_xwalk.feather'))
 

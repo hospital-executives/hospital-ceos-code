@@ -20,6 +20,7 @@ if len(sys.argv) == 3:
 
 else: 
     data_path = "/Users/katherinepapen/Library/CloudStorage/Dropbox/hospital_ceos/_data"
+    aha_output = os.path.join(data_path, "derived/auxiliary/aha_himss_xwalk.csv")
     print('WARNING: not using Makefile inputs')
 
 key_path = data_path[:-5] + "api_keys/geocoding_key.txt"
@@ -31,6 +32,26 @@ from helper_scripts import xwalk_helper as hlp
 haentity_path = os.path.join(data_path, "derived/auxiliary/haentity.feather")
 haentity = pd.read_feather(haentity_path)
 haentity['mcrnum'] = haentity['medicarenumber'].apply(hlp.clean_and_convert)
+
+haentity = (
+    haentity.sort_values(['entity_uniqueid', 'year']).reset_index(drop=True)
+      .assign(
+          mcr_before=lambda d: d.groupby('entity_uniqueid', sort=False)['medicarenumber'].ffill(),
+          mcr_after =lambda d: d.groupby('entity_uniqueid', sort=False)['medicarenumber'].bfill(),
+          mcr_filled=lambda d: np.select(
+              [
+                  d['mcrnum'].isna() & d['mcr_before'].notna() & d['mcr_after'].notna() & (d['mcr_before'] == d['mcr_after']),
+                  d['mcrnum'].isna() & d['mcr_before'].notna() & d['mcr_after'].isna(),
+                  d['mcrnum'].isna() & d['mcr_before'].isna() & d['mcr_after'].notna(),
+              ],
+              [d['mcr_after'], d['mcr_before'], d['mcr_after']],
+              default=d['mcrnum']
+          )
+      )
+)
+
+haentity['mcrnum'] = haentity['mcr_filled']
+
 xwalk_path = os.path.join(data_path, "supplemental/hospital_ownership.dta")
 x_walk_2_data = pd.read_stata(xwalk_path)
 
@@ -47,7 +68,11 @@ for _, row in x_walk_2_data.iterrows():
 
 # only keep cases where mcrnum has one corresponding entry and also
 # mcrnum only has one ahaid
-hosp_counts = hospitals.groupby(['mcrnum', 'year']).size()
+hosp_counts = (
+    hospitals.groupby(['mcrnum', 'year'])['entity_uniqueid']
+    .nunique()
+)
+
 mcr_with_multiple_aha = (
     x_walk_2_data.groupby('mcrnum')['ahaid_noletter']
     .nunique()
@@ -56,12 +81,13 @@ mcr_with_multiple_aha = (
     .tolist()
 )
 
-
 medicare_to_aha = {
-    k: v for k, v in x_walk_2_mcr.items()
-    if len(v) == 1 and hosp_counts.get(k, 0) == 1 and 
-    str(int(k[0])) not in mcr_with_multiple_aha
-    #str(next(iter(v))) not in aha_with_multiple_mcr
+    k: v
+    for k, v in x_walk_2_mcr.items()  # assume k = (mcrnum, year)
+    if len(v) == 1
+       and hosp_counts.get((k[0], k[1]), 0) == 1
+       and str(int(k[0])) not in mcr_with_multiple_aha
+    # and str(next(iter(v))) not in aha_with_multiple_mcr
 }
 
 mcr_mismatch = {k: v for k, v in x_walk_2_mcr.items() 
@@ -91,6 +117,7 @@ for _, row in hospitals.iterrows():
 
 hospitals['filled_aha'] = filled_values
 hospitals['fuzzy_flag'] = fuzzy_flags #124 = 1, 58123 = 0
+hospitals['exact_match'] = fuzzy_flags
 
 # SUBSET BY ZIP CODE AND MATCH BY SIMILAR ADDRESSSES
 # for each year, zip find all addresses, ahaid and pick the aha with the most
