@@ -878,5 +878,5 @@ final_export <- xwalk_export %>%
   select(-campus_aha.x, -campus_aha.y, -entity_condition) %>%
   distinct()
 
-write_feather(xwalk_export, paste0(derived_data,'/himss_aha_xwalk.feather'))
+write_feather(final_export, paste0(derived_data,'/himss_aha_xwalk.feather'))
 

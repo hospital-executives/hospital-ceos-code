@@ -65,12 +65,16 @@ himss_mini <- drop_cio_reports_to %>% # confirmed
     year = as.numeric(year)
   )
 
-himss_to_aha_xwalk <- temp_export %>% rename(clean_aha = entity_aha) %>%
-  distinct(himss_entityid, entity_uniqueid, year, clean_aha, campus_aha, 
+himss_to_aha_xwalk <- temp_export %>%
+  distinct(himss_entityid, entity_uniqueid, year, entity_aha, campus_aha, 
            py_fuzzy_flag, latitude, longitude, unfiltered_campus_aha) %>%
   group_by(himss_entityid) %>%
   slice(1) %>% ungroup() %>%
-  mutate(ahanumber = campus_aha)  %>%
+  mutate(ahanumber = case_when(
+    !is.na(entity_aha) ~ entity_aha,
+    !is.na(campus_aha) ~ campus_aha,
+    TRUE ~ unfiltered_campus_aha
+  ))  %>%
   rename(geo_lat = latitude,
          geo_lon = longitude)
 
@@ -124,10 +128,9 @@ final_merged <- final_merged %>%
     ),
     entity_fuzzy_flag = case_when(
       is.na(py_fuzzy_flag) ~ NA, 
-      TRUE ~ !is.na(clean_aha) & py_fuzzy_flag == 1
+      TRUE ~ !is.na(entity_aha) & py_fuzzy_flag == 1
     ),
-    is_hospital = !is.na(clean_aha),
-    entity_aha = if_else(clean_aha == 0, NA_real_, clean_aha))
+    is_hospital = !is.na(entity_aha))
 
 
 write_feather(final_merged,paste0(derived_data,'/final_aha.feather'))
