@@ -115,7 +115,7 @@ for (nm in names(dfs)) {
 #### HIMSS to AHA match all time ----
 haentity <- read_feather("../input/haentity.feather")
 
-cat("\nThere are ", n_distinct(haentity$entity_uniqueid), "in HIMSS.",
+cat("\nThere are ", n_distinct(haentity$entity_uniqueid), " entities in HIMSS.",
     "\nOf these,", n_distinct((haentity %>% filter(haentitytypeid == 1))$entity_uniqueid),
     "are hospitals (haentitytypeid == 1).")
 
@@ -170,17 +170,18 @@ ggsave("../output/hospitals/entity_match.png", plot = himss_entity_plot, width =
 hosp_year_pairs <- himss_data %>%
   filter(haentitytypeid == 1) %>% distinct(entity_uniqueid, year)
 
-cat("\nThere are ", nrow(hosp_year_pairs), "in HIMSS")
+cat("\nThere are ", nrow(hosp_year_pairs), "hospital, year pairs in HIMSS.")
 
 fuzzy_stats <- himss_data %>%
   filter(haentitytypeid == 1) %>%
   group_by(entity_uniqueid) %>%
   mutate(
     initial_match = all(entity_fuzzy_flag == 0, na.rm = FALSE),
-    fuzzy_match = all(entity_fuzzy_flag %in% c(0, 1)) & 
-      !any(is.na(entity_fuzzy_flag))
+    fuzzy_match = all(entity_fuzzy_flag %in% c(0, 1) | is.na(entity_fuzzy_flag)) & 
+      !all(is.na(entity_fuzzy_flag))
   ) %>% 
   ungroup() %>%
+  mutate(fuzzy_match = ifelse(is.na(entity_fuzzy_flag), NA, fuzzy_match)) %>%
   filter(!is.na(mname) & !is.na(entity_aha)) %>%
   distinct(entity_uniqueid, year, fuzzy_match, initial_match)
 
@@ -215,13 +216,20 @@ ggsave("../output/hospitals/entity_match_by_year.png", plot = entity_by_year, wi
 
 cat("\nWe have a match for", 
     sum((fuzzy_graph_by_year %>% filter(match_type == "fuzzy_match"))$count)/
-      nrow(himss_data %>% filter(haentitytypeid == 1) %>% distinct(entity_uniqueid, year)))
+      nrow(himss_data %>% filter(haentitytypeid == 1) %>% distinct(entity_uniqueid, year)),
+    "%, or", sum((fuzzy_graph_by_year %>% filter(match_type == "fuzzy_match"))$count),
+    "in total.")
 
 ## remaining cases
 dont_merge <- himss_data %>% filter(haentitytypeid == 1) %>%
+  filter(is.na(entity_aha) | is.na(mname)) %>% distinct(entity_uniqueid, year)
+
+cat("\nThere are", nrow(dont_merge), "cases that don't match.")
+
+dont_merge <- himss_data %>% filter(haentitytypeid == 1) %>%
   filter(!is.na(entity_aha) & is.na(mname)) %>% distinct(entity_uniqueid, year)
 
-cat("\nThere are", nrow(dont_merge), "cases that don't merge.")
+cat("\nThere are", nrow(dont_merge), "cases that are assigned an entity AHA but don't merge to the AHA.")
 
 campus_no_entity <- himss_data %>% filter(haentitytypeid == 1) %>%
   filter(is.na(entity_aha) & !is.na(campus_aha))
@@ -237,7 +245,7 @@ cat("\nThere are", nrow(never_assigned), "cases that don't merge",
     "that have are never assigned a campus AHA.")
 
 #### AHA to HIMSS merge ----
-cat("There are", n_distinct(aha_data$ahanumber), "US hospitals in the AHA.")
+cat("\nThere are", n_distinct(aha_data$ahanumber), "US hospitals in the AHA.")
 
 ## ever match 
 aha_ahanumber <- unique(aha_data$ahanumber)
@@ -267,7 +275,8 @@ aha_ahanumber <- unique(check_vets$ahanumber)
 himss_ahanumber <- unique(himss_data$entity_aha)
 
 overlap <- intersect(aha_ahanumber,himss_ahanumber)
-cat("\nThere is ever a match on", length(overlap), "ahanumbers, (",
+cat("\nDropping federal and VA facilities:", 
+    "\nthere is ever a match on", length(overlap), "ahanumbers, (",
     length(overlap)/length(aha_ahanumber),"%) out of",
     length(aha_ahanumber), "ahanumbers in the AHA data.")
 

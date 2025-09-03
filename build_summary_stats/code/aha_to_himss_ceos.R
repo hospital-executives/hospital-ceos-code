@@ -1,5 +1,5 @@
 
-setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+library(xtable)
 
 # load dictionaries
 config_path <- file.path("../input/config_path.R")
@@ -9,6 +9,7 @@ final <- read_feather("../input/individuals_final.feather")
 hospitals <- read_feather("../input/hospitals_final.feather")
 
 ##### SET UP NAME INFRASTRUCTURE ####
+source("helper.R")
 names1 <- read.csv(paste0("../input/supplemental_path", "/carltonnorthernnames.csv"), header = FALSE)
 female <- read.csv(paste0("../input/supplemental_path", "/female_diminutives.csv"), header = FALSE)
 female_lower <- female
@@ -21,45 +22,9 @@ male_lower[] <- lapply(male_lower, function(x) {
   if (is.character(x)) tolower(x) else x
 })
 
-build_cooccurrence_dict <- function(df_all) {
-  df_all_lower <- df_all %>% mutate(across(everything(), ~ tolower(as.character(.))))
-  
-  # Get all rows as sets of names
-  rows_as_sets <- apply(df_all_lower, 1, unique)
-  
-  # Flatten into (name -> set of co-names)
-  name_to_neighbors <- list()
-  
-  for (row in rows_as_sets) {
-    for (name in row) {
-      others <- setdiff(row, name)
-      if (is.null(name_to_neighbors[[name]])) {
-        name_to_neighbors[[name]] <- others
-      } else {
-        name_to_neighbors[[name]] <- union(name_to_neighbors[[name]], others)
-      }
-    }
-  }
-  
-  name_to_neighbors
-}
-
-names_in_same_row_dict <- function(name1, name2, cooccur_dict) {
-  name1 <- tolower(name1)
-  name2 <- tolower(name2)
-  !is.null(cooccur_dict[[name1]]) && name2 %in% cooccur_dict[[name1]]
-}
-
 dict1 <- build_cooccurrence_dict(names1)
 dict2 <- build_cooccurrence_dict(female_lower)
 dict3 <- build_cooccurrence_dict(male_lower)
-
-last_name_overlap <- function(last_aha, last_himss) {
-  last_aha <- tolower(last_aha)
-  last_himss <- tolower(last_himss)
-  
-  grepl(last_aha, last_himss, fixed = TRUE) || grepl(last_himss, last_aha, fixed = TRUE)
-}
 
 cleaned_aha <- read_csv("../temp/cleaned_aha_madmin.csv") %>%
   filter(str_detect(cleaned_title_aha, "ceo|chief executive")) 
@@ -555,21 +520,29 @@ final_matches <- rbind(all_matches %>% select(-match_order),
   )
 
 cleaned_matches <- final_matches %>% inner_join(all_aha_ceos)
-
+write_feather(cleaned_matches, "../temp/matched_aha_ceos.feather")
 ###### ggplot code #####
 get_count <- cleaned_matches %>% distinct(full_aha,ahanumber, year) 
 cat(nrow(get_count)/nrow(all_aha_ceos))
 
 df_counts <- final_matches %>% 
   count(match_type) %>%
-  mutate(percent = n / nrow(all_aha_ceos) * 100) %>% 
-  filter(percent >= 1)
+  mutate(percent = n / nrow(all_aha_ceos) * 100) 
 
-ggplot(df_counts, aes(x = reorder(match_type, -n), y = n)) +
+print(
+  xtable(df_counts, caption = "AHA CEO to HIMSS Matches", label = "tab:example"),
+  file = "../output/execs/aha_ceos.tex",
+  include.rownames = FALSE
+)
+write.csv(df_counts, "../temp/aha_ceos.csv", row.names = FALSE)
+
+p <- ggplot(df_counts %>% filter(percent >= 1), aes(x = reorder(match_type, -n), y = n)) +
   geom_col(fill = "steelblue") +
   geom_text(aes(label = paste0(round(percent, 1), "%")), vjust = -0.5) +
   labs(title = "Category Counts with % of Total", x = "Category", y = "Count") +
   theme_minimal()
+
+ggsave("../output/execs/aha_ceos_to_himss.png", plot = p, width = 6, height = 4, dpi = 300)
 
 #### identify remaining cases
 real_missing <- all_aha_ceos %>% anti_join(
@@ -585,11 +558,11 @@ cat("Of the remaining", nrow(real_missing), "cases,",
     nrow(interim_cases), "can be explained by the madmin CEO being interim.")
 
 ######### TBD USEFUL ########
-check_matches <- matches %>%
-  filter(aha_sysid != himss_sysid) %>% filter(
-    (last_jw <= .1 | last_substring) & 
-      (first_jw <= .1 | first_substring | nick_1 | nick_2 | nick_3)) 
+#check_matches <- matches %>%
+  #filter(aha_sysid != himss_sysid) %>% filter(
+    #(last_jw <= .1 | last_substring) & 
+     # (first_jw <= .1 | first_substring | nick_1 | nick_2 | nick_3)) 
 # these may be cases where we are potentially failing to track people
 # through HIMSS
 
-view_remaining <- real_missing %>% anti_join(interim_cases)
+#view_remaining <- real_missing %>% anti_join(interim_cases)

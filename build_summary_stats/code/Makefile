@@ -8,18 +8,25 @@ HOSPITAL_SUM_STATS := ../output/hospitals/merge_status_by_year_type_1.png \
 ../output/hospitals/entity_match.png ../output/hospitals/entity_match_by_year.png \
 ../output/hospitals/type_breakdown_comparison.tex
 
+.PHONY: hospital_sum_stats
+
 ## Clean data
 ../temp/cleaned_aha_madmin.csv: ../input/aha_data_raw.csv ../temp
 	Rscript clean_aha.R ../input/aha_data_raw.csv ../temp
 
 ## Generate hospital-level summary statistics in ../output/hospitals
 hospital_sum_stats: $(HOSPITAL_SUM_STATS)
-$(HOSPITAL_SUM_STATS): ../temp/cleaned_aha.csv ../output/hospitals ../input/hospitals_final.feather ../input/haentity.feather ../input/hospital_ownership.dta
-	Rscript hospital_sum_stats.R  ../temp/cleaned_aha.csv ../output/hospitals ../input/hospitals_final.feather ../input/haentity.feather ../input/hospital_ownership.dta
+$(HOSPITAL_SUM_STATS): ../temp/cleaned_aha.csv ../output/hospitals ../input/hospitals_final.feather ../input/haentity.feather ../input/hospital_ownership.dta ../input/config_path.R
+	Rscript hospital_sum_stats.R  ../temp/cleaned_aha.csv ../output/hospitals ../input/hospitals_final.feather ../input/haentity.feather ../input/hospital_ownership.dta ../input/config_path.R
 
 ## Generate AHA CEO to HIMSS sumary statistics
-../output/aha_to_himss.csv: ../temp/cleaned_aha_madmin.csv ../input/hospitals_final.feather ../input/individuals_final.feather ../input/supplemental_path
-	Rscript aha_to_himss_ceos.R ../temp/cleaned_aha_madmin.csv ../input/hospitals_final.feather ../input/individuals_final.feather ../input/supplemental_path
+../output/execs/aha_ceos.tex: ../temp/cleaned_aha_madmin.csv ../input/hospitals_final.feather ../input/individuals_final.feather ../input/supplemental_path ../output/execs
+	Rscript aha_to_himss_ceos.R ../temp/cleaned_aha_madmin.csv ../input/hospitals_final.feather ../input/individuals_final.feather ../input/supplemental_path ../output/execs
+
+## Generate AHA Leadership to HIMSS sumary statistics
+../output/execs/aha_leadership_only.tex: ../temp/cleaned_aha_madmin.csv ../input/hospitals_final.feather ../input/individuals_final.feather ../input/supplemental_path ../output/execs
+	Rscript aha_to_himss_ceos.R ../temp/cleaned_aha_madmin.csv ../input/hospitals_final.feather ../input/individuals_final.feather ../input/supplemental_path ../output/execs
+
 
 ## - Inputs 
 ../input/aha_data_raw.csv: | ../input
@@ -59,4 +66,7 @@ $(HOSPITAL_SUM_STATS): ../temp/cleaned_aha.csv ../output/hospitals ../input/hosp
 	mkdir -p "$@"
 
 ../output/hospitals: | ../output
+	mkdir -p "$@"
+
+../output/execs: | ../output
 	mkdir -p "$@"
