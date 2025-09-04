@@ -209,7 +209,8 @@ valid_himss <- himss_processed %>%
     himss_full = full_name
   ) %>% select(
     first_himss,last_himss, himss_full, first_aha, last_aha, full_aha, title,
-    title_standardized, cleaned_title_aha, mname, entity_name, year, ahanumber
+    title_standardized, cleaned_title_aha, mname, entity_name, year, ahanumber,
+    entity_aha, campus_aha, unfiltered_campus_aha
   ) %>%
   mutate(last_jw = stringdist(last_aha, last_himss, method = "jw", p = 0.1),
          first_jw = stringdist(first_aha, first_himss, method = "jw", p = 0.1),
@@ -227,7 +228,10 @@ title_mismatch <- valid_himss %>% filter(
       (last_jw <= .15 | last_substring) & 
         (first_jw <= .15 | first_substring | nick_1 | nick_2 | nick_3)) 
 ) %>% 
-  mutate(match_type = "title")
+  mutate(is_ceo = title_standardized == "CEO:  Chief Executive Officer" |
+           str_detect(title, "CEO") | str_detect(title, "C.E.O") | 
+           str_detect(title, "Chief Executive"),
+    match_type = ifelse(is_ceo, "jw", "title"))
 
 # update confirmed with title mismatch
 confirmed_with_title <- rbind(accounted_for %>% rename(ahanumber = aha_aha,
@@ -256,7 +260,7 @@ himss_df <- final %>% filter(!is.na(entity_aha)) %>%
 
 within_2yr <- aha_df %>%
   left_join(himss_df, by = "ahanumber") %>%
-  filter(abs(himss_year - aha_year) <= 2)
+  filter(abs(himss_year - aha_year) <= 5)
 
 # calculate string similarity/nickname measures
 within_2yr <- within_2yr %>% mutate(
@@ -270,35 +274,20 @@ within_2yr <- within_2yr %>% mutate(
   first_substring = mapply(last_name_overlap, first_aha, first_himss)
 )
 
-# helper that returns NA instead of Inf when everything is missing
-min_dist <- function(x) if (all(is.na(x))) NA_real_ else min(x, na.rm = TRUE)
-
-# summarize any match in the two year window
-aha_with_min_dists <- within_2yr %>% filter(aha_year > 2008) %>%
-  group_by(full_aha, ahanumber, aha_year, himss_year) %>%  
-  summarise(
-    min_full_jw  = min_dist(full_jw),
-    min_first_jw = min_dist(first_jw),
-    min_last_jw  = min_dist(last_jw),
-    any_nick_1 = any(nick_1),
-    any_nick_2 = any(nick_2),
-    any_nick_3 = any(nick_3),
-    any_last_substring = any(last_substring),
-    any_first_substring = any(first_substring),
-    .groups = "drop"
-  )
-
-# find matches within two years
-matches <- aha_with_min_dists %>% 
-  mutate(year_diff = abs(himss_year - aha_year),
-         prefer_after = if_else(himss_year > aha_year, 1, 0)
+matches <- within_2yr %>% filter(aha_year > 2008) %>%
+  mutate(
+    full_condition = (full_jw <= 0.15 & !is.na(full_jw)),
+    last_condition = ((last_jw <= 0.15 & !is.na(last_jw)) | last_substring),
+    first_condition = (first_jw <= 0.15 & !is.na(first_jw)) | first_substring |
+      nick_1 | nick_2 | nick_3,
+    similarity_condition = full_condition | (first_condition & last_condition),
+    is_ceo = title_standardized == "CEO:  Chief Executive Officer" |
+      str_detect(title, "CEO") | str_detect(title, "C.E.O") | 
+      str_detect(title, "Chief Executive")
   ) %>%
-  filter(
-    min_full_jw <= .15 |
-      (
-        (min_last_jw <= .15 | any_last_substring) & 
-          (min_first_jw <= .15 | any_first_substring | any_nick_1 | any_nick_2 | any_nick_3)) 
-  ) %>% 
+  group_by(full_aha, ahanumber, aha_year, himss_year) %>%  
+  filter(any(similarity_condition)) %>%
+  ungroup() %>%
   group_by(full_aha, ahanumber, aha_year) %>%
   mutate(
     has_himss_year_equal = any(himss_year == aha_year, na.rm = TRUE),
@@ -318,7 +307,10 @@ matches <- aha_with_min_dists %>%
   ungroup() %>% 
   rename(himss_after_aha = has_himss_after_no_match, 
          himss_before_aha = has_himss_before_no_match) %>%
-  mutate(match_type = paste0("jw_year_title_", year_diff)) %>%
+  mutate(match_type = case_when(
+    is_ceo ~ paste0("jw_year_", year_diff),
+    TRUE ~ paste0("jw_year_title_", year_diff)
+  )) %>%
   rename(year = aha_year) %>%
   distinct(ahanumber, full_aha, year, match_type, himss_after_aha, himss_before_aha) 
 
@@ -523,6 +515,7 @@ cleaned_matches <- final_matches %>% inner_join(all_aha_ceos)
 write_feather(cleaned_matches, "../temp/matched_aha_ceos.feather")
 ###### ggplot code #####
 get_count <- cleaned_matches %>% distinct(full_aha,ahanumber, year) 
+cat(nrow(get_count))
 cat(nrow(get_count)/nrow(all_aha_ceos))
 
 df_counts <- final_matches %>% 
@@ -536,14 +529,17 @@ print(
 )
 write.csv(df_counts, "../temp/aha_ceos.csv", row.names = FALSE)
 
-p <- ggplot(df_counts %>% filter(percent >= 1), aes(x = reorder(match_type, -n), y = n)) +
+p <- ggplot(df_counts %>% filter(percent >= 1),
+            aes(x = reorder(match_type, -n), y = n)) +
   geom_col(fill = "steelblue") +
   geom_text(aes(label = paste0(round(percent, 1), "%")), vjust = -0.5) +
   labs(title = "Category Counts with % of Total", x = "Category", y = "Count") +
-  theme_minimal()
+  scale_y_continuous(expand = expansion(mult = c(0.02, 0.15))) +  # add top space
+  coord_cartesian(clip = "off") +                                  # don't clip text
+  theme_minimal() +
+  theme(plot.margin = margin(t = 12, r = 10, b = 10, l = 10))
 
 ggsave("../output/execs/aha_ceos_to_himss.png", plot = p, width = 6, height = 4, dpi = 300)
-
 #### identify remaining cases
 real_missing <- all_aha_ceos %>% anti_join(
   cleaned_matches %>% distinct(ahanumber, full_aha, year)

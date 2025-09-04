@@ -19,14 +19,15 @@ hospital_sum_stats: $(HOSPITAL_SUM_STATS)
 $(HOSPITAL_SUM_STATS): ../temp/cleaned_aha.csv ../output/hospitals ../input/hospitals_final.feather ../input/haentity.feather ../input/hospital_ownership.dta ../input/config_path.R
 	Rscript hospital_sum_stats.R  ../temp/cleaned_aha.csv ../output/hospitals ../input/hospitals_final.feather ../input/haentity.feather ../input/hospital_ownership.dta ../input/config_path.R
 
-## Generate AHA CEO to HIMSS sumary statistics
+## Generate AHA CEO to HIMSS summary statistics
 ../output/execs/aha_ceos.tex: ../temp/cleaned_aha_madmin.csv ../input/hospitals_final.feather ../input/individuals_final.feather ../input/supplemental_path ../output/execs
 	Rscript aha_to_himss_ceos.R ../temp/cleaned_aha_madmin.csv ../input/hospitals_final.feather ../input/individuals_final.feather ../input/supplemental_path ../output/execs
 
-## Generate AHA Leadership to HIMSS sumary statistics
+## Generate AHA Leadership to HIMSS summary statistics
 ../output/execs/aha_leadership_only.tex: ../temp/cleaned_aha_madmin.csv ../input/hospitals_final.feather ../input/individuals_final.feather ../input/supplemental_path ../output/execs
 	Rscript aha_to_himss_ceos.R ../temp/cleaned_aha_madmin.csv ../input/hospitals_final.feather ../input/individuals_final.feather ../input/supplemental_path ../output/execs
 
+## Generate HIMSS CEO to AHA summary statistics
 
 ## - Inputs 
 ../input/aha_data_raw.csv: | ../input
