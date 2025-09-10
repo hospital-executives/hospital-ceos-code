@@ -598,7 +598,56 @@ step10 <- step9 %>%
   ) %>%
   ungroup()
 
-step11 <- step10 %>% arrange(entity_uniqueid, year) %>%
+step11 <- step10 %>%
+  group_by(ahanumber, year) %>%
+  mutate(unfilled_flag = all(clean_aha != ahanumber | is.na(clean_aha))) %>%
+  ungroup() %>%
+  group_by(system_id) %>%
+  mutate(
+    sys_match = any(jw_sim >= 0.95 & (haentitytypeid == 6 | haentitytypeid == 8)),
+    num_hospitals =  n_distinct(entity_uniqueid[haentitytypeid == 1]),
+    num_subacutes =  n_distinct(entity_uniqueid[haentitytypeid == 2]),
+    num_amb =  n_distinct(entity_uniqueid[haentitytypeid == 3]),
+    
+    solo_hospital = num_hospitals == 1,
+    solo_subacute = num_hospitals == 0 & num_subacutes == 1, 
+    solo_ambulatory = num_hospitals == 0 & num_subacutes == 0 & num_amb == 1 
+  ) %>%
+  ungroup() %>%
+  group_by(ahanumber, year) %>%
+  mutate(
+    prereq = unfilled_flag & sys_match,
+    clean_aha = case_when(
+      prereq & solo_hospital & haentitytypeid == 1 ~ ahanumber,
+      prereq & solo_subacute & haentitytypeid == 2 ~ ahanumber,
+      prereq & solo_ambulatory & haentitytypeid == 3 ~ ahanumber,
+      TRUE ~ clean_aha
+    )
+  ) %>%
+  group_by(clean_aha, year) %>%
+  mutate(entity_year_flag = n_distinct(entity_uniqueid[clean_aha == sys_aha]) >1) %>%
+  ungroup()  %>%
+  add_count(clean_aha,              name = "n_group") %>%
+  add_count(clean_aha, entity_uniqueid, name = "n_id") %>%
+  group_by(clean_aha) %>%
+  mutate(
+    top_n     = max(n_id),
+    n_top_ids = n_distinct(entity_uniqueid[n_id == top_n]),
+    modal_entity_uniqueid = if_else(
+      n_top_ids == 1 & (top_n / first(n_group)) >= 0.75,
+      unique(entity_uniqueid[n_id == top_n])[1],
+      NA_integer_
+    )
+  ) %>%
+  ungroup() %>%
+  mutate(clean_aha = case_when(
+    entity_year_flag & entity_uniqueid == modal_entity_uniqueid ~ clean_aha,
+    entity_year_flag & entity_uniqueid != modal_entity_uniqueid ~ 0,
+    !entity_year_flag ~ clean_aha,
+    TRUE ~ -1
+  )) 
+
+step12 <- step11 %>% arrange(entity_uniqueid, year) %>%
   group_by(sys_aha, year) %>%
   mutate(
     fillable_group = all(is.na(clean_aha) | clean_aha == 0 | clean_aha != ahanumber),
@@ -620,7 +669,7 @@ step11 <- step10 %>% arrange(entity_uniqueid, year) %>%
   mutate(clean_aha = clean_filled) %>%
   select(-aha_before, -aha_after, -clean_filled)
 
-step12 <- step11 %>% # ~ 91k before
+step13 <- step12 %>%
   group_by(ahanumber, year) %>%
   mutate(still_unfilled  = all(is.na(clean_aha) | clean_aha == 0 | clean_aha != ahanumber),
          still_unfilled = still_unfilled &
@@ -649,7 +698,7 @@ remove_pattern <- regex(
   ignore_case = TRUE
 )
 
-step13 <- step12 %>%
+step14 <- step13 %>%
   group_by(sys_aha, year) %>%
   mutate(
     to_fill = all(is.na(clean_aha) | clean_aha == 0 | clean_aha != sys_aha),
@@ -677,7 +726,7 @@ step13 <- step12 %>%
 
 
 #### Clean Campus AHA
-hospital_df <- step13 %>% 
+hospital_df <- step14 %>% 
   # clean + create var names for export
   rename(str_ccn_himss = medicarenumber,
          ccn_himss = mcrnum.x,
