@@ -724,9 +724,31 @@ step14 <- step13 %>%
     TRUE ~ clean_aha
   )) %>% select(- will_fill_hospital, -will_fill_entity)
 
+step15 <- step14 %>%
+  group_by(sys_aha, year) %>%
+  mutate(empty_flag = all(clean_aha != sys_aha | is.na(clean_aha))) %>%
+  ungroup() %>%
+  add_count(sys_aha,              name = "n_group") %>%
+  add_count(sys_aha, entity_uniqueid, name = "n_id") %>%
+  group_by(sys_aha) %>%
+  mutate(
+    top_n     = max(n_id),
+    n_top_ids = n_distinct(entity_uniqueid[n_id == top_n]),
+    modal_entity_uniqueid = if_else(
+      n_top_ids == 1 & (top_n / first(n_group)) >= 0.75,
+      unique(entity_uniqueid[n_id == top_n])[1],
+      NA_integer_
+    )
+  ) %>%
+  ungroup() %>%
+  mutate(
+    clean_aha = case_when(
+      empty_flag & entity_uniqueid == modal_entity_uniqueid ~ sys_aha,
+      TRUE ~ clean_aha
+    ))
 
 #### Clean Campus AHA
-hospital_df <- step14 %>% 
+hospital_df <- step15 %>% 
   # clean + create var names for export
   rename(str_ccn_himss = medicarenumber,
          ccn_himss = mcrnum.x,
