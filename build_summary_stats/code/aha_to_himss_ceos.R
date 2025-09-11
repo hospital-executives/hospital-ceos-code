@@ -1,4 +1,7 @@
 
+#library(rstudioapi)
+# setwd(dirname(getActiveDocumentContext()$path))
+
 library(xtable)
 
 # load dictionaries
@@ -67,7 +70,7 @@ himss_mini <- final %>%
     last_himss = lastname,
     full_himss = full_name
   ) %>%
-  distinct(full_himss, first_himss, last_himss, year, entity_aha) %>%
+  distinct(full_himss, first_himss, last_himss, year, entity_aha, id) %>%
   rename(himss_aha = entity_aha,
          himss_year = year)
 
@@ -161,11 +164,14 @@ confirmed_same <- confirmed_same %>% mutate(himss_after_aha = NA,
                                             himss_before_aha = NA)
 confirmed_same_2 <- confirmed_same_2 %>% mutate(himss_after_aha = NA,
                                                 himss_before_aha = NA)
+
+cols <- c("full_aha", "aha_aha", "aha_year", "match_type", 
+          "himss_before_aha", "himss_after_aha", "id")
+
 accounted_for <- bind_rows(
-  confirmed_same[, c("full_aha", "aha_aha", "aha_year", "match_type", "himss_before_aha", "himss_after_aha")],
-  confirmed_same_2[, c("full_aha", "aha_aha", "aha_year", "match_type", "himss_before_aha", "himss_after_aha")],
-  confirmed_same_3[, c("full_aha", "aha_aha", "aha_year", "match_type", "himss_before_aha", "himss_after_aha")]
+  confirmed_same[cols], confirmed_same_2[cols], confirmed_same_3[cols]
 )
+
 
 ### fourth pass - find matches using merged HIMSS to AHA data -----------------
 
@@ -210,7 +216,7 @@ valid_himss <- himss_processed %>%
   ) %>% select(
     first_himss,last_himss, himss_full, first_aha, last_aha, full_aha, title,
     title_standardized, cleaned_title_aha, mname, entity_name, year, ahanumber,
-    entity_aha, campus_aha, unfiltered_campus_aha
+    entity_aha, campus_aha, unfiltered_campus_aha, id
   ) %>%
   mutate(last_jw = stringdist(last_aha, last_himss, method = "jw", p = 0.1),
          first_jw = stringdist(first_aha, first_himss, method = "jw", p = 0.1),
@@ -239,7 +245,7 @@ confirmed_with_title <- rbind(accounted_for %>% rename(ahanumber = aha_aha,
                               title_mismatch %>% mutate(himss_after_aha = NA,
                                                         himss_before_aha = NA) %>%
                                 distinct(ahanumber, full_aha, year, match_type,
-                                         himss_after_aha,himss_before_aha))
+                                         himss_after_aha,himss_before_aha, id))
 
 
 ### fifth pass - find matches where AHA observation occurs in HIMSS, but -----
@@ -247,9 +253,14 @@ confirmed_with_title <- rbind(accounted_for %>% rename(ahanumber = aha_aha,
 
 # left join AHA with HIMSS, keeping only observations in HIMSS within 2 years
 # of the AHA
-aha_df  <- cleaned_aha %>%
-  anti_join(confirmed_with_title %>% select(-match_type)) %>%
-  rename(aha_year  = year)
+aha_df <- cleaned_aha %>%
+  anti_join(
+    confirmed_with_title %>%
+      filter(!str_detect(match_type, "\\d")) %>%  # keep only rows w/o numbers
+      select(-match_type),
+    by = intersect(names(cleaned_aha), names(confirmed_with_title))
+  ) %>%
+  rename(aha_year = year)
 himss_df <- final %>% filter(!is.na(entity_aha)) %>%
   mutate(ahanumber = entity_aha) %>%
   rename(
@@ -258,12 +269,12 @@ himss_df <- final %>% filter(!is.na(entity_aha)) %>%
     himss_full = full_name,
     himss_year = year)
 
-within_2yr <- aha_df %>%
+within_5yr <- aha_df %>%
   left_join(himss_df, by = "ahanumber") %>%
   filter(abs(himss_year - aha_year) <= 5)
 
 # calculate string similarity/nickname measures
-within_2yr <- within_2yr %>% mutate(
+within_5yr <- within_5yr %>% mutate(
   full_jw  = stringdist(full_aha , himss_full , method = "jw", p = 0.1),
   first_jw = stringdist(first_aha, first_himss, method = "jw", p = 0.1),
   last_jw  = stringdist(last_aha , last_himss , method = "jw", p = 0.1),
@@ -274,7 +285,7 @@ within_2yr <- within_2yr %>% mutate(
   first_substring = mapply(last_name_overlap, first_aha, first_himss)
 )
 
-matches <- within_2yr %>% filter(aha_year > 2008) %>%
+matches <- within_5yr %>% filter(aha_year > 2008) %>%
   mutate(
     full_condition = (full_jw <= 0.15 & !is.na(full_jw)),
     last_condition = ((last_jw <= 0.15 & !is.na(last_jw)) | last_substring),
@@ -312,7 +323,7 @@ matches <- within_2yr %>% filter(aha_year > 2008) %>%
     TRUE ~ paste0("jw_year_title_", year_diff)
   )) %>%
   rename(year = aha_year) %>%
-  distinct(ahanumber, full_aha, year, match_type, himss_after_aha, himss_before_aha) 
+  distinct(ahanumber, full_aha, year, match_type, himss_after_aha, himss_before_aha, id) 
 
 all_matches <- rbind(confirmed_with_title, matches) %>%
   mutate(
@@ -406,10 +417,10 @@ if (any(sys_matches$match_type == "unaccounted", na.rm = TRUE)) {
 ###              and using system id from HIMSS
 
 # combine current matches
-confirmed_matches <- rbind(all_matches %>% select(full_aha, ahanumber, year), 
-                           sys_matches %>% select(full_aha, aha_aha, aha_year) %>%
+confirmed_matches <- rbind(all_matches %>% select(full_aha, ahanumber, year, id), 
+                           sys_matches %>% select(full_aha, aha_aha, aha_year, id) %>%
                              rename(ahanumber = aha_aha, year = aha_year)) %>%
-  rename(full_name = full_aha)  %>% distinct(ahanumber, full_name, year)
+  rename(full_name = full_aha)  %>% distinct(ahanumber, full_name, year, id)
 
 # get unaccounted for ceos
 unmatched <- all_aha_ceos %>% anti_join(confirmed_matches) %>% 
@@ -421,7 +432,7 @@ corresponding_system_ids <- final %>% filter(campus_aha %in% all_missing_aha) %>
   distinct(ahanumber, parentid, year, system_id) %>% rename(himss_year = year) 
 
 parent_df <- final %>% filter(parentid %in% corresponding_system_ids$parentid) %>%
-  distinct(firstname, lastname, full_name, ahanumber, entity_aha, entity_name, year, title_standardized, title) %>%
+  distinct(firstname, lastname, full_name, ahanumber, entity_aha, entity_name, year, title_standardized, title, id) %>%
   rename(himss_year = year,
          himss_full = full_name,
          first_himss = firstname,
@@ -479,18 +490,15 @@ himss_sys_matches <- check_sim %>%
   rename(himss_after_aha = has_himss_after_no_match, 
          himss_before_aha = has_himss_before_no_match)
 
-
-
 #### clean output
-
 final_matches <- rbind(all_matches %>% select(-match_order), 
                        sys_matches %>% select(full_aha, aha_aha, aha_year,
                                               match_type, himss_before_aha,
-                                              himss_after_aha) %>%
+                                              himss_after_aha, id) %>%
                          rename(ahanumber = aha_aha, year = aha_year), 
                        himss_sys_matches %>% select(full_aha, ahanumber, aha_year,
                                                     match_type, himss_before_aha,
-                                                    himss_after_aha) %>%
+                                                    himss_after_aha, id) %>%
                          rename(year = aha_year)) %>%
   mutate(
     match_order = case_when(
