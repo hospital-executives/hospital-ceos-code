@@ -728,14 +728,15 @@ step15 <- step14 %>%
   group_by(sys_aha, year) %>%
   mutate(empty_flag = all(clean_aha != sys_aha | is.na(clean_aha))) %>%
   ungroup() %>%
-  add_count(sys_aha,              name = "n_group") %>%
-  add_count(sys_aha, entity_uniqueid, name = "n_id") %>%
+  mutate(.match_ok = clean_aha == sys_aha) %>%
+  add_count(sys_aha,                      wt = as.integer(.match_ok), name = "n_group") %>%
+  add_count(sys_aha, entity_uniqueid,     wt = as.integer(.match_ok), name = "n_id") %>%
   group_by(sys_aha) %>%
   mutate(
-    top_n     = max(n_id),
-    n_top_ids = n_distinct(entity_uniqueid[n_id == top_n]),
+    top_n     = max(n_id, na.rm = TRUE),
+    n_top_ids = n_distinct(entity_uniqueid[n_id == top_n & top_n > 0]),
     modal_entity_uniqueid = if_else(
-      n_top_ids == 1 & (top_n / first(n_group)) >= 0.75,
+      n_top_ids == 1 & (top_n / first(n_group)) >= 0.75 & top_n > 0,
       unique(entity_uniqueid[n_id == top_n])[1],
       NA_integer_
     )
