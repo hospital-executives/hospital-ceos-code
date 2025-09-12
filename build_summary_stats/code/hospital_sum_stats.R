@@ -1,5 +1,5 @@
 
-#setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
 
 # load dictionaries
@@ -115,17 +115,28 @@ for (nm in names(dfs)) {
 #### HIMSS to AHA match all time ----
 haentity <- read_feather("../input/haentity.feather")
 
+num_hospitals <- n_distinct((haentity %>% filter(haentitytypeid == 1))$entity_uniqueid)
 cat("\nThere are ", n_distinct(haentity$entity_uniqueid), " entities in HIMSS.",
-    "\nOf these,", n_distinct((haentity %>% filter(haentitytypeid == 1))$entity_uniqueid),
+    "\nOf these,", num_hospitals,
     "are hospitals (haentitytypeid == 1).")
 
+ever_match <- himss_data %>% filter(haentitytypeid == 1) %>%
+  group_by(entity_uniqueid) %>%
+  filter(any(!is.na(mname))) %>%
+  ungroup()
+
+cat("\nOf these", n_distinct(ever_match$entity_uniqueid), 
+    "ever match to the AHA data (", 
+    n_distinct(ever_match$entity_uniqueid)/num_hospitals * 100, "%)." )
+
 q1 <- himss_data %>%
-  filter(haentitytypeid  == 1 ) %>%
+  filter(haentitytypeid == 1) %>%
   group_by(entity_uniqueid) %>%
   mutate(
     initial_match = all(entity_fuzzy_flag == 0, na.rm = FALSE),
-    fuzzy_match = all(entity_fuzzy_flag %in% c(0, 1)) & 
-      !any(is.na(entity_fuzzy_flag))
+    fuzzy_match = all(na.omit(entity_fuzzy_flag) %in% c(0, 1)) &&
+      any(entity_fuzzy_flag %in% c(0, 1)) # & 
+     # !any(is.na(entity_fuzzy_flag))
   ) %>% ungroup()
 
 q1_graph <- q1 %>%
