@@ -1,5 +1,5 @@
 
-#setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
 # load dictionaries
 library(xtable)
@@ -10,9 +10,6 @@ final <- read_feather("../input/individuals_final.feather")
 hospitals <- read_feather("../input/hospitals_final.feather")
 
 ### AHA CEO to HIMSS left join
-
-## libraries
-library(rstudioapi)
 
 ## set up scripts
 config_path <- file.path("../input/config_path.R")
@@ -71,7 +68,8 @@ aha_madmin_no_ceos <- hospitals %>% distinct(ahanumber,year) %>% left_join(
 all_himss_leadership <- final %>% 
   group_by(full_name, entity_aha, year) %>%
   slice(1) %>%
-  distinct(full_name, entity_aha, year, title_standardized) %>% 
+  ungroup() %>%
+  distinct(full_name, entity_aha, year, title_standardized, id) %>% 
   rename(ahanumber = entity_aha)
 
 ### first pass - match AHA & HIMSS ceos on (aha, year) -----------
@@ -87,7 +85,7 @@ himss_mini <- final %>%
  rename(
     first_himss = firstname,
     last_himss = lastname) %>%
-  distinct(full_name, first_himss, last_himss, year, entity_aha) %>%
+  distinct(full_name, first_himss, last_himss, year, entity_aha, id) %>%
   rename(ahanumber = entity_aha)
 
 aha_year_df <- aha_year_mini %>% left_join(aha_mini) %>%
@@ -96,7 +94,7 @@ aha_year_df <- aha_year_mini %>% left_join(aha_mini) %>%
 # exact name match
 exact_names <- aha_year_df %>% 
   filter(first_himss == first_aha & last_himss == last_aha)
-exact_combos <- exact_names %>% distinct(ahanumber, full_aha, year)
+exact_combos <- exact_names %>% distinct(ahanumber, full_aha, year, id)
 
 # jw names match
 aha_year_df <- aha_year_df %>% anti_join(exact_combos) %>%
@@ -118,13 +116,17 @@ jw_matches <- aha_year_df %>% filter(
     (first_jw <= .15 | first_substring | nick_1 | nick_2 | nick_3)
   )))
 
-jw_combos <- jw_matches %>% distinct(ahanumber, full_aha, year)
+jw_combos <- jw_matches %>% group_by(ahanumber, full_aha, year) %>% slice(1) %>%
+  ungroup() %>% distinct(ahanumber, full_aha, year, id)
 
 name_combos <- rbind(exact_combos, jw_combos) %>%
   mutate(match_type = "jw")
 
 ### second pass - match AHA & HIMSS ceos on aha with full name merge --------
-remaining_madmin <- aha_madmin_no_ceos %>% anti_join(name_combos) 
+remaining_madmin <- aha_madmin_no_ceos %>% 
+  anti_join(name_combos %>% 
+              select(-id, -match_type) %>%
+              distinct())
 remaining_himss <- all_himss_leadership %>% rename(full_himss = full_name) %>%
   anti_join(exact_names %>% distinct(full_himss, ahanumber, year)) %>%
   anti_join(jw_matches %>% distinct(full_himss, ahanumber, year)) %>% 
@@ -132,11 +134,13 @@ remaining_himss <- all_himss_leadership %>% rename(full_himss = full_name) %>%
 
 remaining_csuite <- remaining_himss %>%
   filter(str_detect(title_standardized, "CFO|CEO|COO|CIO|Chief Medical")) %>%
-  distinct(full_name, ahanumber, year)
+  group_by(full_name, ahanumber, year) %>%
+  slice(1) %>%
+  ungroup() %>% distinct(ahanumber, full_name, year, id)
     
 joined <- remaining_madmin %>% distinct(ahanumber, year, full_aha) %>%
   rename(full_name = full_aha) %>%
-  stringdist_left_join(remaining_himss %>% distinct(full_name, ahanumber, year) ,
+  stringdist_left_join(remaining_himss %>% distinct(full_name, ahanumber, year, id) ,
                        by = "full_name",
                        method = "jw",
                        max_dist = .2,
@@ -194,7 +198,7 @@ year_mismatches <- cleaned_joined %>% select(-year, -ahanumber) %>%
          himss_before_aha = has_himss_before_no_match) %>%
   mutate(match_type = paste0("jw_year_", year_diff)) %>%
   rename(year = aha_year) %>%
-  distinct(ahanumber, full_aha, year, match_type, himss_after_aha, himss_before_aha) 
+  distinct(ahanumber, full_aha, year, match_type, himss_after_aha, himss_before_aha, id) 
 
 jw_and_year_matches <- rbind(
   name_combos %>% mutate(himss_after_aha = NA, himss_before_aha = NA),
@@ -208,7 +212,7 @@ aha_df  <- cleaned_aha %>%
     jw_and_year_matches %>%
       filter(!str_detect(match_type, "\\d")) %>%  # keep only rows w/o numbers
       select(-match_type),
-    by = intersect(names(cleaned_aha), names(confirmed_with_title))
+    by = intersect(names(cleaned_aha), names(jw_and_year_matches))
   ) %>%
   anti_join(all_aha_ceos) %>%
   rename(aha_year  = year)
@@ -236,35 +240,17 @@ within_5yr <- within_5yr %>% mutate(
   first_substring = mapply(last_name_overlap, first_aha, first_himss)
 )
 
-# helper that returns NA instead of Inf when everything is missing
-min_dist <- function(x) if (all(is.na(x))) NA_real_ else min(x, na.rm = TRUE)
-
-# summarize any match in the two year window
-aha_with_min_dists <- within_5yr %>% filter(aha_year > 2008) %>%
-  group_by(full_aha, ahanumber, aha_year, himss_year) %>%  
-  summarise(
-    min_full_jw  = min_dist(full_jw),
-    min_first_jw = min_dist(first_jw),
-    min_last_jw  = min_dist(last_jw),
-    any_nick_1 = any(nick_1),
-    any_nick_2 = any(nick_2),
-    any_nick_3 = any(nick_3),
-    any_last_substring = any(last_substring),
-    any_first_substring = any(first_substring),
-    .groups = "drop"
-  )
-
-# find matches within two years
-matches <- aha_with_min_dists %>% 
-  mutate(year_diff = abs(himss_year - aha_year),
-         prefer_after = if_else(himss_year > aha_year, 1, 0)
+matches <- within_5yr %>% filter(aha_year > 2008) %>%
+  mutate(
+    full_condition = (full_jw <= 0.15 & !is.na(full_jw)),
+    last_condition = ((last_jw <= 0.15 & !is.na(last_jw)) | last_substring),
+    first_condition = (first_jw <= 0.15 & !is.na(first_jw)) | first_substring |
+      nick_1 | nick_2 | nick_3,
+    similarity_condition = full_condition | (first_condition & last_condition)
   ) %>%
-  filter(
-    min_full_jw <= .1 |
-      (
-        (min_last_jw <= .15 | any_last_substring) & 
-          (min_first_jw <= .15 | any_first_substring | any_nick_1 | any_nick_2 | any_nick_3)) 
-  ) %>% 
+  group_by(full_aha, ahanumber, aha_year, himss_year) %>%  
+  filter(any(similarity_condition)) %>%
+  ungroup() %>%
   group_by(full_aha, ahanumber, aha_year) %>%
   mutate(
     has_himss_year_equal = any(himss_year == aha_year, na.rm = TRUE),
@@ -284,9 +270,9 @@ matches <- aha_with_min_dists %>%
   ungroup() %>% 
   rename(himss_after_aha = has_himss_after_no_match, 
          himss_before_aha = has_himss_before_no_match) %>%
-  mutate(match_type = paste0("jw_year_", year_diff)) %>%
+  mutate(match_type = paste0("jw_year_title_", year_diff)) %>%
   rename(year = aha_year) %>%
-  distinct(ahanumber, full_aha, year, match_type, himss_after_aha, himss_before_aha) 
+  distinct(ahanumber, full_aha, year, match_type, himss_after_aha, himss_before_aha, id) 
 
 all_matches <- rbind(jw_and_year_matches, matches) %>%
   mutate(
@@ -365,10 +351,10 @@ sys_matches <- sys_matches %>%
   rename(himss_after_aha = has_himss_after_no_match, 
          himss_before_aha = has_himss_before_no_match)
 
-confirmed_matches <- rbind(all_matches %>% select(full_aha, ahanumber, year), 
-                           sys_matches %>% select(full_aha, aha_aha, aha_year) %>%
+confirmed_matches <- rbind(all_matches %>% select(full_aha, ahanumber, year, id), 
+                           sys_matches %>% select(full_aha, aha_aha, aha_year, id) %>%
                              rename(ahanumber = aha_aha, year = aha_year)) %>%
-  rename(full_name = full_aha)  %>% distinct(ahanumber, full_name, year)
+  rename(full_name = full_aha)  %>% distinct(ahanumber, full_name, year, id)
 
 
 # get unaccounted for ceos
@@ -381,7 +367,7 @@ corresponding_system_ids <- final %>% filter(campus_aha %in% all_missing_aha) %>
   distinct(ahanumber, parentid, year, system_id) %>% rename(himss_year = year) 
 
 parent_df <- final %>% filter(parentid %in% corresponding_system_ids$parentid) %>%
-  distinct(firstname, lastname, full_name, ahanumber, entity_aha, entity_name, year, title_standardized, title) %>%
+  distinct(firstname, lastname, full_name, ahanumber, entity_aha, entity_name, year, title_standardized, title, id) %>%
   rename(himss_year = year,
          himss_full = full_name,
          first_himss = firstname,
@@ -444,11 +430,11 @@ himss_sys_matches <- check_sim %>%
 final_matches <- rbind(all_matches %>% select(-match_order), 
                        sys_matches %>% select(full_aha, aha_aha, aha_year,
                                               match_type, himss_before_aha,
-                                              himss_after_aha) %>%
+                                              himss_after_aha, id) %>%
                          rename(ahanumber = aha_aha, year = aha_year), 
                        himss_sys_matches %>% select(full_aha, ahanumber, aha_year,
                                                     match_type, himss_before_aha,
-                                                    himss_after_aha) %>%
+                                                    himss_after_aha, id) %>%
                          rename(year = aha_year)) %>%
   mutate(
     match_order = case_when(
@@ -499,4 +485,9 @@ p <- ggplot(df_counts %>% filter(percent >= 1), aes(x = reorder(match_type, -n),
 
 ggsave("../output/execs/aha_leadership_to_himss.png", plot = p, width = 6, height = 4, dpi = 300)
 
-### check cases that didn't merge
+### check titles
+title_df <- final %>% distinct(id, title, title_standardized)
+matches_with_titles <- final_matches %>% left_join(title_df)
+
+matches_with_titles %>% count(title, sort = TRUE)
+matches_with_titles %>% count(title_standardized, sort = TRUE)
