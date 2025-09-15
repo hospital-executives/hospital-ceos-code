@@ -412,6 +412,9 @@ aha_data <- aha_data %>%
     mloczip_five = str_extract(mloczip, "^\\d{5}")
   )
 
+haentity_path <- paste0(derived_data,"/auxiliary/haentity.feather")
+write_feather(haentity, haentity_path)
+
 #### merge AHA data to HIMSS #####
 #### STEP 1: Use crosswalk to pull in AHA numbers for hospitals ####
 # Have to separate NAs, they mess up the join
@@ -985,6 +988,3 @@ entity_roles <- entity_contacts %>%
 file_name <- "himss_entities_contacts_0517_v1"
 file_path_feather <- paste0(derived_data,"/",file_name,".feather")
 write_feather(entity_contacts, file_path_feather)
-
-haentity_path <- paste0(derived_data,"/auxiliary/haentity.feather")
-write_feather(haentity, haentity_path)
