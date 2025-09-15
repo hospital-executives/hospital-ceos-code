@@ -1,6 +1,6 @@
 ## libraries
 library(rstudioapi)
-
+library(janitor)
 rm(list = ls())
 
 args <- commandArgs(trailingOnly = TRUE)
@@ -52,14 +52,38 @@ write_dta(merged_haentity, paste0(derived_data,'/himss_aha_hospitals_final.dta')
 ## CREATE LEVEL EXPORT
 himss <- read_feather(paste0(derived_data, '/final_himss.feather'))
 
-drop_cio_reports_to <- himss %>%
+update_titles <- himss %>%
+  mutate(title_clean = str_to_lower(title),
+         title_clean = str_replace_all(title_clean, "[[:punct:]]", ""),
+         freeform_ceo = str_detect(title_clean, "ceo|chief executive") & 
+           !str_detect(title_clean, "assistant") & 
+           !str_detect(title_clean, "nurse|ambulatory") &
+           !str_detect(title, "Senior & Community Services"),
+         freeform_pres = title_clean == "president",
+         freeform_admin = title_clean == "administrator" | title_clean == "executive director")  %>%
+  group_by(entity_uniqueid, year) %>%
+  mutate(no_ceo = !any(title_standardized == "CEO:  Chief Executive Officer"),
+         ceo_flag = no_ceo & n_distinct(contact_uniqueid[freeform_ceo]) == 1,
+         pres_flag =  no_ceo & n_distinct(contact_uniqueid[freeform_pres]) == 1 & !any(ceo_flag),
+         admin_flag =  no_ceo & n_distinct(contact_uniqueid[freeform_admin]) == 1 & 
+           !any(pres_flag) & !any(ceo_flag)) %>%
+  ungroup() %>%
+  mutate(hosp_has_ceo = case_when(
+    title_standardized == "CEO:  Chief Executive Officer" ~ TRUE,
+    freeform_ceo & ceo_flag ~ TRUE,
+    freeform_pres & pres_flag ~ TRUE,
+    freeform_admin & admin_flag ~ TRUE,
+    TRUE ~ FALSE
+  )) %>% select(-c(title_clean, freeform_ceo, freeform_pres, freeform_admin,
+                   ceo_flag, pres_flag, admin_flag, no_ceo)) %>%
   group_by(contact_uniqueid, year) %>%
   mutate(num_titles = n_distinct(title_standardized)) %>%
   ungroup() %>%
-  filter(!(title_standardized == "CIO Reports to" & num_titles > 1))
+  filter(!(title_standardized == "CIO Reports to" & num_titles > 1 & hosp_has_ceo == FALSE)) %>%
+  select(-num_titles)
 
-himss_mini <- drop_cio_reports_to %>% # confirmed
-  select(himss_entityid, year, id, entity_uniqueid) %>%
+himss_mini <- update_titles %>% # confirmed
+  select(himss_entityid, year, id, entity_uniqueid, hosp_has_ceo) %>%
   mutate(
     himss_entityid = as.numeric(himss_entityid),
     year = as.numeric(year)
@@ -130,8 +154,8 @@ final_merged <- final_merged %>%
       is.na(py_fuzzy_flag) ~ NA, 
       TRUE ~ !is.na(entity_aha) & py_fuzzy_flag == 1
     ),
-    is_hospital = !is.na(entity_aha))
-
+    is_hospital = !is.na(entity_aha),
+    hosp_has_ceo = ifelse(is.na(hosp_has_ceo), FALSE, TRUE))
 
 write_feather(final_merged,paste0(derived_data,'/final_aha.feather'))
 
