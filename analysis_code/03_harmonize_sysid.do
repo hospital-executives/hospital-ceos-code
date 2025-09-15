@@ -26,38 +26,76 @@ Goal: 			Clean system ID variable from Cooper et al data
 	
 * creating our own variable
 
-* find the modal sysid_final for each system_id_ma, and vice versa
+* ion each year, find the modal entity_uniqueid_parent for each sysid, and vice versa
 * then check if they agree on the specific system for different observations. 	
 
 * FIND MODAL OBS
-* NEED TO UPDATE THIS TO ONLY LOOK AT HOSPITALS
-// 	preserve 
-// 		* collapse to counts by sysid_final system_id_ma
-// 		gen count = 1
-// 		collapse (count) count, by(system_id sysid)
+* start by only looking at general and CAH hosps - TEST SECTION
+	preserve 
+		keep if is_hospital == 1 // only use hospital observations for this part
+		
+		* restrict to hospitals that we expect should have matched to M&A data
+		gen partofsample = 1 if inlist(type,"General Medical","General Medical & Surgical","Critical Access")
+		bysort entity_uniqueid: egen ever_partofsample = max(partofsample)
+		keep if ever_partofsample == 1
+		drop ever_partofsample
+		codebook sysid
+		
+		* collapse to counts by sysid entity_uniqueid_parent
+		gen count = 1
+		collapse (count) count, by(entity_uniqueid_parent sysid year)
 // 		tempfile collapsed
 // 		save `collapsed'
-//		
-// 		* modal system_id for each sysid
-// 		bysort sysid: gen countalt_system_id = _N
-// 		bysort sysid (count): keep if _n ==_N
-// 		rename system_id modal_system_id
-// 		rename count countmodal_system_id
-// 		save "${dbdata}/derived/temp/modal_system_id_bysysid.dta", replace
-//	
-// 		* modal sysid for each system_id
-// 		use `collapsed', clear
-// 		bysort system_id: gen countalt_sysid = _N
-// 		bysort system_id (count): keep if _n ==_N
-// 		rename sysid modal_sysid
-// 		rename count countmodal_sysid
-// 		save "${dbdata}/derived/temp/modal_sysid_bysystem_id.dta", replace
-// 	restore
-//		
-// * merge into full data		
-// 	merge m:1 sysid using "${dbdata}/derived/temp/modal_system_id_bysysid.dta", nogen
-// 	merge m:1 system_id using "${dbdata}/derived/temp/modal_sysid_bysystem_id.dta", nogen
-//	
+
+		* what share of parent_ids correspond to multiple sysids in a year?
+		bysort entity_uniqueid_parent year: gen sysid_count = _N if _n == _N & !missing(entity_uniqueid_parent) // parent id never missing in this sample
+		* 95% of the time, a parent corresponds to one system (missing system counts as one system too). 
+		
+		* what share of sysids correspond to multiple parent_ids in a year?
+		bysort sysid year: gen parentid_count = _N if _n == _N & !missing(sysid)
+		* 97% of the time when sysid isn't missing, a sysid corresponds to one parent (missing parent counts as one system too). 
+		
+		* what does it mean when there isn't a unique mapping?
+			* my current guess is that an acquisition happened that isn't reflected in the parentid field. 
+			* so the hospital merges to a new sysid but the old parentid is still attached to it
+		
+	restore
+
+* Implementing current strategy 
+	preserve 
+		* restrict to hospitals that we expect should have matched to M&A data
+		restrict_hosp_sample // defined in "set globals"
+		
+		tab type
+		tab type if missing(sysid)
+		// test if always missing?
+	
+		* collapse to counts by sysid entity_uniqueid_parent
+		gen count = 1
+		collapse (count) count, by(entity_uniqueid_parent sysid year)
+		tempfile collapsed
+		save `collapsed'
+		
+		* modal system_id for each sysid
+		bysort sysid: gen countalt_parentid = _N
+		bysort sysid (count): keep if _n ==_N
+		rename entity_uniqueid_parent modal_entity_uniqueid_parent
+		rename count ctmod_entity_uniqueid_parent
+		save "${dbdata}/derived/temp/modal_parentid_bysysid.dta", replace
+	
+		* modal sysid for each system_id
+		use `collapsed', clear
+		bysort entity_uniqueid_parent: gen countalt_sysid = _N
+		bysort entity_uniqueid_parent (count): keep if _n ==_N
+		rename sysid modal_sysid
+		rename count ctmod_sysid
+		save "${dbdata}/derived/temp/modal_sysid_byparentid.dta", replace
+	restore
+		
+* merge into full data		
+	merge m:1 sysid using "${dbdata}/derived/temp/modal_system_id_bysysid.dta", nogen
+	merge m:1 entity_uniqueid_parent using "${dbdata}/derived/temp/modal_sysid_byparentid.dta", nogen
+	
 	
 * create system change variables _______________________________________________
 
@@ -127,15 +165,25 @@ Goal: 			Clean system ID variable from Cooper et al data
 	replace gov_priv_type = 4 if missing(aha_own_np) & aha_own_np_campus == 1
 	
 * how many FP/NFP conversions?
-	bysort entity_uniqueid year: gen test_to_fp = forprofit == 0 & forprofit[_n+1] == 1
-		replace test_to_fp = . if missing(forprofit) | missing(forprofit[_n+1])
-	bysort entity_uniqueid year: gen test_to_nfp = forprofit == 1 & forprofit[_n+1] == 0
-		replace test_to_nfp = . if missing(forprofit) | missing(forprofit[_n+1])
+	bysort entity_uniqueid (year): gen test_to_fp = forprofit == 1 & forprofit[_n-1] == 0
+		replace test_to_fp = . if missing(forprofit) | missing(forprofit[_n-1])
+	bysort entity_uniqueid (year): gen test_to_nfp = forprofit == 0 & forprofit[_n-1] == 1
+		replace test_to_nfp = . if missing(forprofit) | missing(forprofit[_n-1])
 
-	bysort entity_uniqueid year: gen nfp_to_fp = tar == 1 & forprofit[_n-1] == 0 & forprofit[_n+1] == 1
+	bysort entity_uniqueid (year): gen nfp_to_fp = tar == 1 & forprofit[_n-1] == 0 & forprofit[_n+1] == 1
 		replace nfp_to_fp = . if tar != 1 | missing(forprofit[_n-1]) | missing(forprofit[_n+1])
-	bysort entity_uniqueid year: gen fp_to_nfp = tar == 1 & forprofit[_n-1] == 1 & forprofit[_n+1] == 0
+	bysort entity_uniqueid (year): gen fp_to_nfp = tar == 1 & forprofit[_n-1] == 1 & forprofit[_n+1] == 0
 		replace fp_to_nfp = . if tar != 1 | missing(forprofit[_n-1]) | missing(forprofit[_n+1])
+	
+	* graph
+	preserve
+		collapse (rawsum) nfp_to_fp fp_to_nfp, by(year)
+		graph bar nfp_to_fp fp_to_nfp, over(year) ///
+				legend(position(bottom) label(1 "NFP to FP") label(2 "FP to NFP")) ///
+				title("Count of Converstions by Year") ///
+				blabel(bar, size(vsmall))
+			graph export "${overleaf}/notes/M&A Merge/figures/counts_conversions_byyear.pdf", as(pdf) name("Graph") replace
+	restore
 	
 	
 * reduce sample to info needed for crosswalking to indiv. file _________________
@@ -173,7 +221,9 @@ Goal: 			Clean system ID variable from Cooper et al data
 	
 * SYSTEM info __________________________________________________________________ 
 	
+	
 * get forprofit system descriptives 
+	* pull in modal sysid here? need to update below
 	bysort entity_uniqueid_parent year forprofit: gen count_fp = _N
 	drop if missing(forprofit)
 	bysort entity_uniqueid_parent year (count_fp): keep if _n == _N
@@ -203,7 +253,12 @@ Goal: 			Clean system ID variable from Cooper et al data
 	tab changeforprofit_imputed
 	drop change* himss_forprofit
 	
+	drop forprofit
+	gen forprofit = forprofit_imputed 
+	
 	save "${dbdata}/derived/temp/systems_nonharmonized_withprofit.dta", replace
+	
+* pull this back into 
 	
 * case studies _________________________________________________________________
 

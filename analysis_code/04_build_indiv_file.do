@@ -30,17 +30,23 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 	* pull in parent profit info
 	preserve
 		use "${dbdata}/derived/temp/systems_nonharmonized_withprofit.dta", clear 
-		keep himss_entityid year forprofit_imputed
-		rename himss_entityid entity_parentid 
-		rename forprofit_imputed forprofit_imputed_parent
+		keep entity_uniqueid year forprofit
+		rename entity_uniqueid entity_uniqueid_parent 
+		rename forprofit forprofit_parent
 		tempfile sysprofit
 		save `sysprofit'
 	restore
-	merge m:1 entity_parentid using `sysprofit', gen(_merge_profit) keep(1 3)
-		
-* merge in cleaned M&A data for SYSTEMS
-	merge m:1 entity_uniqueid year using "${dbdata}/derived/temp/systems_nonharmonized_withprofit.dta", gen(_merge_ma_sys) keep(1 3) force
-		
+	merge m:1 entity_uniqueid_parent year using `sysprofit', gen(_merge_profit) keep(1 3) // only unmerged observations are systems plus the 23 ambulatory 
+	
+* pull in contextual data for parents - specifically want profit data
+	merge m:1 entity_uniqueid year using "${dbdata}/derived/temp/systems_nonharmonized_withprofit.dta", keep(1 3) gen(_merge_newprofit) keepusing(forprofit_imputed)
+	replace forprofit = forprofit_imputed if _merge_newprofit == 3
+	drop _merge_newprofit
+	
+* MAKE A SYSTEM-LEVEL VARIABLE USING HIMSS PARENT
+	gen parent_system = entity_uniqueid_parent 
+	replace parent_system = entity_uniqueid if missing(entity_parentid)
+
 * remove "CIO Reports to" as a role
  	drop if title_standardized == "CIO Reports to" 		
 		
@@ -71,9 +77,8 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 	drop gender_*
 
 * identify hospitals
-	gen hospital = entity_type=="Hospital"
-	gen hospital_network = inlist(entity_type,"Hospital","Single Hospital Health System","IDS/RHA") 
-		
+	gen gen_hosp = is_hospital == 1 & inlist(type,"General Medical","General Medical & Surgical","Critical Access")
+	
 * hospital has CEO
 	* individual
 	gen char_ceo = regexm(title_standardized,"CEO:")
@@ -85,68 +90,67 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 	drop temp_hosp_has_ceo
 	* hospital
 	bysort entity_uniqueid year: egen hosp_has_ceo = max(char_ceo)
-// 		replace hosp_has_ceo = . if hospital == 0 // can just filter later
+// 		replace hosp_has_ceo = . if is_hospital == 0 // can just filter later
 	
 * hospital CEO variables
-	gen hospital_ceo = hospital==1 & char_ceo==1
+	gen hospital_ceo = is_hospital==1 & char_ceo==1
 	bysort contact_uniqueid: egen ever_hospital_ceo = max(hospital_ceo)
 	
-	gen hospital_system_ceo = char_ceo ==1 & inlist(entity_type,"Single Hospital Health System","IDS/RHA") 
-	bysort contact_uniqueid: egen ever_hosp_sys_ceo = max(hospital_system_ceo)
+	gen system_ceo = char_ceo ==1 & inlist(entity_type,"Single Hospital Health System","IDS/RHA") 
+	bysort contact_uniqueid: egen ever_sys_ceo = max(system_ceo)
 	
 * label FP/NFP variable
 	label define ind_fp 0 "Non-Profit" 1 "For-Profit"
 	label values forprofit ind_fp
-	label values forprofit_imputed ind_fp
-	label values forprofit_imputed_parent ind_fp
+	label values forprofit_parent ind_fp
 	
 * add parents
-// 	preserve 
-//	
-// 	* keep only CEOs
-// 		keep if char_ceo == 1
-// 		* keep hospitals and IDS/RHA or Single Hospital Health Systems
-// 		keep if regexm(entity_type,"Hospital|IDS/RHA|Single Hospital Health System")
-//		
-// 		* by CEO's unique ID and year, count unique HIMSS IDs:
-// 			* make sure unique
-// 			bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
-// 			egen total_dup = total(duplicates)
-// 			assert total_dup == 6 // 6 hosps that end up with two CEOs in the same year
-// 			drop if duplicates == 1
-// 			drop total_dup duplicates 
-//		
-// 		* then tempfile the systems - keep only CEO ID and name, rename to parent
-// 		keep if regexm(entity_type,"IDS/RHA|Single Hospital Health System")
-// 		glob keepvars contact_uniqueid entity_uniqueid title title_standardized entity_type firstname lastname full_name
-// 		* make unique 
-// 			bysort himss_entityid year: gen count = 1 if _n > 1
-// 			egen total_dup = total(count)
-// 			assert total_dup == 1 // there is 1 system in 2017 with co-CEOs (both female). The same two co-CEOs for both facilities. Just keeping one.
-// 			drop if count ==1 
-// 			drop count total_dup
-// 		keep himss_entityid year $keepvars
-// 		foreach var in $keepvars {
-// 			rename `var' `var'_parentceo
-// 		}
-// 		rename himss_entityid entity_parentid
-// 		tempfile parent_obs
-// 		save `parent_obs'
-//		
-// 	restore
-//	
-// 	* descriptives
-// 	preserve
-// 		bysort entity_uniqueid year: keep if _n == 1
-// 		tab entity_type
-// 		gen count = 1
-// 		collapse (rawsum) count, by(entity_parentid)
-// 		codebook count if !missing(entity_parentid)
-// 		codebook count if !missing(entity_parentid) & count>1
-// 	restore
-//				
-// 	* merge parents onto children
-// 	merge m:1 entity_parentid year using `parent_obs', gen(_merge_parent) keep(1 3)	
+	preserve 
+	
+	* keep only CEOs
+		keep if char_ceo == 1
+		* keep hospitals and IDS/RHA or Single Hospital Health Systems
+		keep if regexm(entity_type,"Hospital|IDS/RHA|Single Hospital Health System")
+		
+		* by CEO's unique ID and year, count unique HIMSS IDs:
+			* make sure unique
+			bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
+			egen total_dup = total(duplicates)
+			assert total_dup == 6 // 6 hosps that end up with two CEOs in the same year
+			drop if duplicates == 1
+			drop total_dup duplicates 
+		
+		* then tempfile the systems - keep only CEO ID and name, rename to parent
+		keep if regexm(entity_type,"IDS/RHA|Single Hospital Health System")
+		glob keepvars contact_uniqueid entity_uniqueid title title_standardized entity_type firstname lastname full_name
+		* make unique 
+			bysort himss_entityid year: gen count = 1 if _n > 1
+			egen total_dup = total(count)
+			assert total_dup == 1 // there is 1 system in 2017 with co-CEOs (both female). The same two co-CEOs for both facilities. Just keeping one.
+			drop if count ==1 
+			drop count total_dup
+		keep himss_entityid year $keepvars
+		foreach var in $keepvars {
+			rename `var' `var'_parentceo
+		}
+		rename himss_entityid entity_parentid
+		tempfile parent_obs
+		save `parent_obs'
+		
+	restore
+	
+	* descriptives
+	preserve
+		bysort entity_uniqueid year: keep if _n == 1
+		tab entity_type
+		gen count = 1
+		collapse (rawsum) count, by(entity_parentid)
+		codebook count if !missing(entity_parentid)
+		codebook count if !missing(entity_parentid) & count>1
+	restore
+				
+	* merge parents onto children
+	merge m:1 entity_parentid year using `parent_obs', gen(_merge_parent_ceo) keep(1 3)	
 		
 	
 * do CEOs drop out of the sample and then come back? ___________________________ 
@@ -178,7 +182,7 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_ceo_skips_byyear.pdf", as(pdf) name("Graph") replace
 		
 		* share of ceos skipping over time HOSP ONLY
-		graph bar skip if hospital ==1, over(year) title("Share of Returning CEOs who Skipped >=1 Year") ///
+		graph bar skip if is_hospital ==1, over(year) title("Share of Returning CEOs who Skipped >=1 Year") ///
 			ytitle("Share") ///
 			subtitle("Hospitals Only") ///
 			blabel(bar, format(%3.2f))
@@ -193,7 +197,7 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_ceo_skips_char.pdf", as(pdf) name("Graph") replace
 		
 		* descriptives on skippers/non-skippers HOSP ONLY
-		graph bar forprofit char_female char_md if hospital==1, over(skip) ///
+		graph bar forprofit char_female char_md if is_hospital ==1, over(skip) ///
 			title("Descriptives on Skip vs Non-Skip CEOs") ///
 			subtitle("Hospitals Only") ///
 			ytitle("Share") ///
@@ -202,7 +206,7 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_ceo_skips_char_hosp.pdf", as(pdf) name("Graph") replace
 		
 		* collapse to person-level
-		collapse (max) ever_skip = skip (max) char_md (mean) char_female (mean) forprofit, by(contact_uniqueid hospital)
+		collapse (max) ever_skip = skip (max) char_md (mean) char_female (mean) forprofit, by(contact_uniqueid is_hospital)
 		* tag one obs per person (for people who have worked at hosp and non hosp)
 		bysort contact_uniqueid: gen tag = 1 if _n ==1
 		sum ever_skip
@@ -216,7 +220,7 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_ceo_everskips_char.pdf", as(pdf) name("Graph") replace
 		
 		* descriptives on skippers/non-skippers HOSP ONLY
-		graph bar forprofit char_female char_md if hospital ==1, over(ever_skip) ///
+		graph bar forprofit char_female char_md if is_hospital ==1, over(ever_skip) ///
 			title("Descriptives on Ever-Skip vs Non-Skip CEOs") ///
 			subtitle("Hospitals Only") ///
 			ytitle("Share") ///
@@ -231,7 +235,7 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 	preserve
 		
 		keep if char_ceo == 1
-		keep if hospital == 1
+		keep if is_hospital == 1
 		
 		* by CEO's unique ID and year, count unique HIMSS IDs:
 			* make sure unique
@@ -244,6 +248,11 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 		* check if CEOs are the same
 		gen same_ceo = contact_uniqueid == contact_uniqueid_parent
 		tab same_ceo entity_type_parent
+		
+		* keep a list of SHHS observations with the same hospital CEO for later 
+			* to drop from CEO transitions analysis
+		tempfile same_ceos
+		save `same_ceos'
 		
 		* make count variables for graphing
 		gen count_same = 1 if same_ceo == 1
@@ -279,7 +288,7 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 		* keep only CEOs
 		keep if char_ceo == 1
 		* keep only hospital observations
-		keep if hospital ==1 
+		keep if is_hospital ==1 
 		
 		* by CEO's unique ID and year, count unique HIMSS IDs:
 			* make sure unique
@@ -303,7 +312,7 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 		* keep only CEOs
 		keep if char_ceo == 1
 		* keep only hospital observations
-		keep if hospital ==1
+		keep if is_hospital ==1
 		
 		* by CEO's unique ID and year, count unique AHA IDs:
 			* make sure unique
@@ -332,7 +341,7 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 		* keep only C-suite obs
 		keep if c_suite == 1
 		* keep only hospital observations
-		keep if hospital ==1
+		keep if is_hospital ==1
 		
 		gen count = 1
 		collapse (rawsum) count (max) char_ceo, by(contact_uniqueid entity_uniqueid year)
@@ -349,13 +358,32 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 	restore
 	
 	* repeat for systems?
+	preserve
+		keep if char_ceo == 1
+		keep if is_hospital == 1
+		
+		gen count = 1
+		collapse (rawsum) count (max) char_ceo, by(contact_uniqueid parent_system year)
+		
+		* count systems
+			bysort contact_uniqueid year: gen count_system_roles = _N
+			bysort contact_uniqueid year: keep if _n ==1 // one obs per person-yr
+			keep contact_uniqueid year count_system_roles
+			
+		* save file to pull into main data
+		tempfile mult_system_roles
+		save `mult_system_roles'	
+	
+	
+	restore
 	
 	* merge into main data
 	merge m:1 contact_uniqueid year using `mult_ceo_roles', nogen keep(1 3)
 	merge m:1 contact_uniqueid year using `mult_ceo_roles_aha', nogen keep(1 3)
 	merge m:1 contact_uniqueid year using `mult_csuite_roles', nogen keep(1 3)
+	merge m:1 contact_uniqueid year using `mult_system_roles', nogen keep(1 3)
 	
-	foreach var in count_ceo_roles count_ceo_roles_aha count_csuite_roles {
+	foreach var in count_ceo_roles count_ceo_roles_aha count_csuite_roles count_system_roles {
 		forval i = 1/2 {
 			gen `var'_`i' = `var' == `i'
 				replace `var'_`i' = . if missing(`var')
@@ -370,7 +398,7 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 		* keep only CEOs
 		keep if char_ceo == 1
 		* keep only hospital observations
-		keep if hospital ==1 
+		keep if is_hospital ==1 
 		
 		* make sure unique
 			bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
@@ -434,7 +462,7 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 		* keep only CEOs
 		keep if char_ceo == 1
 		* keep only hospital observations
-		keep if hospital ==1 | inlist(entity_type,"IDS/RHA","Single Hospital Health System")
+		keep if is_hospital ==1 | inlist(entity_type,"IDS/RHA","Single Hospital Health System")
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
@@ -455,13 +483,13 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 		* initial version: any change in the CEO from year to year
 		bysort entity_uniqueid (year): gen ceo_turnover1 = contact_uniqueid != contact_uniqueid[_n-1] if _n > 1
 		
-		keep entity_uniqueid year ceo_turnover1 gov_priv_type forprofit hospital
+		keep entity_uniqueid year ceo_turnover1 gov_priv_type forprofit is_hospital
 		
 		tempfile ceo_turnover1_xwalk
 		save `ceo_turnover1_xwalk'
 		
-		gen ceo_turnover_govpriv = ceo_turnover1 if !missing(gov_priv_type) & hospital ==1
-		gen ceo_turnover_forprofit = ceo_turnover1 if !missing(forprofit) & hospital ==1
+		gen ceo_turnover_govpriv = ceo_turnover1 if !missing(gov_priv_type) & is_hospital ==1
+		gen ceo_turnover_forprofit = ceo_turnover1 if !missing(forprofit) & is_hospital ==1
 		
 		collapse ceo_turnover1 ceo_turnover_govpriv ceo_turnover_forprofit, by(year)
 		rename ceo_turnover1 ceo_turnover_all
@@ -474,36 +502,82 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 	
 * tracking CEO changes _________________________________________________________ 
 
+	* PULL IN LIST OF SHHS W/ SAME CEOS	
+	preserve
+		use `same_ceos', clear
+		keep if same_ceo == 1 & entity_type_parent == "Single Hospital Health System"
+		
+		* entity_uniqueid_parent is what we want to keep a list of
+		* these are the IDs for the SHHS "system-level" observations
+		
+		keep entity_uniqueid_parent year
+		rename entity_uniqueid_parent entity_uniqueid
+		
+		bysort entity_uniqueid year: keep if _n == 1 // one dup
+		
+		tempfile list_same_ceo_shhs
+		save `list_same_ceo_shhs'
+	restore
+
 	preserve 
-		keep if ever_hospital_ceo ==1 | ever_hosp_sys_ceo == 1
+		keep if ever_hospital_ceo ==1 | ever_sys_ceo == 1
+		
+		* drop the SHHS CEOs when they are the same as the facility CEOs
+		merge m:1 entity_uniqueid year using `list_same_ceo_shhs', gen(_merge_same_ceo)
+		* don't want to keep observations that match -> want to keep master only (1)
+		keep if _merge_same_ceo == 1
+		drop _merge_same_ceo
 		
 		* make a person-year dataset with all roles
 		bysort contact_uniqueid year: gen role_num = _n
 		* retain the max row_num as a local
 			quietly summarize role_num
 			local max_role = r(max) 
-		keep entity_uniqueid title_standardized contact_uniqueid year role_num hospital_ceo
-		reshape wide entity_uniqueid title_standardized hospital_ceo, i(contact_uniqueid year) j(role_num) 
+		keep entity_uniqueid title_standardized contact_uniqueid year role_num hospital_ceo parent_system entity_uniqueid_parent system_ceo entity_type entity_type_parent ever_hospital_ceo ever_sys_ceo
+		reshape wide entity_uniqueid title_standardized hospital_ceo system_ceo parent_system entity_uniqueid_parent entity_type entity_type_parent, i(contact_uniqueid year ever_hospital_ceo ever_sys_ceo) j(role_num) 
 	
 		* make person-rownumber variable
 		bysort contact_uniqueid (year): gen row_in_person = _n
 		
 		* indicator for any CEO role in the year
-		egen ceo_this_year = rowmax(hospital_ceo*)
+		egen hosp_ceo_this_year = rowmax(hospital_ceo*)
 		
-		* make gained_ceo variable
-		bysort contact_uniqueid (year): gen gained_ceo = ceo_this_year ==1 & ceo_this_year[_n-1] == 0 if _n > 1
+		* indicator for any CEO role in the year
+		egen sys_ceo_this_year = rowmax(system_ceo*)
 		
-		* CEO last year
-		bysort contact_uniqueid (year): gen ceo_last_year = ceo_this_year[_n-1]
+		* make gained_hosp_ceo variable
+		bysort contact_uniqueid (year): gen gained_hosp_ceo = hosp_ceo_this_year ==1 ///
+			& hosp_ceo_this_year[_n-1] == 0 if _n > 1
+		
+		* make gained_sys_ceo variable
+		bysort contact_uniqueid (year): gen gained_sys_ceo = sys_ceo_this_year ==1 ///
+			& sys_ceo_this_year[_n-1] == 0 if _n > 1
+		
+		* hospital CEO last year
+		bysort contact_uniqueid (year): gen hosp_ceo_last_year = hosp_ceo_this_year[_n-1]
+		
+		* system CEO last year
+		bysort contact_uniqueid (year): gen sys_ceo_last_year = sys_ceo_this_year[_n-1]
+		
+		* Previous year variable
+		bysort contact_uniqueid (year): gen year_prev = year[_n-1]
 		
 		* make variables to track relevant entities by year
-		gen strL all_ceo_entities = ""
+		gen strL all_hosp_ceo_entities = ""
+		gen strL all_hosp_ceo_systems = ""
+		gen strL all_sys_ceo_entities = ""
 		gen strL all_entities = ""
-		gen n_ceo_entities = 0
+		gen strL all_systems = ""
+		gen n_hosp_ceo_entities = 0
+		gen n_sys_ceo_entities = 0
+		gen n_hosp_ceo_systems = 0
 		* Loop over each pair
 		forvalues j = 1/`max_role' {
-			* all entities (unique)
+			
+			***** ENTITIES *****
+			
+			* all entities (unique) 
+				* list of all entities worked at in the given year
 			replace all_entities = ///
 				cond( all_entities == "", ///
 					  string(entity_uniqueid`j'), ///
@@ -512,272 +586,377 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 				&  strpos(";" + all_entities + ";",   ///
 						 ";" + string(entity_uniqueid`j') + ";") == 0
 			
-			* unique CEO entities counter
-			replace n_ceo_entities = n_ceo_entities + 1 ///
+			* unique hospital CEO entities counter
+				* count of all entities worked at as hospital CEO in the given year
+			replace n_hosp_ceo_entities = n_hosp_ceo_entities + 1 ///
 				if  hospital_ceo`j' == 1 ///
 				&  !missing(entity_uniqueid`j') ///
-				&  strpos(";" + all_ceo_entities + ";",   ///
+				&  strpos(";" + all_hosp_ceo_entities + ";",   ///
 						 ";" + string(entity_uniqueid`j') + ";") == 0
 			
-			* CEO entities only (unique)
-			replace all_ceo_entities = ///
-				cond( all_ceo_entities == "", ///
+			* hospital CEO entities only (unique)
+				* list of all entities worked at as hospital CEO in the given year
+			replace all_hosp_ceo_entities = ///
+				cond( all_hosp_ceo_entities == "", ///
 					  string(entity_uniqueid`j'), ///
-					  all_ceo_entities + ";" + string(entity_uniqueid`j') ) ///
+					  all_hosp_ceo_entities + ";" + string(entity_uniqueid`j') ) ///
 				if  hospital_ceo`j' == 1 ///
 				&  !missing(entity_uniqueid`j') ///
-				&  strpos(";" + all_ceo_entities + ";",   ///
+				&  strpos(";" + all_hosp_ceo_entities + ";",   ///
 						 ";" + string(entity_uniqueid`j') + ";") == 0	
+						 
+			* unique system CEO entities counter
+				* count of all entities worked at as system CEO in the given year
+			replace n_sys_ceo_entities = n_sys_ceo_entities + 1 ///
+				if  system_ceo`j' == 1 ///
+				&  !missing(entity_uniqueid`j') ///
+				&  strpos(";" + all_sys_ceo_entities + ";",   ///
+						 ";" + string(entity_uniqueid`j') + ";") == 0
+			
+			* system CEO entities only (unique)
+				* list of all entities worked at as system CEO in the given year
+			replace all_sys_ceo_entities = ///
+				cond( all_sys_ceo_entities == "", ///
+					  string(entity_uniqueid`j'), ///
+					  all_sys_ceo_entities + ";" + string(entity_uniqueid`j') ) ///
+				if  system_ceo`j' == 1 ///
+				&  !missing(entity_uniqueid`j') ///
+				&  strpos(";" + all_sys_ceo_entities + ";",   ///
+						 ";" + string(entity_uniqueid`j') + ";") == 0	
+			
+			***** SYSTEMS *****
+			
+			* all systems (unique) 
+				* list of all systems worked at in the given year
+			replace all_systems = ///
+				cond( all_systems == "", ///
+					  string(parent_system`j'), ///
+					  all_systems + ";" + string(parent_system`j') ) ///
+				if !missing(parent_system`j') ///
+				&  strpos(";" + all_systems + ";",   ///
+						 ";" + string(parent_system`j') + ";") == 0
+			
+			* unique hospital CEO systems counter
+				* count of all entities worked at as hospital CEO in the given year
+			replace n_hosp_ceo_systems = n_hosp_ceo_systems + 1 ///
+				if  hospital_ceo`j' == 1 ///
+				&  !missing(parent_system`j') ///
+				&  strpos(";" + all_hosp_ceo_systems + ";",   ///
+						 ";" + string(parent_system`j') + ";") == 0
+			
+			* hospital CEO systems only (unique)
+				* list of all entities worked at as hospital CEO in the given year
+			replace all_hosp_ceo_systems = ///
+				cond( all_hosp_ceo_systems == "", ///
+					  string(parent_system`j'), ///
+					  all_hosp_ceo_systems + ";" + string(parent_system`j') ) ///
+				if  hospital_ceo`j' == 1 ///
+				&  !missing(parent_system`j') ///
+				&  strpos(";" + all_hosp_ceo_systems + ";",   ///
+						 ";" + string(parent_system`j') + ";") == 0	
 		
 		}
 		
 		* Lagged entities variable: entities_prev
 		bysort contact_uniqueid (year): gen entities_prev = all_entities[_n-1]
+		* Lagged systems variable: systems_prev
+		bysort contact_uniqueid (year): gen systems_prev = all_systems[_n-1]
+		* the prior_all variable isn't working (it's not cumulative) and it isn't used yet
 		gen entities_prior_all = ""
 		bysort contact_uniqueid (year): replace entities_prior_all = ///
 			cond(!missing(entities_prev), entities_prev[_n-1]+";"+entities_prev, entities_prev[_n-1])
 			
 		* Make an "added CEOs" variable	and counters
-		bysort contact_uniqueid (year): gen ceos_prev = all_ceo_entities[_n-1]
-		gen added_ceo_entities = ""
-		gen n_ceo_added = 0
-		gen n_ceo_add_overlap = 0
-		gen n_ceo_ent_overlap = 0
-		gen covered_ceo_ent = "" // temporary var to track the entities I've looped over
-		forvalues j = 1/`max_role' {
-			
-			* counter for whether current ceo entities overlap with prior ceo entities
-			replace n_ceo_ent_overlap = n_ceo_ent_overlap + 1 ///
-					if  hospital_ceo`j' == 1 ///
+		
+		foreach stub in hosp sys {
+			bysort contact_uniqueid (year): gen `stub'_ceos_prev = all_`stub'_ceo_entities[_n-1]
+			gen added_`stub'_ceo_entities = ""
+			gen n_`stub'_ceo_added = 0
+			gen n_`stub'_ceo_add_overlap = 0
+			gen n_`stub'_ceo_ent_overlap = 0
+			if "`stub'" == "hosp" {
+				gen n_hosp_ceo_sys_overlap = 0
+			}
+			gen covered_`stub'_ceo_ent = "" // temporary var to track the entities I've looped over
+			forvalues j = 1/`max_role' {
+				if "`stub'" == "hosp" {
+					local longstub hospital
+				}
+				else if "`stub'" == "sys" {
+					local longstub system
+				}
+				
+				* counter for whether current ceo entities overlap with prior ceo entities
+				replace n_`stub'_ceo_ent_overlap = n_`stub'_ceo_ent_overlap + 1 ///
+						if  `longstub'_ceo`j' == 1 ///
+						&  !missing(entity_uniqueid`j') ///
+						&  strpos(";" + covered_`stub'_ceo_ent + ";",   /// not counted yet
+								 ";" + string(entity_uniqueid`j') + ";") == 0 ///
+						&  strpos(";" + `stub'_ceos_prev + ";", /// ID was in last year list of any entity
+								 ";" + string(entity_uniqueid`j') + ";") > 0
+				
+				* track the unique entities we have counted so far
+				replace covered_`stub'_ceo_ent = ///
+					cond( covered_`stub'_ceo_ent == "", ///
+						  string(entity_uniqueid`j'), ///
+						  covered_`stub'_ceo_ent + ";" + string(entity_uniqueid`j') ) ///
+					if `longstub'_ceo`j' == 1 ///
 					&  !missing(entity_uniqueid`j') ///
-					&  strpos(";" + covered_ceo_ent + ";",   /// not counted yet
+					&  strpos(";" + covered_`stub'_ceo_ent + ";",   ///
+							 ";" + string(entity_uniqueid`j') + ";") == 0
+				
+				* added CEOs counter
+				replace n_`stub'_ceo_added = n_`stub'_ceo_added + 1 ///
+					if  `longstub'_ceo`j' == 1 /// conditions to do the replacement:
+						&  !missing(entity_uniqueid`j') /// the ID isn't missing
+						&  strpos(";" + added_`stub'_ceo_entities + ";",   /// ID is not already in the list
 							 ";" + string(entity_uniqueid`j') + ";") == 0 ///
-					&  strpos(";" + ceos_prev + ";", /// ID was in last year list of any entity
-							 ";" + string(entity_uniqueid`j') + ";") > 0
+						&  	strpos(";" + `stub'_ceos_prev + ";",   /// ID wasn't in last year's list
+							 ";" + string(entity_uniqueid`j') + ";") == 0 ///
+						&  	row_in_person > 1 // not the first year for the person 
+				
+				* counter for "added CEO entity was in the entities_prev" overlap
+				replace n_`stub'_ceo_add_overlap = n_`stub'_ceo_add_overlap + 1 ///
+					if `longstub'_ceo`j' == 1 /// conditions to do the replacement:
+						&  !missing(entity_uniqueid`j') /// the ID isn't missing
+						&  strpos(";" + added_`stub'_ceo_entities + ";",   /// ID is not already in the list
+							 ";" + string(entity_uniqueid`j') + ";") == 0 ///
+						&  	strpos(";" + `stub'_ceos_prev + ";",   /// ID wasn't in last year's list
+							 ";" + string(entity_uniqueid`j') + ";") == 0 ///
+						&  	row_in_person > 1 /// not the first year for the person 
+						&  strpos(";" + entities_prev + ";", /// ID was in last year list of any entity
+							 ";" + string(entity_uniqueid`j') + ";") > 0 
+				
+				* counter for "added CEO system was in the systems_prev" overlap 
+				if "`stub'" == "hosp" {
+					replace n_hosp_ceo_sys_overlap = n_hosp_ceo_sys_overlap + 1 ///
+						if `longstub'_ceo`j' == 1 /// conditions to do the replacement:
+							&  !missing(entity_uniqueid`j') /// the ID isn't missing
+							&  strpos(";" + added_`stub'_ceo_entities + ";",   /// ID is not already in the list
+								 ";" + string(entity_uniqueid`j') + ";") == 0 ///
+							&  	strpos(";" + `stub'_ceos_prev + ";",   /// ID wasn't in last year's list
+								 ";" + string(entity_uniqueid`j') + ";") == 0 ///
+							&  	row_in_person > 1 /// not the first year for the person 
+							&  strpos(";" + systems_prev + ";", /// system ID was in last year list of any sysid
+								 ";" + string(parent_system`j') + ";") > 0 
+				}
+							 
+				* append to the added ceos list 
+				replace added_`stub'_ceo_entities = ///
+					cond( added_`stub'_ceo_entities == "", ///
+						  string(entity_uniqueid`j'), ///
+						  added_`stub'_ceo_entities + ";" + string(entity_uniqueid`j') ) ///
+					if  `longstub'_ceo`j' == 1 /// conditions to do the replacement:
+						&  !missing(entity_uniqueid`j') /// the ID isn't missing
+						&  strpos(";" + added_`stub'_ceo_entities + ";",   /// ID is not already in the list
+							 ";" + string(entity_uniqueid`j') + ";") == 0 ///
+						&  	strpos(";" + `stub'_ceos_prev + ";",   /// ID wasn't in last year's list
+							 ";" + string(entity_uniqueid`j') + ";") == 0 ///
+						&  	row_in_person > 1 // not the first year for the person 
+			}
+			drop covered_`stub'_ceo_ent
 			
-			* track the unique entities we have counted so far
-			replace covered_ceo_ent = ///
-				cond( covered_ceo_ent == "", ///
-					  string(entity_uniqueid`j'), ///
-					  covered_ceo_ent + ";" + string(entity_uniqueid`j') ) ///
-				if  hospital_ceo`j' == 1 ///
-				&  !missing(entity_uniqueid`j') ///
-				&  strpos(";" + covered_ceo_ent + ";",   ///
-						 ";" + string(entity_uniqueid`j') + ";") == 0
+			* Count (overlapping) CEO roles by year 	
+			* how many total CEO entities?
+				* how many overlap with previous CEO entities (retaining roles)?
+			* how many added CEO entities?
+				* how many overlap with previous entities (any role)? i.e. is the CEO role at a new place?
 			
-			* added CEOs counter
-			replace n_ceo_added = n_ceo_added + 1 ///
-				if  hospital_ceo`j' == 1 /// conditions to do the replacement:
-					&  !missing(entity_uniqueid`j') /// the ID isn't missing
-					&  strpos(";" + added_ceo_entities + ";",   /// ID is not already in the list
-						 ";" + string(entity_uniqueid`j') + ";") == 0 ///
-					&  	strpos(";" + ceos_prev + ";",   /// ID wasn't in last year's list
-						 ";" + string(entity_uniqueid`j') + ";") == 0 ///
-					&  	row_in_person > 1 // not the first year for the person 
+			* any prior year promotion variable
+			gen `stub'_promotion_type = ""
+				* Internal promotion: CEO entity appears in any prior entity list
+				replace `stub'_promotion_type = "internal" if gained_`stub'_ceo == 1 ///
+					& n_`stub'_ceo_add_overlap >= 1 // at least one promotion to CEO where they already worked	
+				* External promotion: CEO entity not in any prior entity list
+				replace `stub'_promotion_type = "external" if gained_`stub'_ceo == 1 ///
+					& n_`stub'_ceo_add_overlap == 0 // zero promotions to CEO where they already worked	
 			
-			* counter for "added CEO entity was in the entities_prev" overlap
-			replace n_ceo_add_overlap = n_ceo_add_overlap + 1 ///
-				if hospital_ceo`j' == 1 /// conditions to do the replacement:
-					&  !missing(entity_uniqueid`j') /// the ID isn't missing
-					&  strpos(";" + added_ceo_entities + ";",   /// ID is not already in the list
-						 ";" + string(entity_uniqueid`j') + ";") == 0 ///
-					&  	strpos(";" + ceos_prev + ";",   /// ID wasn't in last year's list
-						 ";" + string(entity_uniqueid`j') + ";") == 0 ///
-					&  	row_in_person > 1 /// not the first year for the person 
-					&  strpos(";" + entities_prev + ";", /// ID was in last year list of any entity
-						 ";" + string(entity_uniqueid`j') + ";") > 0 		
-						 
-			* append to the added ceos list 
-			replace added_ceo_entities = ///
-				cond( added_ceo_entities == "", ///
-					  string(entity_uniqueid`j'), ///
-					  added_ceo_entities + ";" + string(entity_uniqueid`j') ) ///
-				if  hospital_ceo`j' == 1 /// conditions to do the replacement:
-					&  !missing(entity_uniqueid`j') /// the ID isn't missing
-					&  strpos(";" + added_ceo_entities + ";",   /// ID is not already in the list
-						 ";" + string(entity_uniqueid`j') + ";") == 0 ///
-					&  	strpos(";" + ceos_prev + ";",   /// ID wasn't in last year's list
-						 ";" + string(entity_uniqueid`j') + ";") == 0 ///
-					&  	row_in_person > 1 // not the first year for the person 
+			* consecutive promotions variable
+			gen `stub'_promotion_type_consec = ""
+				* Internal promotion: CEO entity appears in any prior entity list
+				replace `stub'_promotion_type_consec = "internal" if gained_`stub'_ceo == 1 ///
+					& n_`stub'_ceo_add_overlap >= 1 /// at least one promotion to CEO where they already worked
+					& year_prev == year - 1
+				* External promotion: CEO entity not in any prior entity list
+				replace `stub'_promotion_type_consec = "external" if gained_`stub'_ceo == 1 ///
+					& n_`stub'_ceo_add_overlap == 0 /// zero promotions to CEO where they already worked
+					& year_prev == year - 1
+				replace `stub'_promotion_type_consec = "missing year" if gained_`stub'_ceo == 1 ///
+					& year_prev != year - 1
+							
+			* move type 
+			gen `stub'_move_type = ""
+				* External
+				replace `stub'_move_type = "external" if gained_`stub'_ceo == 0 /// not the first CEO promotion
+					& row_in_person > 1 /// not first year for person
+					& `stub'_ceo_this_year == 1 /// CEO this year
+					& `stub'_ceo_last_year == 1 /// CEO last year
+					& n_`stub'_ceo_added >= 1 /// added a CEO role this year
+					& n_`stub'_ceo_add_overlap == 0 /// all CEO entities are new (didn't work there last obs in any role)
+					& n_`stub'_ceo_ent_overlap == 0 // did not retain any old CEO roles
+				replace `stub'_move_type = "internal" if gained_`stub'_ceo == 0 /// not the first CEO promotion
+					& row_in_person > 1 /// not first year for person
+					& `stub'_ceo_this_year == 1 /// CEO this year
+					& `stub'_ceo_last_year == 1 /// CEO last year
+					& n_`stub'_ceo_added >= 1 /// added a CEO role this year
+					& n_`stub'_ceo_added == n_`stub'_ceo_add_overlap // already worked at all the places they are now CEO (internal only)
+				replace `stub'_move_type = "lateral" if gained_`stub'_ceo == 0 /// not the first CEO promotion
+					& row_in_person > 1 /// not first year for person
+					& `stub'_ceo_this_year == 1 /// CEO this year
+					& `stub'_ceo_last_year == 1 /// CEO last year
+					& n_`stub'_ceo_added >= 1 /// added a CEO role this year
+					& n_`stub'_ceo_add_overlap < n_`stub'_ceo_added /// they have at least one external promotion
+					& n_`stub'_ceo_ent_overlap > 0 // they are retaining at least one old CEO role
+					
+			* move type (consecutive)
+			gen `stub'_move_type_consec = ""
+				* External
+				replace `stub'_move_type_consec = "external" if gained_`stub'_ceo == 0 /// not the first CEO promotion
+					& year_prev == year-1 /// consecutive years
+					& row_in_person > 1 /// not first year for person
+					& `stub'_ceo_this_year == 1 /// CEO this year
+					& `stub'_ceo_last_year == 1 /// CEO last year
+					& n_`stub'_ceo_added >= 1 /// added a CEO role this year
+					& n_`stub'_ceo_add_overlap == 0 /// all CEO entities are new (didn't work there last obs)
+					& n_`stub'_ceo_ent_overlap == 0 // did not retain any old CEO roles
+				replace `stub'_move_type_consec = "internal" if gained_`stub'_ceo == 0 /// not the first CEO promotion
+					& year_prev == year-1 /// consecutive years
+					& row_in_person > 1 /// not first year for person
+					& `stub'_ceo_this_year == 1 /// CEO this year
+					& `stub'_ceo_last_year == 1 /// CEO last year
+					& n_`stub'_ceo_added >= 1 /// added a CEO role this year
+					& n_`stub'_ceo_added == n_`stub'_ceo_add_overlap // already worked at all the places they are now CEO
+				replace `stub'_move_type_consec = "lateral" if gained_`stub'_ceo == 0 /// not the first CEO promotion
+					& year_prev == year-1 /// consecutive years
+					& row_in_person > 1 /// not first year for person
+					& `stub'_ceo_this_year == 1 /// CEO this year
+					& `stub'_ceo_last_year == 1 /// CEO last year
+					& n_`stub'_ceo_added >= 1 /// added a CEO role this year
+					& n_`stub'_ceo_add_overlap < n_`stub'_ceo_added /// they have at least one external promotion
+					& n_`stub'_ceo_ent_overlap > 0 // they are retaining at least one old CEO role	
+				replace `stub'_move_type_consec = "missing year" if gained_`stub'_ceo == 0 /// not the first CEO promotion
+					& year_prev != year-1 /// consecutive years
+					& row_in_person > 1 /// not first year for person
+					& `stub'_ceo_this_year == 1 /// CEO this year
+					& `stub'_ceo_last_year == 1 /// CEO last year
+					& n_`stub'_ceo_added >= 1 // added a CEO role this year
+			
+					
+			* COMBINE promotions and moves together
+			* any prev year
+			gen `stub'_transition_type = ""
+				replace `stub'_transition_type = "internal promotion" ///
+					if gained_`stub'_ceo == 1 ///
+					& `stub'_promotion_type == "internal"
+				replace `stub'_transition_type = "external promotion" ///
+					if gained_`stub'_ceo == 1 ///
+					& `stub'_promotion_type == "external"
+				replace `stub'_transition_type = "internal move" ///
+					if gained_`stub'_ceo == 0 ///
+					& `stub'_move_type == "internal"
+				replace `stub'_transition_type = "external move" ///
+					if gained_`stub'_ceo == 0 ///
+					& `stub'_move_type == "external"
+				replace `stub'_transition_type = "lateral move" ///
+					if gained_`stub'_ceo == 0 ///
+					& `stub'_move_type == "lateral"
+			* for hospital CEO roles, we want to know if they stayed within or across systems
+			if "`stub'" == "hosp" {
+				gen hosp_test_transition_sys = ""
+				replace hosp_test_transition_sys = "within system" if !missing(`stub'_transition_type) ///
+					& n_hosp_ceo_sys_overlap > 0
+				replace hosp_test_transition_sys = "across system" if !missing(`stub'_transition_type) ///
+					& n_hosp_ceo_sys_overlap == 0
+			}
+			
+			* consecutive only
+			gen `stub'_transition_type_consec = ""
+				replace `stub'_transition_type_consec = "internal promotion" ///
+					if gained_`stub'_ceo == 1 ///
+					& `stub'_promotion_type_consec == "internal"
+				replace `stub'_transition_type_consec = "external promotion" ///
+					if gained_`stub'_ceo == 1 ///
+					& `stub'_promotion_type_consec == "external"
+				replace `stub'_transition_type_consec = "internal move" ///
+					if gained_`stub'_ceo == 0 ///
+					& `stub'_move_type_consec == "internal"
+				replace `stub'_transition_type_consec = "external move" ///
+					if gained_`stub'_ceo == 0 ///
+					& `stub'_move_type_consec == "external"
+				replace `stub'_transition_type_consec = "lateral move" ///
+					if gained_`stub'_ceo == 0 ///
+					& `stub'_move_type_consec == "lateral"
+			
+			* add definition variable 
+			if "`stub'" == "hosp" {
+				gen `stub'_definition = "First time becoming hospital CEO at a hospital previously worked at (non-CEO)" ///
+					if `stub'_transition_type == "internal promotion"
+					replace `stub'_definition = "First time becoming hospital CEO at a hospital never worked at before" ///
+						if `stub'_transition_type == "external promotion"
+					replace `stub'_definition = "Already hospital CEO; add CEO role at a hospital previously worked at (non-CEO)" ///
+						if `stub'_transition_type == "internal move"
+					replace `stub'_definition = "Already hospital CEO; add CEO role at a hospital never worked at before" ///
+						if `stub'_transition_type == "lateral move"
+					replace `stub'_definition = "Drop previous hospital CEO roles; become CEO at a hospital never worked at before" ///
+					if `stub'_transition_type == "external move"
+			}
+			if "`stub'" == "sys" {
+				gen `stub'_definition = "First time becoming system CEO at a system previously worked at (non-system-CEO)" ///
+					if `stub'_transition_type == "internal promotion"
+					replace `stub'_definition = "First time becoming system CEO at a system never worked at before" ///
+						if `stub'_transition_type == "external promotion"
+					replace `stub'_definition = "Already system CEO; add CEO role at a system previously worked at (non-system-CEO)" ///
+						if `stub'_transition_type == "internal move"
+					replace `stub'_definition = "Already system CEO; add CEO role at a system never worked at before" ///
+						if `stub'_transition_type == "lateral move"
+					replace `stub'_definition = "Drop previous system CEO roles; become CEO at a system never worked at before" ///
+						if `stub'_transition_type == "external move"
+			}
+			
+			
+			* add example variable
+			gen `stub'_example = "Year t−1: CFO at Hospital B → Year t: CEO at Hospital B" ///
+				if `stub'_transition_type == "internal promotion"
+				replace `stub'_example = "Year t−1: No role at Hospital B → Year t: CEO at Hospital B" ///
+					if `stub'_transition_type == "external promotion"
+				replace `stub'_example = "Year t−1: CEO at Hospital A, CFO at Hospital B → Year t: CEO at A and B" ///
+					if `stub'_transition_type == "internal move"
+				replace `stub'_example = "Year t−1: CEO at Hospital A → Year t: CEO at A and B" ///
+					if `stub'_transition_type == "lateral move"
+				replace `stub'_example = "Year t−1: CEO at Hospital A → Year t: CEO at Hospital B (no longer CEO at A)" ///
+					if `stub'_transition_type == "external move"
+				
 		}
-		drop covered_ceo_ent
 		
-		* Count (overlapping) CEO roles by year 	
-		* how many total CEO entities?
-			* how many overlap with previous CEO entities (retaining roles)?
-		* how many added CEO entities?
-			* how many overlap with previous entities (any role)? i.e. is the CEO role at a new place?
-		
-		* Previous year variable
-		bysort contact_uniqueid (year): gen year_prev = year[_n-1]
-		
-		* any prior year promotion variable
-		gen promotion_type = ""
-			* Internal promotion: CEO entity appears in any prior entity list
-			replace promotion_type = "internal" if gained_ceo == 1 ///
-				& n_ceo_add_overlap >= 1 // at least one promotion to CEO where they already worked	
-			* External promotion: CEO entity not in any prior entity list
-			replace promotion_type = "external" if gained_ceo == 1 ///
-				& n_ceo_add_overlap == 0 // zero promotions to CEO where they already worked	
-		
-		* consecutive promotions variable
-		gen promotion_type_consec = ""
-			* Internal promotion: CEO entity appears in any prior entity list
-			replace promotion_type_consec = "internal" if gained_ceo == 1 ///
-				& n_ceo_add_overlap >= 1 /// at least one promotion to CEO where they already worked
-				& year_prev == year - 1
-			* External promotion: CEO entity not in any prior entity list
-			replace promotion_type_consec = "external" if gained_ceo == 1 ///
-				& n_ceo_add_overlap == 0 /// zero promotions to CEO where they already worked
-				& year_prev == year - 1
-			replace promotion_type_consec = "missing year" if gained_ceo == 1 ///
-				& year_prev != year - 1
-						
-		* move type 
-		gen move_type = ""
-			* External
-			replace move_type = "external" if gained_ceo == 0 /// not the first CEO promotion
-				& row_in_person > 1 /// not first year for person
-				& ceo_this_year == 1 /// CEO this year
-				& ceo_last_year == 1 /// CEO last year
-				& n_ceo_added >= 1 /// added a CEO role this year
-				& n_ceo_add_overlap == 0 /// all CEO entities are new (didn't work there last obs in any role)
-				& n_ceo_ent_overlap == 0 // did not retain any old CEO roles
-			replace move_type = "internal" if gained_ceo == 0 /// not the first CEO promotion
-				& row_in_person > 1 /// not first year for person
-				& ceo_this_year == 1 /// CEO this year
-				& ceo_last_year == 1 /// CEO last year
-				& n_ceo_added >= 1 /// added a CEO role this year
-				& n_ceo_added == n_ceo_add_overlap // already worked at all the places they are now CEO (internal only)
-			replace move_type = "lateral" if gained_ceo == 0 /// not the first CEO promotion
-				& row_in_person > 1 /// not first year for person
-				& ceo_this_year == 1 /// CEO this year
-				& ceo_last_year == 1 /// CEO last year
-				& n_ceo_added >= 1 /// added a CEO role this year
-				& n_ceo_add_overlap < n_ceo_added /// they have at least one external promotion
-				& n_ceo_ent_overlap > 0 // they are retaining at least one old CEO role
-				
-		* move type (consecutive)
-		gen move_type_consec = ""
-			* External
-			replace move_type_consec = "external" if gained_ceo == 0 /// not the first CEO promotion
-				& year_prev == year-1 /// consecutive years
-				& row_in_person > 1 /// not first year for person
-				& ceo_this_year == 1 /// CEO this year
-				& ceo_last_year == 1 /// CEO last year
-				& n_ceo_added >= 1 /// added a CEO role this year
-				& n_ceo_add_overlap == 0 /// all CEO entities are new (didn't work there last obs)
-				& n_ceo_ent_overlap == 0 // did not retain any old CEO roles
-			replace move_type_consec = "internal" if gained_ceo == 0 /// not the first CEO promotion
-				& year_prev == year-1 /// consecutive years
-				& row_in_person > 1 /// not first year for person
-				& ceo_this_year == 1 /// CEO this year
-				& ceo_last_year == 1 /// CEO last year
-				& n_ceo_added >= 1 /// added a CEO role this year
-				& n_ceo_added == n_ceo_add_overlap // already worked at all the places they are now CEO
-			replace move_type_consec = "lateral" if gained_ceo == 0 /// not the first CEO promotion
-				& year_prev == year-1 /// consecutive years
-				& row_in_person > 1 /// not first year for person
-				& ceo_this_year == 1 /// CEO this year
-				& ceo_last_year == 1 /// CEO last year
-				& n_ceo_added >= 1 /// added a CEO role this year
-				& n_ceo_add_overlap < n_ceo_added /// they have at least one external promotion
-				& n_ceo_ent_overlap > 0 // they are retaining at least one old CEO role	
-			replace move_type_consec = "missing year" if gained_ceo == 0 /// not the first CEO promotion
-				& year_prev != year-1 /// consecutive years
-				& row_in_person > 1 /// not first year for person
-				& ceo_this_year == 1 /// CEO this year
-				& ceo_last_year == 1 /// CEO last year
-				& n_ceo_added >= 1 // added a CEO role this year
-				
-		* COMBINE promotions and moves together
-		* any prev year
-		gen career_transition_type = ""
-			replace career_transition_type = "internal promotion" ///
-				if gained_ceo == 1 ///
-				& promotion_type == "internal"
-			replace career_transition_type = "external promotion" ///
-				if gained_ceo == 1 ///
-				& promotion_type == "external"
-			replace career_transition_type = "internal move" ///
-				if gained_ceo == 0 ///
-				& move_type == "internal"
-			replace career_transition_type = "external move" ///
-				if gained_ceo == 0 ///
-				& move_type == "external"
-			replace career_transition_type = "lateral move" ///
-				if gained_ceo == 0 ///
-				& move_type == "lateral"
-		* consecutive only
-		gen career_transition_type_consec = ""
-			replace career_transition_type_consec = "internal promotion" ///
-				if gained_ceo == 1 ///
-				& promotion_type_consec == "internal"
-			replace career_transition_type_consec = "external promotion" ///
-				if gained_ceo == 1 ///
-				& promotion_type_consec == "external"
-			replace career_transition_type_consec = "internal move" ///
-				if gained_ceo == 0 ///
-				& move_type_consec == "internal"
-			replace career_transition_type_consec = "external move" ///
-				if gained_ceo == 0 ///
-				& move_type_consec == "external"
-			replace career_transition_type_consec = "lateral move" ///
-				if gained_ceo == 0 ///
-				& move_type_consec == "lateral"
-		
-		* add definition variable 		
-		gen definition = "First time becoming CEO at a hospital previously worked at (non-CEO)" ///
-			if career_transition_type == "internal promotion"
-			replace definition = "First time becoming CEO at a hospital never worked at before" ///
-				if career_transition_type == "external promotion"
-			replace definition = "Already CEO; add CEO role at a hospital previously worked at (non-CEO)" ///
-				if career_transition_type == "internal move"
-			replace definition = "Already CEO; add CEO role at a hospital never worked at before" ///
-				if career_transition_type == "lateral move"
-			replace definition = "Drop previous CEO roles; become CEO at a hospital never worked at before" ///
-				if career_transition_type == "external move"
-		
-		* add example variable
-		gen example = "Year t−1: CFO at Hospital B → Year t: CEO at Hospital B" ///
-			if career_transition_type == "internal promotion"
-			replace example = "Year t−1: No role at Hospital B → Year t: CEO at Hospital B" ///
-				if career_transition_type == "external promotion"
-			replace example = "Year t−1: CEO at Hospital A, CFO at Hospital B → Year t: CEO at A and B" ///
-				if career_transition_type == "internal move"
-			replace example = "Year t−1: CEO at Hospital A → Year t: CEO at A and B" ///
-				if career_transition_type == "lateral move"
-			replace example = "Year t−1: CEO at Hospital A → Year t: CEO at Hospital B (no longer CEO at A)" ///
-				if career_transition_type == "external move"
-			
 		* save xwalk file to pull into the full dataset		
-		tempfile career_transitions_xwalk
-		save `career_transitions_xwalk'
+			tempfile career_transitions_xwalk
+			save `career_transitions_xwalk'
 		
-		* make descriptive tables	
-			*keep if !missing(career_transition_type)
+		* make descriptive table: 
+		***** HOSPITAL CEO TRANSITIONS ****	
+			keep if ever_hospital_ceo == 1
 			* number of career transitions
-				gen n_transitions = 1 if !missing(career_transition_type)
+				gen n_transitions = 1 if !missing(hosp_transition_type)
 			* number of unique individuals by career transition
-				bysort contact_uniqueid career_transition_type career_transition_type: gen n_individuals = 1 if _n ==1 & !missing(career_transition_type)
+				bysort contact_uniqueid hosp_transition_type hosp_transition_type: gen n_individuals = 1 if _n ==1 & !missing(hosp_transition_type)
 			* number of unique CEOs regardless of transition
 				bysort contact_uniqueid: gen total_ceos_counter = 1 if _n == 1
 				egen total_ceos = total(total_ceos_counter)
-			collapse (rawsum) n_transitions (rawsum) n_individuals (mean) total_ceos (firstnm) definition example, by(career_transition_type)
+			collapse (rawsum) n_transitions (rawsum) n_individuals (mean) total_ceos (firstnm) hosp_definition, by(hosp_transition_type)
 			gen share_of_ceos = n_individuals/total_ceos
-			drop if career_transition_type == ""
+			drop if hosp_transition_type == ""
 			
 			* order rows
-			gen order = 1 if career_transition_type == "internal promotion"
-				replace order = 2 if career_transition_type == "external promotion"
-				replace order = 3 if career_transition_type == "internal move"
-				replace order = 4 if career_transition_type == "lateral move"
-				replace order = 5 if career_transition_type == "external move"
+			gen order = 1 if hosp_transition_type == "internal promotion"
+				replace order = 2 if hosp_transition_type == "external promotion"
+				replace order = 3 if hosp_transition_type == "internal move"
+				replace order = 4 if hosp_transition_type == "lateral move"
+				replace order = 5 if hosp_transition_type == "external move"
 			sort order
 				
 			* export: set up latex table
 			tempname f
-			file open `f' using "${overleaf}/notes/CEO Descriptives/figures/career_transitions_table.tex", write replace
+			file open `f' using "${overleaf}/notes/CEO Descriptives/figures/career_transitions_table_hosp.tex", write replace
 		
 			* Write LaTeX table preamble
 			file write `f' "\begin{tabular}{l p{5cm} r r r}" _n
@@ -790,8 +969,8 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 				count
 				local N = r(N)
 				forvalues i = 1/`N' {
-					local ct = career_transition_type[`i']
-					local defn = definition[`i']
+					local ct = hosp_transition_type[`i']
+					local defn = hosp_definition[`i']
 					local tr = n_transitions[`i']
 					local ind = n_individuals[`i']
 					local share = round(share_of_ceos[`i'], 0.001)
@@ -810,20 +989,94 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 			file write `f' "\end{tabular}" _n
 			file close `f'
 			
+		***** SYSTEM CEO TRANSITIONS ****	
+		use `career_transitions_xwalk', clear
+		
+		keep if ever_sys_ceo == 1
+		* get rid of the SHHS same CEOs here ?
+		
+		gen n_transitions = 1 if !missing(sys_transition_type)
+			* number of unique individuals by career transition
+				bysort contact_uniqueid sys_transition_type sys_transition_type: gen n_individuals = 1 if _n ==1 & !missing(sys_transition_type)
+			* number of unique CEOs regardless of transition
+				bysort contact_uniqueid: gen total_ceos_counter = 1 if _n == 1
+				egen total_ceos = total(total_ceos_counter)
+			collapse (rawsum) n_transitions (rawsum) n_individuals (mean) total_ceos (firstnm) sys_definition, by(sys_transition_type)
+			gen share_of_ceos = n_individuals/total_ceos
+			drop if sys_transition_type == ""
+			
+			* order rows
+			gen order = 1 if sys_transition_type == "internal promotion"
+				replace order = 2 if sys_transition_type == "external promotion"
+				replace order = 3 if sys_transition_type == "internal move"
+				replace order = 4 if sys_transition_type == "lateral move"
+				replace order = 5 if sys_transition_type == "external move"
+			sort order
+				
+			* export: set up latex table
+			tempname f
+			file open `f' using "${overleaf}/notes/CEO Descriptives/figures/career_transitions_table_sys.tex", write replace
+		
+			* Write LaTeX table preamble
+			file write `f' "\begin{tabular}{l p{5cm} r r r}" _n
+			file write `f' "\toprule" _n
+			file write `f' "Career Transition & Definition & Transitions & Individuals & Share of CEOs \\" _n
+			file write `f' "\midrule" _n
+
+			* Loop through observations
+			quietly {
+				count
+				local N = r(N)
+				forvalues i = 1/`N' {
+					local ct = sys_transition_type[`i']
+					local defn = sys_definition[`i']
+					local tr = n_transitions[`i']
+					local ind = n_individuals[`i']
+					local share = round(share_of_ceos[`i'], 0.001)
+
+					* Escape underscores for LaTeX
+					foreach v in ct defn {
+						local `v' : subinstr local `v' "_" "\\_", all
+					}
+
+					* Write table row
+					file write `f' "`ct' & `defn' & `tr' & `ind' & `share' \\" _n
+				}
+			}
+
+			file write `f' "\bottomrule" _n
+			file write `f' "\end{tabular}" _n
+			file close `f'
+			
+		
 	restore
 	
 * merge career transitions crosswalk into main file
-	merge m:1 contact_uniqueid year using `career_transitions_xwalk', nogen keepusing(contact_uniqueid year career_transition_type gained_ceo added_ceo_entities) keep(1 3)
+	merge m:1 contact_uniqueid year using `career_transitions_xwalk', nogen keepusing(contact_uniqueid year *transition_type gained_hosp_ceo gained_sys_ceo added_hosp_ceo_entities added_sys_ceo_entities hosp_ceo_last_year hosp_test_transition_sys) keep(1 3)
 	* note that this information is currently at the person-year level
 	* it won't be specific to the HIMSS entity or role in the main data
 	* could keep the CEO entities and reshape them? 
 		* Or otherwise rewrite the code to identify the specific entities concerned in each transition and merge the crosswalk onto them
-		
-	rename career_transition_type career_transition_type_yr // will be the same for all person obs in a year
-	gen career_transition_type = ""
-	replace career_transition_type = career_transition_type_yr if ///
-		strpos(";" + added_ceo_entities + ";", ";" + string(entity_uniqueid) + ";") > 0 ///
-		& char_ceo == 1 // will actually correspond to the right CEO promotion for that year
+	
+	* fix to questions above:
+	* hosps
+		rename hosp_transition_type hosp_transition_type_yr // will be the same for all person obs in a year
+		gen hosp_transition_type = ""
+		replace hosp_transition_type = hosp_transition_type_yr if ///
+			strpos(";" + added_hosp_ceo_entities + ";", ";" + string(entity_uniqueid) + ";") > 0 ///
+			& char_ceo == 1 // will actually correspond to the right CEO promotion for that year
+		* with within/across system breakout
+		gen hosp_transition_type_det_yr = hosp_transition_type+hosp_test_transition_sys
+		gen hosp_transition_type_det = ""
+		replace hosp_transition_type_det = hosp_transition_type_det_yr if ///
+			strpos(";" + added_hosp_ceo_entities + ";", ";" + string(entity_uniqueid) + ";") > 0 ///
+			& char_ceo == 1 // will actually correspond to the right CEO promotion for that year
+	* systems
+		rename sys_transition_type sys_transition_type_yr // will be the same for all person obs in a year
+		gen sys_transition_type = ""
+		replace sys_transition_type = sys_transition_type_yr if ///
+			strpos(";" + added_sys_ceo_entities + ";", ";" + string(entity_uniqueid) + ";") > 0 ///
+			& char_ceo == 1 // will actually correspond to the right CEO promotion for that year
 		
 * save temp file _______________________________________________________________
 

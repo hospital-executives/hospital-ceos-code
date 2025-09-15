@@ -16,10 +16,7 @@ Goal: 			Look at CEO trends around M&A events
 	use "${dbdata}/derived/temp/indiv_file_contextual.dta", clear
 
 * describe M&A: how often are hospitals being acquired?	
-	
-* how many FP to NFP / vice-versa transitions are we seeing? 
-	* none???
-	* check original data
+
 	
 * are places with female (MD) CEOs more likely to get acquired next year?
 	sum tar if char_female == 1

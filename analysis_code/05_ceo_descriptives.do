@@ -22,7 +22,7 @@ Goal: 			Compute descriptive stats for CEOs
 		* keep CEOs only
 		keep if char_ceo == 1
 		* keep only hospital observations
-		keep if hospital ==1 
+		keep if is_hospital ==1 
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
@@ -95,7 +95,7 @@ Goal: 			Compute descriptive stats for CEOs
 		* keep CEOs only
 		keep if char_ceo == 1
 		* keep only hospital observations
-		keep if hospital ==1 
+		keep if is_hospital ==1 
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
@@ -171,14 +171,16 @@ Goal: 			Compute descriptive stats for CEOs
 		gen count = 1
 	
 		* make summary stats by hospital time
-		collapse char_md char_female count_ceo_roles* (rawsum) count, by(year forprofit entity_type hospital)
+		gen category = "Hospital" if is_hospital == 1
+			replace category = "IDS/RHA" if entity_type=="IDS/RHA"
+		collapse char_md char_female count_ceo_roles* (rawsum) count, by(year forprofit category)
 		drop if missing(forprofit)
 		
 		* make MD line graph over time		
-		twoway line char_md year if forprofit == 0 & hospital == 1, lcolor("8 81 156") ///
-		|| line char_md year if forprofit == 0 & entity_type=="IDS/RHA", lcolor("107 174 214") ///
-		|| line char_md year if forprofit == 1 & hospital==1, lcolor("35 139 69") ///
-		|| line char_md year if forprofit == 1 & entity_type=="IDS/RHA", lcolor("116 196 118") ///
+		twoway line char_md year if forprofit == 0 & category == "Hospital", lcolor("8 81 156") ///
+		|| line char_md year if forprofit == 0 & category == "IDS/RHA", lcolor("107 174 214") ///
+		|| line char_md year if forprofit == 1 & category == "Hospital", lcolor("35 139 69") ///
+		|| line char_md year if forprofit == 1 & category == "IDS/RHA", lcolor("116 196 118") ///
 		legend(order(1 "Non-Profit Hospital" 2 "Non-Profit System" 3 "For-Profit Hospital" 4 "For-Profit System")) ///
 		title("Share with MD CEO") ///
 		xtitle("Year") ytitle("Share") ///
@@ -186,10 +188,10 @@ Goal: 			Compute descriptive stats for CEOs
 		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_ceo_md_forprofit_combsys.pdf", as(pdf) name("Graph") replace
 		
 		* make gender line graph over time
-		twoway line char_female year if forprofit == 0 & hospital == 1, lcolor("8 81 156") ///
-		|| line char_female year if forprofit == 0 & entity_type=="IDS/RHA", lcolor("107 174 214") ///
-		|| line char_female year if forprofit == 1 & hospital==1, lcolor("35 139 69") ///
-		|| line char_female year if forprofit == 1 & entity_type=="IDS/RHA", lcolor("116 196 118") ///
+		twoway line char_female year if forprofit == 0 & category == "Hospital", lcolor("8 81 156") ///
+		|| line char_female year if forprofit == 0 & category=="IDS/RHA", lcolor("107 174 214") ///
+		|| line char_female year if forprofit == 1 & category == "Hospital", lcolor("35 139 69") ///
+		|| line char_female year if forprofit == 1 & category=="IDS/RHA", lcolor("116 196 118") ///
 		legend(order(1 "Non-Profit Hospital" 2 "Non-Profit System" 3 "For-Profit Hospital" 4 "For-Profit System")) ///
 		title("Share with Female CEO") ///
 		xtitle("Year") ytitle("Share") ///
@@ -206,7 +208,7 @@ Goal: 			Compute descriptive stats for CEOs
 		* keep CEOs only
 		keep if char_ceo == 1
 		* keep only hospital observations
-		keep if hospital ==1 
+		keep if is_hospital ==1 
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
@@ -261,7 +263,7 @@ Goal: 			Compute descriptive stats for CEOs
 		* keep CEOs only
 		keep if char_ceo == 1
 		* keep only hospital observations
-		keep if hospital ==1 
+		keep if is_hospital ==1 
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
@@ -309,7 +311,7 @@ Goal: 			Compute descriptive stats for CEOs
 		* keep CEOs only
 		keep if char_ceo == 1
 		* keep only hospital observations
-		keep if hospital ==1 
+		keep if is_hospital ==1 
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
@@ -400,12 +402,115 @@ Goal: 			Compute descriptive stats for CEOs
 			as(pdf) name("Graph") replace
 	restore
 
+* Count of CEO jobs across systems instead of HIMSS entity
+	* gov_priv_type
+	preserve
+		* keep CEOs only
+		keep if char_ceo == 1
+		* keep only hospital observations
+		keep if is_hospital ==1 
+		
+		* make sure unique
+		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
+		egen total_dup = total(duplicates)
+		assert total_dup == 2 // 2 hosps that end up with two CEOs in the same year
+		drop if duplicates == 1
+		drop total_dup duplicates 
+		
+		* make a count variable
+		gen count = 1
+		
+		* make unique by person-system-year
+		bysort contact_uniqueid parent_system year: keep if _n == 1
+		
+		* combine fed, state and local into one government category
+		replace gov_priv_type = 1 if gov_priv_type==2
+	
+		* make summary stats by hospital time
+		collapse count_system_roles* (rawsum) count, by(year gov_priv_type)
+		drop if missing(gov_priv_type)
+	
+		* make line graph for CEO # roles
+		twoway ///
+			line count_system_roles_1 year if gov_priv_type == 4, lcolor("198 219 239") || ///
+			line count_system_roles_2 year if gov_priv_type == 4, lcolor("107 174 214") || ///
+			line count_system_roles_3 year if gov_priv_type == 4, lcolor("8 81 156") || ///
+			line count_system_roles_1 year if gov_priv_type == 3, lcolor("199 233 192") || ///
+			line count_system_roles_2 year if gov_priv_type == 3, lcolor("116 196 118") || ///
+			line count_system_roles_3 year if gov_priv_type == 3, lcolor("35 139 69") || ///
+			line count_system_roles_1 year if gov_priv_type == 1, lcolor("253 208 162") || ///
+			line count_system_roles_2 year if gov_priv_type == 1, lcolor("253 141 60") || ///
+			line count_system_roles_3 year if gov_priv_type == 1, lcolor("217 72 16") ///
+			legend(order(1 "Non-Profit, 1 Role" ///
+						 2 "Non-Profit, 2 Roles" ///
+						 3 "Non-Profit, 3+ Roles" ///
+						 4 "For-Profit, 1 Role" ///
+						 5 "For-Profit, 2 Roles" ///
+						 6 "For-Profit, 3+ Roles" ///
+						 7 "Govt, 1 Role" ///
+						 8 "Govt, 2 Roles" ///
+						 9 "Govt, 3+ Roles")) ///
+			title("Share of Hospitals by Profit Status & CEO's Number of Roles") ///
+			subtitle("Facility Systems") ///
+			xtitle("Year") ///
+			ytitle("Share") ///
+			ylabel(0(0.1)1)
+		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_ceo_roles1_gov_priv_type_system.pdf", ///
+			as(pdf) name("Graph") replace
+	restore
+	* FP/NFP
+	preserve
+		* keep CEOs only
+		keep if char_ceo == 1
+		* keep only hospital observations
+		keep if is_hospital ==1 
+		
+		* make sure unique
+		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
+		egen total_dup = total(duplicates)
+		assert total_dup == 2 // 2 hosps that end up with two CEOs in the same year
+		drop if duplicates == 1
+		drop total_dup duplicates 
+		
+		* make a count variable
+		gen count = 1
+		
+		* make unique by person-AHAnum-year
+		bysort contact_uniqueid ahanumber year: keep if _n == 1
+	
+		* make summary stats by hospital time
+		collapse count_system_roles* (rawsum) count, by(year forprofit)
+		drop if missing(forprofit)
+		
+		* make line graph for CEO # roles
+		twoway ///
+			line count_system_roles_1 year if forprofit == 0, lcolor("198 219 239") || ///
+			line count_system_roles_2 year if forprofit == 0, lcolor("107 174 214") || ///
+			line count_system_roles_3 year if forprofit == 0, lcolor("8 81 156") || ///
+			line count_system_roles_1 year if forprofit == 1, lcolor("199 233 192") || ///
+			line count_system_roles_2 year if forprofit == 1, lcolor("116 196 118") || ///
+			line count_system_roles_3 year if forprofit == 1, lcolor("35 139 69") ///
+			legend(order(1 "Non-Profit, 1 Role" ///
+						 2 "Non-Profit, 2 Roles" ///
+						 3 "Non-Profit, 3+ Roles" ///
+						 4 "For-Profit, 1 Role" ///
+						 5 "For-Profit, 2 Roles" ///
+						 6 "For-Profit, 3+ Roles")) ///
+			title("Share of Hospitals by Profit Status & CEO's Number of Roles") ///
+			subtitle("Facility Systems") ///
+			xtitle("Year") ///
+			ytitle("Share") ///
+			ylabel(0(0.1)1)
+		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_ceo_roles1_forprofit_system.pdf", ///
+			as(pdf) name("Graph") replace
+	restore	
+	
 	
 * turnover, share of hosps with CEO (ownership variable: gov_priv_type)
 	preserve
 		
 		* keep only hospital observations
-		keep if hospital ==1 
+		keep if is_hospital ==1 
 		
 		* keep one observation per hospital-year
 		bysort entity_uniqueid year: keep if _n == 1
@@ -445,7 +550,7 @@ Goal: 			Compute descriptive stats for CEOs
 	preserve
 	
 		* keep only hospital observations
-		keep if hospital ==1 
+		keep if is_hospital ==1 
 	
 		* keep one observation per hospital-year
 		bysort entity_uniqueid year: keep if _n == 1
@@ -520,7 +625,7 @@ Goal: 			Compute descriptive stats for CEOs
 	preserve
 	
 		* keep only hospital observations
-		keep if hospital==1
+		keep if is_hospital==1
 	
 		* make a system CEO variable
 		gen comb_ceo_prelim = 1 if !missing(contact_uniqueid_parentceo)
@@ -558,7 +663,7 @@ Goal: 			Compute descriptive stats for CEOs
 		* keep CEOs only
 		keep if char_ceo == 1
 		* keep only hospital observations
-		keep if hospital ==1 
+		keep if is_hospital ==1 
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
@@ -595,7 +700,7 @@ Goal: 			Compute descriptive stats for CEOs
 		* keep CEOs only
 		keep if char_ceo == 1
 		* keep only hospital observations
-		keep if hospital ==1 
+		keep if is_hospital ==1 
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
@@ -626,7 +731,7 @@ Goal: 			Compute descriptive stats for CEOs
 	
 * do career transition types vary over time?
 preserve 
-	tab career_transition_type if hospital ==1, gen(ct)
+	tab hosp_transition_type if is_hospital ==1, gen(ct)
 	collapse (sum) ct*, by(year)
 	drop if year <= 2009
 	
@@ -643,12 +748,52 @@ preserve
     xtitle("Year")                                              ///
     title("Career Transition Distribution by Year")             ///
     graphregion(color(white))
-	graph export "${overleaf}/notes/CEO Descriptives/figures/descr_transitions_byyear.pdf", as(pdf) name("Graph") replace	
+	graph export "${overleaf}/notes/CEO Descriptives/figures/descr_transitions_byyear_hosp.pdf", as(pdf) name("Graph") replace	
+restore
+preserve 
+	tab sys_transition_type if entity_type == "IDS/RHA", gen(ct)
+	collapse (sum) ct*, by(year)
+	drop if year <= 2009
+	
+	twoway                                                         ///
+    (line ct1 year, lp(solid)     lw(medthick))                ///
+    (line ct2 year, lp(dash)      lw(medthick))                ///
+    (line ct3 year, lp(dot)       lw(medthick))                ///
+    (line ct4 year, lp(shortdash) lw(medthick))                ///
+    (line ct5 year, lp(longdash)  lw(medthick)),              	///
+    legend(order(1 "External move" 2 "External promotion"        ///
+                 3 "Internal move" 4 "Internal promotion"        ///
+                 5 "Lateral move") cols(1) position(6))         ///
+    ytitle("Count of transitions")                              ///
+    xtitle("Year")                                              ///
+    title("Career Transition Distribution by Year")             ///
+    graphregion(color(white))
+	graph export "${overleaf}/notes/CEO Descriptives/figures/descr_transitions_byyear_sys.pdf", as(pdf) name("Graph") replace	
+restore
+
+* break out by within/across systems
+preserve
+gen within_system = regexm(hosp_transition_type_det,"within system")
+replace within_system = . if !regexm(hosp_transition_type_det,"system")
+
+label define withacrsys 0 "Across Systems" 1 "Within System"
+label values within_system withacrsys
+
+	tab hosp_transition_type if is_hospital ==1, gen(ct)
+	collapse (sum) ct*, by(within_system)
+	
+	graph bar ct*, asyvars stack over(within_system) percent  		///
+		legend(order(1 "External move" 2 "External promotion"       ///
+                 3 "Internal move" 4 "Internal promotion"          	///
+                 5 "Lateral move") cols(1) position(6))           	///
+		ytitle("Share of transitions")                              ///
+		title("Career Transition Distributions Within vs Across Systems")
+	graph export "${overleaf}/notes/CEO Descriptives/figures/descr_transitions_systemwithinacross.pdf", as(pdf) name("Graph") replace
 restore
 
 * do diff ownership types have different career transition types?
 preserve
-	tab career_transition_type if hospital ==1, gen(ct)
+	tab hosp_transition_type if is_hospital ==1, gen(ct)
 	collapse (sum) ct*, by(forprofit)
 	
 	graph bar ct*, asyvars stack over(forprofit) percent  		///
@@ -657,12 +802,24 @@ preserve
                  5 "Lateral move") cols(1) position(6))           	///
 		ytitle("Share of transitions")                              ///
 		title("Career Transition Distribution by Hospital Ownership")
-	graph export "${overleaf}/notes/CEO Descriptives/figures/descr_transitions_forprofit.pdf", as(pdf) name("Graph") replace
+	graph export "${overleaf}/notes/CEO Descriptives/figures/descr_transitions_forprofit_hosp.pdf", as(pdf) name("Graph") replace
+restore
+preserve
+	tab sys_transition_type if entity_type == "IDS/RHA", gen(ct)
+	collapse (sum) ct*, by(forprofit)
+	
+	graph bar ct*, asyvars stack over(forprofit) percent  		///
+		legend(order(1 "External move" 2 "External promotion"       ///
+                 3 "Internal move" 4 "Internal promotion"          	///
+                 5 "Lateral move") cols(1) position(6))           	///
+		ytitle("Share of transitions")                              ///
+		title("Career Transition Distribution by Hospital Ownership")
+	graph export "${overleaf}/notes/CEO Descriptives/figures/descr_transitions_forprofit_sys.pdf", as(pdf) name("Graph") replace
 restore
 
 * career transition types by profit AND gender
 preserve
-	tab career_transition_type if hospital ==1, gen(ct)
+	tab hosp_transition_type if is_hospital ==1, gen(ct)
 	collapse (sum) ct*, by(forprofit char_female)
 	
 	graph bar ct* if char_female == 0, asyvars stack over(forprofit) percent  		///
@@ -684,7 +841,7 @@ restore
 
 * do female and male CEOs have different career transition types?
 preserve
-	tab career_transition_type if hospital ==1, gen(ct)
+	tab hosp_transition_type if is_hospital ==1, gen(ct)
 	collapse (sum) ct*, by(char_female)
 	
 	graph bar ct*, asyvars stack over(char_female) percent  		///
@@ -698,7 +855,7 @@ restore
 
 * do MD and non-MD CEOs have different career transition types?
 preserve
-	tab career_transition_type if hospital ==1, gen(ct)
+	tab hosp_transition_type if is_hospital ==1, gen(ct)
 	collapse (sum) ct*, by(char_md)
 	
 	graph bar ct*, asyvars stack over(char_md) percent  		///
@@ -718,7 +875,7 @@ restore
 preserve
 	* keep CEOs only
 		keep if char_ceo == 1
-		keep if hospital == 1
+		keep if is_hospital == 1
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
@@ -740,7 +897,7 @@ restore
 preserve
 	* keep CEOs only
 		keep if char_ceo == 1
-		keep if hospital == 1
+		keep if is_hospital == 1
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
@@ -767,7 +924,7 @@ restore
 preserve
 		* keep CEOs only
 		keep if char_ceo == 1
-		keep if hospital ==1
+		keep if is_hospital ==1
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
@@ -790,7 +947,7 @@ restore
 preserve
 	* keep CEOs only
 		keep if char_ceo == 1
-		keep if hospital ==1
+		keep if is_hospital ==1
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
@@ -825,7 +982,7 @@ restore
 preserve
 	* keep CEOs only
 		keep if char_ceo == 1
-		keep if hospital == 1
+		keep if is_hospital == 1
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1

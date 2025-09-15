@@ -68,3 +68,18 @@ Goal: 			Set globals for Hospital CEOs analysis
 		file close `f'
 		
 	end
+	
+* WRITE A PROGRAM TO RESTRICT TO HOSPITAL SAMPLE _______________________________ 
+
+
+	program restrict_hosp_sample 
+	
+		keep if is_hospital == 1
+		gen partofsample = 1 if inlist(type,"General Medical","General Medical & Surgical","Critical Access")
+		bysort entity_uniqueid: egen ever_partofsample = max(partofsample)
+		keep if ever_partofsample == 1
+		drop ever_partofsample
+	
+
+
+	end
