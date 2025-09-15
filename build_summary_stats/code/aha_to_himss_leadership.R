@@ -1,5 +1,5 @@
 
-setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+ setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
 # load dictionaries
 library(xtable)
@@ -484,10 +484,3 @@ p <- ggplot(df_counts %>% filter(percent >= 1), aes(x = reorder(match_type, -n),
   theme(plot.margin = margin(t = 12, r = 10, b = 10, l = 10))
 
 ggsave("../output/execs/aha_leadership_to_himss.png", plot = p, width = 6, height = 4, dpi = 300)
-
-### check titles
-title_df <- final %>% distinct(id, title, title_standardized)
-matches_with_titles <- final_matches %>% left_join(title_df)
-
-matches_with_titles %>% count(title, sort = TRUE)
-matches_with_titles %>% count(title_standardized, sort = TRUE)
