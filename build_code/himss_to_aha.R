@@ -238,7 +238,7 @@ step1b <- step1 %>%
       TRUE ~ clean_aha
     )
   ) %>%
-  ungroup() %>% select(-is_best, -has_match)
+  ungroup() %>% select( -has_match)
 
 ## step 2 - if an ahanumber (a) has all NA clean_aha numbers and
 ## (b) has exactly one entity with haentitytypeid == 1 that entity should be
@@ -314,7 +314,6 @@ step3 <- step2 %>%
   ) %>%
   ungroup()
 
-
 step4 <- step3 %>%
   mutate(
     entity_name = as.character(entity_name),
@@ -353,15 +352,13 @@ uid_clean <- step4 %>%
   filter(!is.na(clean_aha), clean_aha != 0) %>%
   select(entity_uniqueid, clean_aha_uid = clean_aha) %>%
   distinct()
-
-# Step 2: Get clean_aha values by entity_name
 name_clean <- step4 %>%
   filter(haentitytypeid == 1) %>%
   filter(!is.na(clean_aha), clean_aha != 0) %>%
   select(entity_name, clean_aha_name = clean_aha) %>%
   distinct()
 
-# Step 3: Left join both, with entity_uniqueid taking priority
+# step 5: Left join both, with entity_uniqueid taking priority
 step5 <- step4 %>%
   left_join(uid_clean, by = "entity_uniqueid") %>%
   left_join(name_clean, by = "entity_name") %>%
