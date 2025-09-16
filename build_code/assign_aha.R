@@ -55,32 +55,36 @@ himss <- read_feather(paste0(derived_data, '/final_himss.feather'))
 update_titles <- himss %>%
   mutate(title_clean = str_to_lower(title),
          title_clean = str_replace_all(title_clean, "[[:punct:]]", ""),
-         freeform_ceo = str_detect(title_clean, "ceo|chief executive") & 
+         ceo_himss_title_exact = title_clean == "ceo" | title_clean == "chief executive officer",
+         ceo_himss_title_fuzzy = str_detect(title_clean, "ceo|chief executive") & 
            !str_detect(title_clean, "assistant") & 
            !str_detect(title_clean, "nurse|ambulatory") &
            !str_detect(title, "Senior & Community Services"),
          freeform_pres = title_clean == "president",
-         freeform_admin = title_clean == "administrator" | title_clean == "executive director")  %>%
+         freeform_admin = title_clean == "administrator" |
+           title_clean == "executive director" |
+           str_detect(title_clean, "^president\\b.*\\b(coo|chief operating officer)") |
+           str_detect(title_clean, "^vp\\b.*\\badministrator")) %>%
   group_by(entity_uniqueid, year) %>%
   mutate(no_ceo = !any(title_standardized == "CEO:  Chief Executive Officer"),
-         ceo_flag = no_ceo & n_distinct(contact_uniqueid[freeform_ceo]) == 1,
-         pres_flag =  no_ceo & n_distinct(contact_uniqueid[freeform_pres]) == 1 & !any(ceo_flag),
-         admin_flag =  no_ceo & n_distinct(contact_uniqueid[freeform_admin]) == 1 & 
+         ceo_flag = no_ceo & n_distinct(contact_uniqueid[ceo_himss_title_fuzzy]) == 1,
+         pres_flag = no_ceo & n_distinct(contact_uniqueid[freeform_pres]) == 1 & !any(ceo_flag),
+         admin_flag = no_ceo & n_distinct(contact_uniqueid[freeform_admin]) == 1 & 
            !any(pres_flag) & !any(ceo_flag)) %>%
   ungroup() %>%
-  mutate(hosp_has_ceo = case_when(
+  mutate(ceo_himss_title_general = case_when(
     title_standardized == "CEO:  Chief Executive Officer" ~ TRUE,
-    freeform_ceo & ceo_flag ~ TRUE,
+    ceo_himss_title_fuzzy & ceo_flag ~ TRUE,
     freeform_pres & pres_flag ~ TRUE,
     freeform_admin & admin_flag ~ TRUE,
     TRUE ~ FALSE
-  )) %>% select(-c(title_clean, freeform_ceo, freeform_pres, freeform_admin,
+  )) %>% select(-c(title_clean, freeform_pres, freeform_admin,
                    ceo_flag, pres_flag, admin_flag, no_ceo)) %>%
   group_by(contact_uniqueid, year) %>%
   mutate(num_titles = n_distinct(title_standardized)) %>%
   ungroup() %>%
-  filter(!(title_standardized == "CIO Reports to" & num_titles > 1 & hosp_has_ceo == FALSE)) %>%
-  select(-num_titles)
+  filter(!(title_standardized == "CIO Reports to" & num_titles > 1 & ceo_himss_title_general == FALSE)) %>%
+  select(-num_titles) 
 
 himss_mini <- update_titles %>% # confirmed
   select(himss_entityid, year, id, entity_uniqueid, hosp_has_ceo) %>%
