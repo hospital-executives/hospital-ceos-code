@@ -193,7 +193,18 @@ $(MAKE_AHA_STAMP): $(FINAL_INDIVIDUAL_STAMP)
 	$(call safe_run,python mcr_aha_xwalk.py $(DATA_DIR) $(AHA_OUTPUT))
 	touch $(MAKE_AHA_STAMP)
 
-clean_aha: $(CLEAN_AHA_STAMP)
-$(CLEAN_AHA_STAMP): $(MAKE_AHA_STAMP)
+$(DERIVED_DIR)/himss_aha_xwalk.feather $(AUX_DIR)/aha_data_clean.feather $(AUX_DIR)/haentity.feather: $(MAKE_AHA_STAMP)
 	$(call safe_run,Rscript himss_to_aha.R $(CODE_DIR) '$(R_USER_DIR)')
 		touch $(CLEAN_AHA_STAMP)
+
+FINAL_OUTPUTS := $(DERIVED_DIR)/himss_aha_hospitals_final.feather \
+	$(DERIVED_DIR)/himss_aha_hospitals_final.dta \
+	$(DERIVED_DIR)/final_aha.feather \
+	$(DERIVED_DIR)/final_aha.dta \
+	$(DERIVED_DIR)/final_confirmed_aha.feather \
+	$(DERIVED_DIR)/final_confirmed_aha.dta
+
+$(info FINAL_OUTPUTS = $(FINAL_OUTPUTS))
+
+$(FINAL_OUTPUTS): $(DERIVED_DIR)/himss_aha_xwalk.feather $(AUX_DIR)/aha_data_clean.feather $(AUX_DIR)/haentity.feather
+	$(call safe_run,Rscript assign_aha.R $(CODE_DIR) '$(R_USER_DIR)')

@@ -87,7 +87,8 @@ update_titles <- himss %>%
   select(-num_titles) 
 
 himss_mini <- update_titles %>% # confirmed
-  select(himss_entityid, year, id, entity_uniqueid, hosp_has_ceo) %>%
+  select(himss_entityid, year, id, entity_uniqueid, 
+         ceo_himss_title_exact, ceo_himss_title_fuzzy, ceo_himss_title_general) %>%
   mutate(
     himss_entityid = as.numeric(himss_entityid),
     year = as.numeric(year)
@@ -159,7 +160,9 @@ final_merged <- final_merged %>%
       TRUE ~ !is.na(entity_aha) & py_fuzzy_flag == 1
     ),
     is_hospital = !is.na(entity_aha),
-    hosp_has_ceo = ifelse(is.na(hosp_has_ceo), FALSE, TRUE))
+    ceo_himss_title_general = ifelse(is.na(ceo_himss_title_general), FALSE, TRUE),
+    ceo_himss_title_exact = ifelse(is.na(ceo_himss_title_exact), FALSE, TRUE),
+    ceo_himss_title_fuzzy = ifelse(is.na(ceo_himss_title_fuzzy), FALSE, TRUE))
 
 write_feather(final_merged,paste0(derived_data,'/final_aha.feather'))
 
