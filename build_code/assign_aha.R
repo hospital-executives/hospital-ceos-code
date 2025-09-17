@@ -30,6 +30,14 @@ export_xwalk <- temp_export %>%
 
 haentity <- read_feather(paste0(auxiliary_data,"/haentity.feather"))
 aha_data <- read_feather(paste0(auxiliary_data, "/aha_data_clean.feather"))
+mcr_aha_xwalk <- read_dta(paste0(supplemental_data, "/hospital_ownership.dta"))
+
+xwalk_mcr <- mcr_aha_xwalk %>% 
+  distinct(ahaid_noletter, mcrnum, year) %>% 
+  mutate(mcrnum = as.numeric(mcrnum),
+         xwalk_aha = as.numeric(ahaid_noletter)) %>%
+  filter(!is.na(mcrnum) & !is.na(xwalk_aha)) %>%
+  distinct(mcrnum, year, xwalk_aha) 
 
 merged_haentity <- haentity %>% select(-ahanumber) %>%
   mutate(himss_entityid = as.numeric(himss_entityid),
@@ -43,7 +51,16 @@ merged_haentity <- haentity %>% select(-ahanumber) %>%
     TRUE ~ unfiltered_campus_aha
   )) %>%
   left_join(aha_data) %>%
-  mutate(is_hospital = !is.na(entity_aha))
+  left_join(
+    xwalk_mcr %>% rename(entity_mcrnum = mcrnum),
+    by = c("entity_aha" = "xwalk_aha", "year" = "year")
+  ) %>%
+  # 2) campus_aha -> campus_mcrnum
+  left_join(
+    xwalk_mcr %>% rename(campus_mcrnum = mcrnum),
+    by = c("campus_aha" = "xwalk_aha", "year" = "year")
+  ) %>%
+  mutate(is_hospital = !is.na(entity_aha)) %>% distinct()
 
 write_feather(merged_haentity, paste0(derived_data,'/himss_aha_hospitals_final.feather'))
 merged_haentity <- merged_haentity %>% clean_names() 
@@ -104,6 +121,15 @@ himss_to_aha_xwalk <- temp_export %>%
     !is.na(campus_aha) ~ campus_aha,
     TRUE ~ unfiltered_campus_aha
   ))  %>%
+  left_join(
+    xwalk_mcr %>% rename(entity_mcrnum = mcrnum),
+    by = c("entity_aha" = "xwalk_aha", "year" = "year")
+  ) %>%
+  # 2) campus_aha -> campus_mcrnum
+  left_join(
+    xwalk_mcr %>% rename(campus_mcrnum = mcrnum),
+    by = c("campus_aha" = "xwalk_aha", "year" = "year")
+  ) %>%
   rename(geo_lat = latitude,
          geo_lon = longitude)
 
