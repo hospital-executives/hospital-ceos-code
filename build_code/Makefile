@@ -99,6 +99,7 @@ FUZZY_STAMP := $(STAMP_DIR)/fuzzy.stamp
 FINAL_INDIVIDUAL_STAMP := $(STAMP_DIR)/final_individual.stamp
 MAKE_AHA_STAMP := $(STAMP_DIR)/make_aha.stamp
 CLEAN_AHA_STAMP := $(STAMP_DIR)/clean_aha.stamp
+HOSPITAL_SUMMARY_STAMP := $(STAMP_DIR)/hospital_summary.stamp
 
 # Define error message
 define safe_run
@@ -180,6 +181,7 @@ $(FUZZY_STAMP): $(PAIRS_STAMP)
 	touch $(FUZZY_STAMP)
 
 # Step 9: Generate final HIMSS dataset and cleaned dta with flags
+# TO DO: clean up so not writing excess files to Dropbox
 individual_output: $(FINAL_INDIVIDUAL_STAMP)
 $(FINAL_INDIVIDUAL_STAMP): $(FUZZY_STAMP)
 	$(call safe_run,python3 generate_final.py $(PY_CLEANED) $(PY_REMAINING) \
@@ -197,7 +199,22 @@ $(DERIVED_DIR)/himss_aha_xwalk.feather $(AUX_DIR)/aha_data_clean.feather $(AUX_D
 	$(call safe_run,Rscript himss_to_aha.R $(CODE_DIR) '$(R_USER_DIR)')
 		touch $(CLEAN_AHA_STAMP)
 
- $(DERIVED_DIR)/hospitals_with_xwalk.feather $(DERIVED_DIR)/individuals_with_xwalk.feather: $(DERIVED_DIR)/himss_aha_xwalk.feather $(AUX_DIR)/aha_data_clean.feather $(AUX_DIR)/haentity.feather
+$(DERIVED_DIR)/hospitals_with_xwalk.feather $(DERIVED_DIR)/individuals_with_xwalk.feather: \
+	$(DERIVED_DIR)/himss_aha_xwalk.feather $(AUX_DIR)/aha_data_clean.feather $(AUX_DIR)/haentity.feather
 	$(call safe_run,Rscript assign_aha.R $(CODE_DIR) '$(R_USER_DIR)')
 
-# Step 11: 
+# Step 11: match aha madmin to himss
+
+temp/cleaned_aha_madmin.csv temp/cleaned_aha.csv: input/aha_data_raw.csv
+	Rscript clean_aha.R
+
+hospital_sum_stats: $(HOSPITAL_SUMMARY_STAMP)
+$(HOSPITAL_SUMMARY_STAMP): temp/cleaned_aha.csv $(DERIVED_DIR)/hospitals_with_xwalk.feather $(AUX_DIR)/haentity.feather \
+	$(SUPP_DIR)/hospital_ownership.dta sumstats_hospitals.R
+	Rscript sumstats_hospitals.R  $(DERIVED_DIR)/hospitals_with_xwalk.feather $(AUX_DIR)/haentity.feather \
+	$(SUPP_DIR)/hospital_ownership.dta $(USER_DIR)/_data/summary_stats/hospitals
+
+## specify paths
+input/aha_data_raw.csv: | input
+	@src="$(USER_DIR)/_data/supplemental/AHA_2004_2017.csv"; \
+	ln -s "$$src" "$@"
