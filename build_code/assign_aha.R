@@ -62,11 +62,9 @@ merged_haentity <- haentity %>% select(-ahanumber) %>%
   ) %>%
   mutate(is_hospital = !is.na(entity_aha)) %>% distinct()
 
-write_feather(merged_haentity, paste0(derived_data,'/himss_aha_hospitals_final.feather'))
-merged_haentity <- merged_haentity %>% clean_names() 
-write_dta(merged_haentity, paste0(derived_data,'/himss_aha_hospitals_final.dta'))
+write_feather(merged_haentity, paste0(derived_data,'/hospitals_with_xwalk.feather'))
 
-## CREATE LEVEL EXPORT
+## CREATE INDIVIDUAL LEVEL EXPORT
 himss <- read_feather(paste0(derived_data, '/final_himss.feather'))
 
 update_titles <- himss %>%
@@ -190,13 +188,7 @@ final_merged <- final_merged %>%
     ceo_himss_title_exact = ifelse(is.na(ceo_himss_title_exact), FALSE, TRUE),
     ceo_himss_title_fuzzy = ifelse(is.na(ceo_himss_title_fuzzy), FALSE, TRUE))
 
-write_feather(final_merged,paste0(derived_data,'/final_aha.feather'))
+write_feather(final_merged,paste0(derived_data,'/individuals_with_xwalk.feather'))
 
-final_merged <- final_merged %>% clean_names() 
-write_dta(final_merged,paste0(derived_data, '/final_aha.dta'))
-
-final_confirmed <- final_merged %>% filter(confirmed) %>% clean_names() 
-write_feather(final_confirmed,paste0(derived_data,'/final_confirmed_aha.feather'))
-write_dta(final_confirmed,paste0(derived_data, '/final_confirmed_aha.dta'))
 
 
