@@ -5,3 +5,7 @@ build_code/.DS_Store
 *.html
 __pycache__/
 **/.Rhistory
+
+build_summary_stats/input
+build_summary_stats/output
+build_summary_stats/temp
