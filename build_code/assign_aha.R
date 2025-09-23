@@ -184,9 +184,9 @@ final_merged <- final_merged %>%
       TRUE ~ !is.na(entity_aha) & py_fuzzy_flag == 1
     ),
     is_hospital = !is.na(entity_aha),
-    ceo_himss_title_general = ifelse(is.na(ceo_himss_title_general), FALSE, TRUE),
-    ceo_himss_title_exact = ifelse(is.na(ceo_himss_title_exact), FALSE, TRUE),
-    ceo_himss_title_fuzzy = ifelse(is.na(ceo_himss_title_fuzzy), FALSE, TRUE))
+    ceo_himss_title_general = ifelse(is.na(ceo_himss_title_general), FALSE, ceo_himss_title_general),
+    ceo_himss_title_exact = ifelse(is.na(ceo_himss_title_exact), FALSE, ceo_himss_title_exact),
+    ceo_himss_title_fuzzy = ifelse(is.na(ceo_himss_title_fuzzy), FALSE, ceo_himss_title_fuzzy))
 
 write_feather(final_merged,paste0(derived_data,'/individuals_with_xwalk.feather'))
 
