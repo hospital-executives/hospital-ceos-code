@@ -100,6 +100,8 @@ FINAL_INDIVIDUAL_STAMP := $(STAMP_DIR)/final_individual.stamp
 MAKE_AHA_STAMP := $(STAMP_DIR)/make_aha.stamp
 CLEAN_AHA_STAMP := $(STAMP_DIR)/clean_aha.stamp
 HOSPITAL_SUMMARY_STAMP := $(STAMP_DIR)/hospital_summary.stamp
+CEO_SUMMARY_STAMP := $(STAMP_DIR)/ceo_summary.stamp
+NON_CEO_SUMMARY_STAMP := $(STAMP_DIR)/non_ceo_summary.stamp
 
 # Define error message
 define safe_run
@@ -213,6 +215,18 @@ $(HOSPITAL_SUMMARY_STAMP): temp/cleaned_aha.csv $(DERIVED_DIR)/hospitals_with_xw
 	$(SUPP_DIR)/hospital_ownership.dta sumstats_hospitals.R
 	Rscript sumstats_hospitals.R  $(DERIVED_DIR)/hospitals_with_xwalk.feather $(AUX_DIR)/haentity.feather \
 	$(SUPP_DIR)/hospital_ownership.dta $(USER_DIR)/_data/summary_stats/hospitals
+
+## AHA CEO to HIMSS summary statistics
+ceo_sum_stats: $(CEO_SUMMARY_STAMP)
+$(CEO_SUMMARY_STAMP): temp/cleaned_aha_madmin.csv $(DERIVED_DIR)/hospitals_with_xwalk.feather \
+	$(DERIVED_DIR)/individuals_with_xwalk.feather 
+	Rscript aha_to_himss_ceos.R $(DERIVED_DIR)/hospitals_with_xwalk.feather \
+	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_data/summary_stats/execs
+
+non_ceo_sum_stats: $(NON_CEO_SUMMARY_STAMP)
+$(NON_CEO_SUMMARY_STAMP): 
+	../temp/matched_aha_leadership.feather ../temp/matched_aha_ceos.feather
+	Rscript aha_to_himss_all.R
 
 ## specify paths
 input/aha_data_raw.csv: | input

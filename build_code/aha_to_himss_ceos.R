@@ -349,13 +349,12 @@ all_matches <- rbind(accounted_for, matches_aha) %>%
   ungroup()
 
 #### clear environment ####
-# Objects you want to keep
 keep_names <- c(
   "all_aha_ceos", "cleaned_aha", "all_matches", "matched_himss",
   "final",
   "dict1", "dict2", "dict3",
   "names_in_same_row_dict", "last_name_overlap",
-  "auxiliary_data"
+  "auxiliary_data", "output_dir", "summary_file"
 )
 rm(list = setdiff(ls(envir = .GlobalEnv), keep_names), envir = .GlobalEnv)
 
