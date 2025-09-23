@@ -224,9 +224,10 @@ $(CEO_SUMMARY_STAMP): temp/cleaned_aha_madmin.csv $(DERIVED_DIR)/hospitals_with_
 	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_data/summary_stats/execs
 
 non_ceo_sum_stats: $(NON_CEO_SUMMARY_STAMP)
-$(NON_CEO_SUMMARY_STAMP): 
-	../temp/matched_aha_leadership.feather ../temp/matched_aha_ceos.feather
-	Rscript aha_to_himss_all.R
+$(NON_CEO_SUMMARY_STAMP):  temp/cleaned_aha_madmin.csv $(DERIVED_DIR)/hospitals_with_xwalk.feather \
+	$(DERIVED_DIR)/individuals_with_xwalk.feather 
+	Rscript aha_to_himss_leadership.R $(DERIVED_DIR)/hospitals_with_xwalk.feather \
+	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_data/summary_stats/execs
 
 ## specify paths
 input/aha_data_raw.csv: | input
