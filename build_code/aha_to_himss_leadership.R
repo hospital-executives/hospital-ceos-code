@@ -551,11 +551,11 @@ write_feather(matched_himss, paste0(auxiliary_data, "/matched_aha_no_ceos_himss.
 ###### ggplot code #####
 get_count <- cleaned_matches %>% distinct(full_aha,ahanumber, year) 
 cat(nrow(get_count), file = summary_file, append = TRUE)
-cat(nrow(get_count)/nrow(all_aha_non_ceos), file = summary_file, append = TRUE)
+cat(nrow(get_count)/nrow(all_aha_no_ceos), file = summary_file, append = TRUE)
 
 df_counts <- final_matches %>% 
   count(match_type) %>%
-  mutate(percent = n / nrow(all_aha_non_ceos) * 100) 
+  mutate(percent = n / nrow(all_aha_no_ceos) * 100) 
 
 print(
   xtable(df_counts, caption = "AHA Non-CEO to HIMSS Matches", label = "tab:example"),
