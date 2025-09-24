@@ -102,6 +102,7 @@ CLEAN_AHA_STAMP := $(STAMP_DIR)/clean_aha.stamp
 HOSPITAL_SUMMARY_STAMP := $(STAMP_DIR)/hospital_summary.stamp
 CEO_SUMMARY_STAMP := $(STAMP_DIR)/ceo_summary.stamp
 NON_CEO_SUMMARY_STAMP := $(STAMP_DIR)/non_ceo_summary.stamp
+MADMIN_SUMMARY_STAMP := $(STAMP_DIR)/madmin_summary.stamp
 
 # Define error message
 define safe_run
@@ -224,10 +225,17 @@ $(CEO_SUMMARY_STAMP): temp/cleaned_aha_madmin.csv $(DERIVED_DIR)/hospitals_with_
 	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_data/summary_stats/execs
 
 non_ceo_sum_stats: $(NON_CEO_SUMMARY_STAMP)
-$(NON_CEO_SUMMARY_STAMP):  temp/cleaned_aha_madmin.csv $(DERIVED_DIR)/hospitals_with_xwalk.feather \
+$(NON_CEO_SUMMARY_STAMP): temp/cleaned_aha_madmin.csv $(DERIVED_DIR)/hospitals_with_xwalk.feather \
 	$(DERIVED_DIR)/individuals_with_xwalk.feather 
 	Rscript aha_to_himss_leadership.R $(DERIVED_DIR)/hospitals_with_xwalk.feather \
 	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_data/summary_stats/execs
+
+madmin_sum_stats: $(MADMIN_SUMMARY_STAMP)
+$(MADMIN_SUMMARY_STAMP): temp/cleaned_aha_madmin.csv $(DERIVED_DIR)/hospitals_with_xwalk.feather \
+	$(DERIVED_DIR)/individuals_with_xwalk.feather $(AUX_DIR)/matched_aha_ceos.feather $(AUX_DIR)/matched_aha_no_ceos.feather
+	Rscript aha_to_himss_all.R $(DERIVED_DIR)/hospitals_with_xwalk.feather \
+	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_data/summary_stats/execs
+
 
 ## specify paths
 input/aha_data_raw.csv: | input
