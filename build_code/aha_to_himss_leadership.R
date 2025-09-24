@@ -119,7 +119,7 @@ title_mismatch <- valid_himss %>% filter(
       (last_jw <= .15 | last_substring) & 
         (first_jw <= .15 | first_substring | nick_1 | nick_2 | nick_3)) 
 ) %>% 
-  mutate(match_type = ifelse(ceo_himss_title_fuzzy, "jw", "title")) 
+  mutate(match_type = "title") #ifelse(ceo_himss_title_fuzzy, "jw", "title")) 
 
 matched_himss <- title_mismatch %>% distinct(ahanumber, year, id, match_type)
 aha_matches <- title_mismatch %>% distinct(ahanumber, year, full_aha, match_type)
@@ -210,7 +210,7 @@ fuzzy_names_madmin <- cleaned_joined %>%
   mutate(
     year_diff = abs(himss_year - aha_year),
     prefer_after = if_else(himss_year > aha_year, 1, 0),
-    match_type = paste0("jw_year_", year_diff)
+    match_type = paste0("jw_title_", year_diff)
   ) 
 
 # save (ahanumber, aha_year) : (himss id) matches
@@ -303,7 +303,7 @@ matches <- within_5yr %>% filter(aha_year > 2008) %>%
   mutate(
     year_diff = abs(himss_year - aha_year),
     prefer_after = if_else(himss_year > aha_year, 1, 0),
-    match_type = paste0("jw_year_title_", year_diff)
+    match_type = paste0("jw_title_", year_diff)
     )
 
 matches_aha <- matches %>%
@@ -402,8 +402,8 @@ aha_sys_matches <- potential_matches %>% filter(aha_sysid == himss_sysid) %>%
   mutate(year_diff = abs(himss_year - aha_year),
          prefer_after = if_else(himss_year > aha_year, 1, 0),
          match_type = case_when(
-           ceo_himss_title_fuzzy & himss_year == aha_year ~ "sys",
-           ceo_himss_title_fuzzy & himss_year != aha_year ~ paste0("sys_year_", year_diff),
+           ceo_himss_title_fuzzy & himss_year == aha_year ~ "sys_title",
+           ceo_himss_title_fuzzy & himss_year != aha_year ~ paste0("sys_title_year_", year_diff),
            !ceo_himss_title_fuzzy & himss_year != aha_year ~ paste0("sys_title_year_", year_diff),
            !ceo_himss_title_fuzzy & himss_year == aha_year ~ "sys_title",
            TRUE ~ "unaccounted"
@@ -479,8 +479,8 @@ himss_sys_matches <- unmatched %>%
     year_diff = abs(himss_year - aha_year),
     prefer_after = if_else(himss_year > aha_year, 1, 0),
     match_type = case_when(
-      ceo_himss_title_fuzzy & himss_year == aha_year ~ "sys",
-      ceo_himss_title_fuzzy & himss_year != aha_year ~ paste0("sys_year_", year_diff),
+      ceo_himss_title_fuzzy & himss_year == aha_year ~ "sys_title",
+      ceo_himss_title_fuzzy & himss_year != aha_year ~ paste0("sys_title_year_", year_diff),
       !ceo_himss_title_fuzzy & himss_year != aha_year ~ paste0("sys_title_year_", year_diff),
       !ceo_himss_title_fuzzy & himss_year == aha_year ~ "sys_title",
       TRUE ~ "unaccounted"
@@ -524,6 +524,13 @@ final_matches <- rbind(all_matches %>% select(-match_order),
                                                         himss_after_aha) %>%
                          rename(year = aha_year)) %>%
   mutate(
+    match_type = as.character(match_type),
+    match_type = str_replace_all(match_type, "year_0", ""),
+    match_type = str_replace_all(match_type, "year_", ""),  # if you also want "jw_year" → "jw"
+    match_type = str_replace_all(match_type, "_0", ""),     # if you also want "jw_0" → "jw"
+    match_type = str_replace_all(match_type, "jw_$", "jw")
+  ) %>%
+  mutate(
     match_order = case_when(
       match_type == "jw" ~ 1,
       match_type == "title" ~ 2,
@@ -537,10 +544,7 @@ final_matches <- rbind(all_matches %>% select(-match_order),
   ) %>%
   group_by(full_aha, ahanumber, year) %>%
   slice_min(order_by = match_order, n = 1, with_ties = FALSE) %>%
-  ungroup() %>%
-  mutate(
-    match_type = str_replace_all(match_type, "year_|_0", "")
-  )
+  ungroup() 
 
 cleaned_matches <- final_matches %>% inner_join(all_aha_no_ceos)
 write_feather(cleaned_matches, paste0(auxiliary_data, "/matched_aha_no_ceos.feather"))

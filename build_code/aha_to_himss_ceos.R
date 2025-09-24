@@ -1,7 +1,6 @@
 
 rm(list = ls())
 library(rstudioapi)
-library(tictoc)
 library(xtable)
 library(dplyr)
 library(purrr)
