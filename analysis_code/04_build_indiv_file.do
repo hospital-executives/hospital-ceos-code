@@ -81,6 +81,7 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 	
 * hospital has CEO
 	* individual
+	* eventually replace with Katherine's flag
 	gen char_ceo = regexm(title_standardized,"CEO:")
 	bysort entity_uniqueid year: egen temp_hosp_has_ceo = max(char_ceo)
 		replace char_ceo = 1 if regexm(title,"CEO") & temp_hosp_has_ceo == 0
@@ -674,9 +675,7 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 			gen n_`stub'_ceo_added = 0
 			gen n_`stub'_ceo_add_overlap = 0
 			gen n_`stub'_ceo_ent_overlap = 0
-			if "`stub'" == "hosp" {
-				gen n_hosp_ceo_sys_overlap = 0
-			}
+			gen n_`stub'_ceo_sys_overlap = 0
 			gen covered_`stub'_ceo_ent = "" // temporary var to track the entities I've looped over
 			forvalues j = 1/`max_role' {
 				if "`stub'" == "hosp" {
@@ -728,18 +727,16 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 							 ";" + string(entity_uniqueid`j') + ";") > 0 
 				
 				* counter for "added CEO system was in the systems_prev" overlap 
-				if "`stub'" == "hosp" {
-					replace n_hosp_ceo_sys_overlap = n_hosp_ceo_sys_overlap + 1 ///
-						if `longstub'_ceo`j' == 1 /// conditions to do the replacement:
-							&  !missing(entity_uniqueid`j') /// the ID isn't missing
-							&  strpos(";" + added_`stub'_ceo_entities + ";",   /// ID is not already in the list
-								 ";" + string(entity_uniqueid`j') + ";") == 0 ///
-							&  	strpos(";" + `stub'_ceos_prev + ";",   /// ID wasn't in last year's list
-								 ";" + string(entity_uniqueid`j') + ";") == 0 ///
-							&  	row_in_person > 1 /// not the first year for the person 
-							&  strpos(";" + systems_prev + ";", /// system ID was in last year list of any sysid
-								 ";" + string(parent_system`j') + ";") > 0 
-				}
+				replace n_`stub'_ceo_sys_overlap = n_`stub'_ceo_sys_overlap + 1 ///
+					if `longstub'_ceo`j' == 1 /// conditions to do the replacement:
+						&  !missing(entity_uniqueid`j') /// the ID isn't missing
+						&  strpos(";" + added_`stub'_ceo_entities + ";",   /// ID is not already in the list
+								";" + string(entity_uniqueid`j') + ";") == 0 ///
+						&  	strpos(";" + `stub'_ceos_prev + ";",   /// ID wasn't in last year's list
+								";" + string(entity_uniqueid`j') + ";") == 0 ///
+						&  	row_in_person > 1 /// not the first year for the person 
+						&  strpos(";" + systems_prev + ";", /// system ID was in last year list of any sysid
+								";" + string(parent_system`j') + ";") > 0 
 							 
 				* append to the added ceos list 
 				replace added_`stub'_ceo_entities = ///
@@ -860,14 +857,12 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 				replace `stub'_transition_type = "lateral move" ///
 					if gained_`stub'_ceo == 0 ///
 					& `stub'_move_type == "lateral"
-			* for hospital CEO roles, we want to know if they stayed within or across systems
-			if "`stub'" == "hosp" {
-				gen hosp_test_transition_sys = ""
-				replace hosp_test_transition_sys = "within system" if !missing(`stub'_transition_type) ///
-					& n_hosp_ceo_sys_overlap > 0
+			* we want to know if they stayed within or across systems
+			gen `stub'_test_transition_sys = ""
+				replace `stub'_test_transition_sys = "within system" if !missing(`stub'_transition_type) ///
+					& n_`stub'_ceo_sys_overlap > 0
 				replace hosp_test_transition_sys = "across system" if !missing(`stub'_transition_type) ///
-					& n_hosp_ceo_sys_overlap == 0
-			}
+					& n_`stub'_ceo_sys_overlap == 0
 			
 			* consecutive only
 			gen `stub'_transition_type_consec = ""
@@ -1052,7 +1047,7 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 	restore
 	
 * merge career transitions crosswalk into main file
-	merge m:1 contact_uniqueid year using `career_transitions_xwalk', nogen keepusing(contact_uniqueid year *transition_type gained_hosp_ceo gained_sys_ceo added_hosp_ceo_entities added_sys_ceo_entities hosp_ceo_last_year hosp_test_transition_sys) keep(1 3)
+	merge m:1 contact_uniqueid year using `career_transitions_xwalk', nogen keepusing(contact_uniqueid year *transition_type gained_hosp_ceo gained_sys_ceo added_hosp_ceo_entities added_sys_ceo_entities hosp_ceo_last_year hosp_test_transition_sys sys_test_transition_sys) keep(1 3)
 	* note that this information is currently at the person-year level
 	* it won't be specific to the HIMSS entity or role in the main data
 	* could keep the CEO entities and reshape them? 
@@ -1075,6 +1070,12 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 		rename sys_transition_type sys_transition_type_yr // will be the same for all person obs in a year
 		gen sys_transition_type = ""
 		replace sys_transition_type = sys_transition_type_yr if ///
+			strpos(";" + added_sys_ceo_entities + ";", ";" + string(entity_uniqueid) + ";") > 0 ///
+			& char_ceo == 1 // will actually correspond to the right CEO promotion for that year
+		* with within/across system breakout
+		gen sys_transition_type_det_yr = sys_transition_type+sys_test_transition_sys
+		gen sys_transition_type_det = ""
+		replace sys_transition_type_det = sys_transition_type_det_yr if ///
 			strpos(";" + added_sys_ceo_entities + ";", ";" + string(entity_uniqueid) + ";") > 0 ///
 			& char_ceo == 1 // will actually correspond to the right CEO promotion for that year
 		

@@ -131,7 +131,7 @@ Goal: 			Clean system ID variable from Cooper et al data
 
 	* mean number of acquisitions over period by entity_uniqueid
 	preserve
-		keep if is_hospital ==1
+		keep if is_hospital ==1 & _merge_entity_aha == 3
 		collapse (rawsum) syschng* tar, by(year)
 		graph bar syschng_system_id syschng_sysid tar, over(year) ///
 			legend(position(bottom) label(1 "HIMSS Data - Sytem ID Change") label(2 "M&A Data - Sytem ID Change") label(3 "M&A Data Target")) ///
@@ -141,7 +141,7 @@ Goal: 			Clean system ID variable from Cooper et al data
 	restore
 	* share of non-missing observations in a given year with an acquisition event
 	preserve
-		keep if is_hospital ==1
+		keep if is_hospital ==1 & _merge_entity_aha == 3
 		collapse syschng* tar, by(year)
 		graph bar syschng_system_id syschng_sysid tar, over(year) ///
 			legend(position(bottom) label(1 "HIMSS Data - Sytem ID Change") label(2 "M&A Data - Sytem ID Change") label(3 "M&A Data Target")) ///
@@ -183,6 +183,35 @@ Goal: 			Clean system ID variable from Cooper et al data
 				title("Count of Converstions by Year") ///
 				blabel(bar, size(vsmall))
 			graph export "${overleaf}/notes/M&A Merge/figures/counts_conversions_byyear.pdf", as(pdf) name("Graph") replace
+	restore
+	
+	* create example file for RA
+	preserve
+		* reduce sample 
+		restrict_hosp_sample
+		
+		* clean variables
+		keep entity_uniqueid entity_name entity_type medicarenumber entity_city entity_state type year entity_aha system_id sysname aha_sys_name sysid tar any acq _merge_entity_aha syschng_system_id forprofit aha_hos_name entity_uniqueid_parent entity_name_parent entity_type_parent syschng_sysid
+		
+		sort entity_uniqueid year
+		
+		* make it clear what comes from HIMSS
+		foreach himssvar in medicarenumber system_id sysname {
+			rename `himssvar' entity_`himssvar'
+		}
+		rename type entity_detail_type
+	
+	order entity_uniqueid year entity_name entity_type entity_detail_type entity_system_id entity_sysname entity_uniqueid_parent entity_type_parent entity_name_parent entity_medicarenumber entity_city entity_state entity_aha _merge_entity_aha aha_hos_name sysid aha_sys_name forprofit tar any acq syschng_sysid syschng_system_id 	
+	
+	* pre-make flag variables
+	gen entity_misschange = tar ==1 & syschng_system_id == 0
+	gen aha_misschange = tar == 0 & syschng_system_id == 1
+	bysort entity_uniqueid: egen ever_entity_misschange = max(entity_misschange)
+	bysort entity_uniqueid: egen ever_aha_misschange = max(aha_misschange)
+	
+	* save a version for RA
+	save "${dbdata}/derived/temp/merge_checks_RA.dta", replace
+	
 	restore
 	
 	

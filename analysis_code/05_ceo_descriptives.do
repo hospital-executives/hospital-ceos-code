@@ -17,6 +17,184 @@ Goal: 			Compute descriptive stats for CEOs
 	
 * calculate CEO descriptive statistics _________________________________________
 
+* step-up graphs? EXPERIMENTING
+
+	* distinguish between system roles at a SHHS or IDS/RHA
+	* take max by year?
+	
+	gen step = .
+	
+	* NON HOSPITAL, NON-CEO
+	replace step = 1 if char_ceo == 0 /// not ceo
+		& is_hospital == 0 /// not a hospital 
+		& !inlist(entity_type,"Single Hospital Health System","IDS/RHA")
+		
+	* NON HOSPITAL, CEO
+	replace step = 2 if char_ceo == 1 /// is ceo
+		& is_hospital == 0 /// not a hospital 
+		& !inlist(entity_type,"Single Hospital Health System","IDS/RHA")
+		
+	* HOSPITAL, NON-CEO
+	replace step = 3 if char_ceo == 0 /// not ceo
+		& (is_hospital == 1 | inlist(entity_type,"Single Hospital Health System")) /// is a hospital 
+		& !inlist(entity_type,"IDS/RHA")
+		
+	* HOSPITAL, CEO
+	replace step = 4 if char_ceo == 1 /// is ceo
+		& (is_hospital == 1 | inlist(entity_type,"Single Hospital Health System")) /// is a hospital 
+		& !inlist(entity_type,"IDS/RHA")
+		
+	* HOSPITAL SYSTEM, NON-CEO
+	replace step = 5 if char_ceo == 0 /// not ceo
+		& is_hospital == 0 /// is a hospital 
+		& inlist(entity_type,"IDS/RHA")
+		
+	* HOSPITAL SYSTEM, CEO 
+	replace step = 6 if char_ceo == 1 /// is ceo
+		& is_hospital == 0 /// is a hospital 
+		& inlist(entity_type,"IDS/RHA")
+	
+	* ALL
+	preserve
+		collapse (max) step char_ceo char_female char_md, by(contact_uniqueid year)
+		xtset contact_uniqueid year // panel dataset
+		tsfill // fill missing years
+		
+		bysort contact_uniqueid (year): gen year_obs = _n
+		
+		twoway (line step year_obs if char_female == 0) ///
+				(line step year_obs if char_female == 1)
+		
+		collapse step, by(year_obs char_female)
+		
+	restore
+	
+	* KEEP IF BECOMES HOSP SYS CEO
+	preserve
+		
+		keep if ever_sys_ceo
+		
+		collapse (max) step char_ceo char_female char_md, by(contact_uniqueid year)
+		xtset contact_uniqueid year // panel dataset
+		tsfill // fill missing years
+		
+		bysort contact_uniqueid (year): gen year_obs = _n
+		
+		collapse step, by(year_obs char_female)
+		
+		twoway (line step year_obs if char_female == 0) ///
+				(line step year_obs if char_female == 1)
+		
+	restore
+	
+
+* how common is it for there to be a woman who is second in commmand to a man?
+	preserve
+		restrict_hosp_sample
+		
+		gen maleceo = hospital_ceo == 1 & char_female == 0
+		bysort entity_uniqueid year: egen hosp_has_maleceo = max(maleceo)
+		
+		tab hosp_has_maleceo
+		* COO
+		tab char_female if hosp_has_maleceo ==1 & regexm(title_standardized,"Chief Operating Officer")
+		tab char_female if regexm(title_standardized,"Chief Operating Officer")
+		* CFO
+		tab char_female if hosp_has_maleceo ==1 & regexm(title_standardized,"Chief Financial Officer")
+		tab char_female if regexm(title_standardized,"Chief Financial Officer")
+		* slightly less likely to have women in these roles if CEO is male
+	restore
+
+* most common jobs right before becoming hospital ceo?
+	* by gender
+	preserve
+		gen yeargained = year if gained_hosp_ceo == 1
+		gen yeargained_minus = yeargained -1
+		bysort contact_uniqueid: egen yearbeforeceo = max(yeargained_minus)
+		
+		tab title_standardized if year == yearbeforeceo
+		tab title_standardized if year == yearbeforeceo & char_female == 1 // far more likely to be CNO
+		tab title_standardized if year == yearbeforeceo & char_female == 0 // far more likely to be CFO
+		
+		gen count = 1
+		collapse (count) count if year == yearbeforeceo, by(title_standardized char_female)
+		bysort char_female: egen total = total(count)
+		gen share = count/total
+		bysort char_female (share): egen rank = rank(-share)
+		gen keep = rank <= 10 
+		bysort title_standardized : egen keep_role = max(keep)
+		keep if keep_role & !missing(char_female)
+		
+		* graph bar
+		gen share_pct = 100*share
+		graph hbar (mean) share_pct, ///
+			over(title_standardized, sort(1) descending label(labsize(small))) ///
+			by(char_female, cols(2) note("") title("Prior role before CEO")) ///
+			blabel(bar, format(%3.1f)) ///
+			ytitle("Share of CEOs (%)")
+		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_rolebeforeceo_female.pdf", as(pdf) name("Graph") replace
+	restore
+	* by profit
+	preserve
+		gen yeargained = year if gained_hosp_ceo == 1
+		gen yeargained_minus = yeargained -1
+		bysort contact_uniqueid: egen yearbeforeceo = max(yeargained_minus)
+		
+		tab title_standardized if year == yearbeforeceo
+		tab title_standardized if year == yearbeforeceo & forprofit == 0
+		tab title_standardized if year == yearbeforeceo & forprofit == 1
+		
+		gen count = 1
+		collapse (count) count if year == yearbeforeceo, by(title_standardized forprofit)
+		bysort forprofit: egen total = total(count)
+		gen share = count/total
+		bysort forprofit (share): egen rank = rank(-share)
+		gen keep = rank <= 10 
+		bysort title_standardized : egen keep_role = max(keep)
+		keep if keep_role & !missing(forprofit)
+		
+		* graph bar
+		gen share_pct = 100*share
+		graph hbar (mean) share_pct, ///
+			over(title_standardized, sort(1) descending label(labsize(small))) ///
+			by(forprofit, cols(2) note("") title("Prior role before CEO")) ///
+			blabel(bar, format(%3.1f)) ///
+			ytitle("Share of CEOs (%)")
+		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_rolebeforeceo_forprofit.pdf", as(pdf) name("Graph") replace
+	restore
+	* by gender and profit
+	preserve
+		gen yeargained = year if gained_hosp_ceo == 1
+		gen yeargained_minus = yeargained -1
+		bysort contact_uniqueid: egen yearbeforeceo = max(yeargained_minus)
+		
+		gen count = 1
+		collapse (count) count if year == yearbeforeceo, by(title_standardized forprofit char_female)
+		bysort forprofit char_female: egen total = total(count)
+		gen share = count/total
+		bysort forprofit char_female (share): egen rank = rank(-share)
+		gen keep = rank <= 10 
+		bysort title_standardized : egen keep_role = max(keep)
+		keep if keep_role & !missing(forprofit) & !missing(char_female)
+		
+		* graph bar
+		gen share_pct = 100*share
+		graph hbar (mean) share_pct if char_female == 1, ///
+			over(title_standardized, sort(1) descending label(labsize(small))) ///
+			by(forprofit char_female, cols(2) note("") title("Prior role before CEO")) ///
+			blabel(bar, format(%3.1f)) ///
+			ytitle("Share of CEOs (%)") 
+		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_rolebeforeceo_forprofit_female.pdf", as(pdf) name("Graph") replace
+		graph hbar (mean) share_pct if char_female == 0, ///
+			over(title_standardized, sort(1) descending label(labsize(small))) ///
+			by(forprofit char_female, cols(2) note("") title("Prior role before CEO")) ///
+			blabel(bar, format(%3.1f)) ///
+			ytitle("Share of CEOs (%)") 
+		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_rolebeforeceo_forprofit_male.pdf", as(pdf) name("Graph") replace
+	restore
+
+	
+
 * CEO MD and female shares (ownership variable: gov_priv_type)
 	preserve
 		* keep CEOs only
