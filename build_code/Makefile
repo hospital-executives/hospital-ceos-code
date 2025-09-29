@@ -99,6 +99,10 @@ FUZZY_STAMP := $(STAMP_DIR)/fuzzy.stamp
 FINAL_INDIVIDUAL_STAMP := $(STAMP_DIR)/final_individual.stamp
 MAKE_AHA_STAMP := $(STAMP_DIR)/make_aha.stamp
 CLEAN_AHA_STAMP := $(STAMP_DIR)/clean_aha.stamp
+HOSPITAL_SUMMARY_STAMP := $(STAMP_DIR)/hospital_summary.stamp
+CEO_SUMMARY_STAMP := $(STAMP_DIR)/ceo_summary.stamp
+NON_CEO_SUMMARY_STAMP := $(STAMP_DIR)/non_ceo_summary.stamp
+MADMIN_SUMMARY_STAMP := $(STAMP_DIR)/madmin_summary.stamp
 
 # Define error message
 define safe_run
@@ -180,6 +184,7 @@ $(FUZZY_STAMP): $(PAIRS_STAMP)
 	touch $(FUZZY_STAMP)
 
 # Step 9: Generate final HIMSS dataset and cleaned dta with flags
+# TO DO: clean up so not writing excess files to Dropbox
 individual_output: $(FINAL_INDIVIDUAL_STAMP)
 $(FINAL_INDIVIDUAL_STAMP): $(FUZZY_STAMP)
 	$(call safe_run,python3 generate_final.py $(PY_CLEANED) $(PY_REMAINING) \
@@ -187,13 +192,52 @@ $(FINAL_INDIVIDUAL_STAMP): $(FUZZY_STAMP)
 	$(FINAL_CONFIRMED_FEATHER) $(HIMSS_ENTITIES_CONTACTS))
 	touch $(FINAL_INDIVIDUAL_STAMP)
 
-# Step 10: 
+# Step 10: build crosswalk between himss and aha
 assign_aha: $(MAKE_AHA_STAMP)
 $(MAKE_AHA_STAMP): $(FINAL_INDIVIDUAL_STAMP)
 	$(call safe_run,python mcr_aha_xwalk.py $(DATA_DIR) $(AHA_OUTPUT))
 	touch $(MAKE_AHA_STAMP)
 
-clean_aha: $(CLEAN_AHA_STAMP)
-$(CLEAN_AHA_STAMP): $(MAKE_AHA_STAMP)
+$(DERIVED_DIR)/himss_aha_xwalk.feather $(AUX_DIR)/aha_data_clean.feather $(AUX_DIR)/haentity.feather: $(MAKE_AHA_STAMP)
 	$(call safe_run,Rscript himss_to_aha.R $(CODE_DIR) '$(R_USER_DIR)')
 		touch $(CLEAN_AHA_STAMP)
+
+$(DERIVED_DIR)/hospitals_with_xwalk.feather $(DERIVED_DIR)/individuals_with_xwalk.feather: \
+	$(DERIVED_DIR)/himss_aha_xwalk.feather $(AUX_DIR)/aha_data_clean.feather $(AUX_DIR)/haentity.feather
+	$(call safe_run,Rscript assign_aha.R $(CODE_DIR) '$(R_USER_DIR)')
+
+# Step 11: match aha madmin to himss
+
+temp/cleaned_aha_madmin.csv temp/cleaned_aha.csv: input/aha_data_raw.csv
+	Rscript clean_aha.R
+
+hospital_sum_stats: $(HOSPITAL_SUMMARY_STAMP)
+$(HOSPITAL_SUMMARY_STAMP): temp/cleaned_aha.csv $(DERIVED_DIR)/hospitals_with_xwalk.feather $(AUX_DIR)/haentity.feather \
+	$(SUPP_DIR)/hospital_ownership.dta sumstats_hospitals.R
+	Rscript sumstats_hospitals.R  $(DERIVED_DIR)/hospitals_with_xwalk.feather $(AUX_DIR)/haentity.feather \
+	$(SUPP_DIR)/hospital_ownership.dta $(USER_DIR)/_data/summary_stats/hospitals
+
+## AHA CEO to HIMSS summary statistics
+ceo_sum_stats: $(CEO_SUMMARY_STAMP)
+$(CEO_SUMMARY_STAMP): temp/cleaned_aha_madmin.csv $(DERIVED_DIR)/hospitals_with_xwalk.feather \
+	$(DERIVED_DIR)/individuals_with_xwalk.feather 
+	Rscript aha_to_himss_ceos.R $(DERIVED_DIR)/hospitals_with_xwalk.feather \
+	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_data/summary_stats/execs
+
+non_ceo_sum_stats: $(NON_CEO_SUMMARY_STAMP)
+$(NON_CEO_SUMMARY_STAMP): temp/cleaned_aha_madmin.csv $(DERIVED_DIR)/hospitals_with_xwalk.feather \
+	$(DERIVED_DIR)/individuals_with_xwalk.feather 
+	Rscript aha_to_himss_leadership.R $(DERIVED_DIR)/hospitals_with_xwalk.feather \
+	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_data/summary_stats/execs
+
+madmin_sum_stats: $(MADMIN_SUMMARY_STAMP)
+$(MADMIN_SUMMARY_STAMP): temp/cleaned_aha_madmin.csv $(DERIVED_DIR)/hospitals_with_xwalk.feather \
+	$(DERIVED_DIR)/individuals_with_xwalk.feather $(AUX_DIR)/matched_aha_ceos.feather $(AUX_DIR)/matched_aha_no_ceos.feather
+	Rscript aha_to_himss_all.R $(DERIVED_DIR)/hospitals_with_xwalk.feather \
+	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_data/summary_stats/execs
+
+
+## specify paths
+input/aha_data_raw.csv: | input
+	@src="$(USER_DIR)/_data/supplemental/AHA_2004_2017.csv"; \
+	ln -s "$$src" "$@"

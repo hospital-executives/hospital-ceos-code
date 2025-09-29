@@ -168,20 +168,14 @@ step0 <- merged %>%
 
 ## step 1 - assign aha id if mname == entity_name
 step1 <- step0 %>%
-  #mutate(sys_aha = ahanumber) %>%
   group_by(ahanumber, year) %>%
   mutate(
-    # Count how many rows meet the match criteria
     n_match = sum(entity_name == mname & haentitytypeid == 1, na.rm = TRUE),
-    
-    # Mark the unique matching row (TRUE only if it's the one valid match)
     is_unique_match = (n_match == 1 & entity_name == mname & haentitytypeid == 1),
-    
     empty_aha = all(is.na(clean_aha))
   ) %>%
   ungroup() %>%
   mutate(
-    # Assign clean_aha: ahanumber to the unique match, 0 to others in same group if a match exists
     clean_aha = case_when(
       is_unique_match & empty_aha ~ ahanumber,
       n_match & empty_aha == 1 ~ 0,
@@ -190,7 +184,6 @@ step1 <- step0 %>%
   ) %>% 
   ungroup() %>%
   select(-n_match, -is_unique_match)   %>%
-  # if an aha number is assigned for a given year, set all other entity_aha to 0
   group_by(ahanumber,year) %>%
   mutate(
     has_match = any(clean_aha == sys_aha, na.rm = TRUE),
@@ -199,10 +192,10 @@ step1 <- step0 %>%
       TRUE ~ clean_aha
     )
   ) %>%
-  ungroup()
+  ungroup() %>% 
+  select(-has_match, - empty_aha)
 
-## step 1 - assign aha id if mloccity == entity_city and is unique
-
+## step 1b - assign aha id if mloccity == entity_city and is unique
 step1b <- step1 %>%
   mutate(mname = as.character(mname), entity_name = as.character(entity_name),
     jw_sim = ifelse(
@@ -216,13 +209,11 @@ step1b <- step1 %>%
       valid_jw = jw_sim >= 0.85,
       max_sim = if (any(valid_jw, na.rm = TRUE)) max(jw_sim[valid_jw], na.rm = TRUE) else NA_real_,
       is_best = valid_jw & jw_sim == max_sim,
-    # get entities in city
-    # Count how many rows meet the match criteria
-    n_match = sum(entity_city == mloccity & haentitytypeid == 1, na.rm = TRUE),
+
+      n_match = sum(entity_city == mloccity & haentitytypeid == 1, na.rm = TRUE),
     
-    # Mark the unique matching row (TRUE only if it's the one valid match)
-    is_unique_match = (n_match == 1 & entity_city == mloccity),
-    is_unique_match = is_unique_match &
+      is_unique_match = (n_match == 1 & entity_city == mloccity),
+      is_unique_match = is_unique_match &
       n_distinct(entity_uniqueid[is_unique_match], na.rm = TRUE) == 1,
   ) %>%
   mutate(
@@ -233,7 +224,7 @@ step1b <- step1 %>%
         TRUE ~ NA_real_
       )
     } else {
-      clean_aha  # leave it unchanged if any clean_aha is non-NA
+      clean_aha
     }
   ) %>%
   ungroup() %>%
@@ -247,7 +238,7 @@ step1b <- step1 %>%
       TRUE ~ clean_aha
     )
   ) %>%
-  ungroup()
+  ungroup() %>% select( -has_match)
 
 ## step 2 - if an ahanumber (a) has all NA clean_aha numbers and
 ## (b) has exactly one entity with haentitytypeid == 1 that entity should be
@@ -323,7 +314,6 @@ step3 <- step2 %>%
   ) %>%
   ungroup()
 
-
 step4 <- step3 %>%
   mutate(
     entity_name = as.character(entity_name),
@@ -362,15 +352,13 @@ uid_clean <- step4 %>%
   filter(!is.na(clean_aha), clean_aha != 0) %>%
   select(entity_uniqueid, clean_aha_uid = clean_aha) %>%
   distinct()
-
-# Step 2: Get clean_aha values by entity_name
 name_clean <- step4 %>%
   filter(haentitytypeid == 1) %>%
   filter(!is.na(clean_aha), clean_aha != 0) %>%
   select(entity_name, clean_aha_name = clean_aha) %>%
   distinct()
 
-# Step 3: Left join both, with entity_uniqueid taking priority
+# step 5: Left join both, with entity_uniqueid taking priority
 step5 <- step4 %>%
   left_join(uid_clean, by = "entity_uniqueid") %>%
   left_join(name_clean, by = "entity_name") %>%

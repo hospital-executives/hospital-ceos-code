@@ -1,6 +1,6 @@
 ## libraries
 library(rstudioapi)
-
+library(janitor)
 rm(list = ls())
 
 args <- commandArgs(trailingOnly = TRUE)
@@ -30,6 +30,14 @@ export_xwalk <- temp_export %>%
 
 haentity <- read_feather(paste0(auxiliary_data,"/haentity.feather"))
 aha_data <- read_feather(paste0(auxiliary_data, "/aha_data_clean.feather"))
+mcr_aha_xwalk <- read_dta(paste0(supplemental_data, "/hospital_ownership.dta"))
+
+xwalk_mcr <- mcr_aha_xwalk %>% 
+  distinct(ahaid_noletter, mcrnum, year) %>% 
+  mutate(mcrnum = as.numeric(mcrnum),
+         xwalk_aha = as.numeric(ahaid_noletter)) %>%
+  filter(!is.na(mcrnum) & !is.na(xwalk_aha)) %>%
+  distinct(mcrnum, year, xwalk_aha) 
 
 merged_haentity <- haentity %>% select(-ahanumber) %>%
   mutate(himss_entityid = as.numeric(himss_entityid),
@@ -43,23 +51,59 @@ merged_haentity <- haentity %>% select(-ahanumber) %>%
     TRUE ~ unfiltered_campus_aha
   )) %>%
   left_join(aha_data) %>%
-  mutate(is_hospital = !is.na(entity_aha))
+  left_join(
+    xwalk_mcr %>% rename(entity_mcrnum = mcrnum),
+    by = c("entity_aha" = "xwalk_aha", "year" = "year")
+  ) %>%
+  # 2) campus_aha -> campus_mcrnum
+  left_join(
+    xwalk_mcr %>% rename(campus_mcrnum = mcrnum),
+    by = c("campus_aha" = "xwalk_aha", "year" = "year")
+  ) %>%
+  mutate(is_hospital = !is.na(entity_aha)) %>% distinct()
 
-write_feather(merged_haentity, paste0(derived_data,'/himss_aha_hospitals_final.feather'))
-merged_haentity <- merged_haentity %>% clean_names() 
-write_dta(merged_haentity, paste0(derived_data,'/himss_aha_hospitals_final.dta'))
+write_feather(merged_haentity, paste0(derived_data,'/hospitals_with_xwalk.feather'))
 
-## CREATE LEVEL EXPORT
+## CREATE INDIVIDUAL LEVEL EXPORT
 himss <- read_feather(paste0(derived_data, '/final_himss.feather'))
 
-drop_cio_reports_to <- himss %>%
+update_titles <- himss %>%
+  mutate(title_clean = str_to_lower(title),
+         title_clean = str_replace_all(title_clean, "[[:punct:]]", ""),
+         ceo_himss_title_exact = title_clean == "ceo" | title_clean == "chief executive officer",
+         ceo_himss_title_fuzzy = str_detect(title_clean, "ceo|chief executive") & 
+           !str_detect(title_clean, "assistant") & 
+           !str_detect(title_clean, "nurse|ambulatory") &
+           !str_detect(title, "Senior & Community Services"),
+         freeform_pres = title_clean == "president",
+         freeform_admin = title_clean == "administrator" |
+           title_clean == "executive director" |
+           str_detect(title_clean, "^president\\b.*\\b(coo|chief operating officer)") |
+           str_detect(title_clean, "^vp\\b.*\\badministrator")) %>%
+  group_by(entity_uniqueid, year) %>%
+  mutate(no_ceo = !any(title_standardized == "CEO:  Chief Executive Officer"),
+         ceo_flag = no_ceo & n_distinct(contact_uniqueid[ceo_himss_title_fuzzy]) == 1,
+         pres_flag = no_ceo & n_distinct(contact_uniqueid[freeform_pres]) == 1 & !any(ceo_flag),
+         admin_flag = no_ceo & n_distinct(contact_uniqueid[freeform_admin]) == 1 & 
+           !any(pres_flag) & !any(ceo_flag)) %>%
+  ungroup() %>%
+  mutate(ceo_himss_title_general = case_when(
+    title_standardized == "CEO:  Chief Executive Officer" ~ TRUE,
+    ceo_himss_title_fuzzy & ceo_flag ~ TRUE,
+    freeform_pres & pres_flag ~ TRUE,
+    freeform_admin & admin_flag ~ TRUE,
+    TRUE ~ FALSE
+  )) %>% select(-c(title_clean, freeform_pres, freeform_admin,
+                   ceo_flag, pres_flag, admin_flag, no_ceo)) %>%
   group_by(contact_uniqueid, year) %>%
   mutate(num_titles = n_distinct(title_standardized)) %>%
   ungroup() %>%
-  filter(!(title_standardized == "CIO Reports to" & num_titles > 1))
+  filter(!(title_standardized == "CIO Reports to" & num_titles > 1 & ceo_himss_title_general == FALSE)) %>%
+  select(-num_titles) 
 
-himss_mini <- drop_cio_reports_to %>% # confirmed
-  select(himss_entityid, year, id, entity_uniqueid) %>%
+himss_mini <- update_titles %>% # confirmed
+  select(himss_entityid, year, id, entity_uniqueid, 
+         ceo_himss_title_exact, ceo_himss_title_fuzzy, ceo_himss_title_general) %>%
   mutate(
     himss_entityid = as.numeric(himss_entityid),
     year = as.numeric(year)
@@ -75,6 +119,15 @@ himss_to_aha_xwalk <- temp_export %>%
     !is.na(campus_aha) ~ campus_aha,
     TRUE ~ unfiltered_campus_aha
   ))  %>%
+  left_join(
+    xwalk_mcr %>% rename(entity_mcrnum = mcrnum),
+    by = c("entity_aha" = "xwalk_aha", "year" = "year")
+  ) %>%
+  # 2) campus_aha -> campus_mcrnum
+  left_join(
+    xwalk_mcr %>% rename(campus_mcrnum = mcrnum),
+    by = c("campus_aha" = "xwalk_aha", "year" = "year")
+  ) %>%
   rename(geo_lat = latitude,
          geo_lon = longitude)
 
@@ -130,16 +183,12 @@ final_merged <- final_merged %>%
       is.na(py_fuzzy_flag) ~ NA, 
       TRUE ~ !is.na(entity_aha) & py_fuzzy_flag == 1
     ),
-    is_hospital = !is.na(entity_aha))
+    is_hospital = !is.na(entity_aha),
+    ceo_himss_title_general = ifelse(is.na(ceo_himss_title_general), FALSE, ceo_himss_title_general),
+    ceo_himss_title_exact = ifelse(is.na(ceo_himss_title_exact), FALSE, ceo_himss_title_exact),
+    ceo_himss_title_fuzzy = ifelse(is.na(ceo_himss_title_fuzzy), FALSE, ceo_himss_title_fuzzy))
 
+write_feather(final_merged,paste0(derived_data,'/individuals_with_xwalk.feather'))
 
-write_feather(final_merged,paste0(derived_data,'/final_aha.feather'))
-
-final_merged <- final_merged %>% clean_names() 
-write_dta(final_merged,paste0(derived_data, '/final_aha.dta'))
-
-final_confirmed <- final_merged %>% filter(confirmed) %>% clean_names() 
-write_feather(final_confirmed,paste0(derived_data,'/final_confirmed_aha.feather'))
-write_dta(final_confirmed,paste0(derived_data, '/final_confirmed_aha.dta'))
 
 

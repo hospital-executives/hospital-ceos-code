@@ -116,7 +116,7 @@ for _, row in hospitals.iterrows():
 
 
 hospitals['filled_aha'] = filled_values
-hospitals['fuzzy_flag'] = fuzzy_flags #124 = 1, 58123 = 0
+hospitals['fuzzy_flag'] = fuzzy_flags
 hospitals['exact_match'] = fuzzy_flags
 
 # SUBSET BY ZIP CODE AND MATCH BY SIMILAR ADDRESSSES
