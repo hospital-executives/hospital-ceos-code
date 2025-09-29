@@ -198,13 +198,10 @@ $(MAKE_AHA_STAMP): $(FINAL_INDIVIDUAL_STAMP)
 	$(call safe_run,python mcr_aha_xwalk.py $(DATA_DIR) $(AHA_OUTPUT))
 	touch $(MAKE_AHA_STAMP)
 
-$(DERIVED_DIR)/himss_aha_xwalk.feather $(AUX_DIR)/aha_data_clean.feather $(AUX_DIR)/haentity.feather: $(MAKE_AHA_STAMP)
-	$(call safe_run,Rscript himss_to_aha.R $(CODE_DIR) '$(R_USER_DIR)')
-		touch $(CLEAN_AHA_STAMP)
-
-$(DERIVED_DIR)/hospitals_with_xwalk.feather $(DERIVED_DIR)/individuals_with_xwalk.feather: \
-	$(DERIVED_DIR)/himss_aha_xwalk.feather $(AUX_DIR)/aha_data_clean.feather $(AUX_DIR)/haentity.feather
+clean_aha: $(CLEAN_AHA_STAMP)
+$(CLEAN_AHA_STAMP): $(MAKE_AHA_STAMP)
 	$(call safe_run,Rscript assign_aha.R $(CODE_DIR) '$(R_USER_DIR)')
+	touch $(CLEAN_AHA_STAMP)
 
 # Step 11: match aha madmin to himss
 

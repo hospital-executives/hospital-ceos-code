@@ -28,7 +28,7 @@ if len(sys.argv) == 13: # TAKE FILE PATHS FROM MAKEFILE
     code_path = sys.argv[12]
 
 else: # FILE PATHS FOR DEBUGGING
-    user_path = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data"
+    user_path = "/Users/katherinepapen/Library/CloudStorage/Dropbox/hospital_ceos/_data"
     confirmed_path = os.path.join(user_path, 
                                   "derived/auxiliary/confirmed_2.csv")
     remaining_path =  os.path.join(user_path, 

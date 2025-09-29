@@ -826,7 +826,6 @@ def clean_results_pt6(remaining, dropped_sets, confirmed_graph,
         (cleaned_remaining7['shared_entity_ids_flag'] == 1)) &
         (comp_remaining4['lastname_lev_distance'] == 0) &
         (comp_remaining4['firstname_jw_distance'] >= 0.5))] 
-    
     comp_remaining6 = comp_remaining5[
     ~((comp_remaining5['firstname_lev_distance'] == 0) &
     (comp_remaining5['lastname_lev_distance'] == 0) & 
@@ -849,8 +848,8 @@ def clean_results_pt6(remaining, dropped_sets, confirmed_graph,
     cleaned6 = comp_remaining5[
     ((comp_remaining5['firstname_lev_distance'] == 0) &
     (comp_remaining5['lastname_lev_distance'] == 0) & 
-    ~(comp_remaining5['contact_id1'].isin(cleaned_remaining_ids)) & 
-    ~(comp_remaining5['contact_id2'].isin(cleaned_remaining_ids)))]
+    ~(comp_remaining5['contact_id1'].astype(int).isin(cleaned_remaining_ids)) & 
+    ~(comp_remaining5['contact_id2'].astype(int).isin(cleaned_remaining_ids)))]
 
     add_to_graph_from_df(confirmed_graph, cleaned_a)
     add_to_graph_from_df(confirmed_graph, cleaned4)
