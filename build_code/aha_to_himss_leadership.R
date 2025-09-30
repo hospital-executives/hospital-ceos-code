@@ -282,7 +282,7 @@ within_5yr <- within_5yr %>% mutate(
 
 matches <- within_5yr %>% filter(aha_year > 2008) %>%
   mutate(
-    full_condition = (full_jw <= 0.15 & !is.na(full_jw)),
+    full_condition = (full_jw <= 0.1 & !is.na(full_jw)),
     last_condition = ((last_jw <= 0.15 & !is.na(last_jw)) | last_substring),
     first_condition = (first_jw <= 0.15 & !is.na(first_jw)) | first_substring |
       nick_1 | nick_2 | nick_3,
@@ -318,7 +318,7 @@ matches_aha <- matches %>%
 
 matched_himss <- matched_himss %>% 
   rbind(
-    matches %>%
+    matches %>% filter(similarity_condition) %>%
       rename(year = aha_year) %>%
       distinct(ahanumber, year, id, match_type)
   ) %>%

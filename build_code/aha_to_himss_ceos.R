@@ -6,8 +6,6 @@ library(dplyr)
 library(purrr)
 library(stringdist)
 
-args <- commandArgs(trailingOnly = TRUE)
-
 # load data
 if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
   setwd(dirname(getActiveDocumentContext()$path))
@@ -17,11 +15,12 @@ if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable())
   supp_path <- supplemental_data
   output_dir <- paste0(data_file_path, "/summary_stats/execs")
 } else {
+  args <- commandArgs(trailingOnly = TRUE)
   source("config.R")
-hospitals <- read_feather(args[1])
-final <- read_feather(args[2])
-supp_path <- args[3]
-output_dir <- args[4] 
+  hospitals <- read_feather(args[1])
+  final <- read_feather(args[2])
+  supp_path <- args[3]
+  output_dir <- args[4] 
 }
 
 summary_file <- paste0(output_dir, "/ceo_summary.tex")
@@ -128,7 +127,7 @@ valid_himss <- map_dfr(idx, function(i) {
 
 # get cases where there is a title mismatch (e.g., not a CEO in HIMSS)
 title_mismatch <- valid_himss %>% filter(
-  full_jw <= .15 |
+  full_jw <= .1 |
     (
       (last_jw <= .15 | last_substring) & 
         (first_jw <= .15 | first_substring | nick_1 | nick_2 | nick_3)) 
@@ -288,7 +287,7 @@ within_5yr <- within_5yr %>% mutate(
 
 matches <- within_5yr %>% filter(aha_year > 2008) %>%
   mutate(
-    full_condition = (full_jw <= 0.15 & !is.na(full_jw)),
+    full_condition = (full_jw <= 0.1 & !is.na(full_jw)),
     last_condition = ((last_jw <= 0.15 & !is.na(last_jw)) | last_substring),
     first_condition = (first_jw <= 0.15 & !is.na(first_jw)) | first_substring |
       nick_1 | nick_2 | nick_3,
@@ -327,7 +326,7 @@ matches_aha <- matches %>%
 
 matched_himss <- matched_himss %>% 
   rbind(
-    matches %>%
+    matches %>% filter(similarity_condition) %>%
       rename(year = aha_year) %>%
       distinct(ahanumber, year, id, match_type)
   ) %>%

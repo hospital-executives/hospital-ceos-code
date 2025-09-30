@@ -1,4 +1,3 @@
-args <- commandArgs(trailingOnly = TRUE)
 rm(list = ls())
 library(rstudioapi)
 # load data
@@ -11,8 +10,11 @@ if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable())
   output_dir <- paste0(data_file_path, "/summary_stats/execs")
 } else {
   source("config.R")
-  hospitals <- read_feather(args[1])
-  final <- read_feather(args[2])
+  args <- commandArgs(trailingOnly = TRUE)
+  hospital_path <- args[1]
+  final_path <- args[2]
+  hospitals <- read_feather(hospital_path)
+  final <- read_feather(final_path)
   supp_path <- args[3]
   output_dir <- args[4] 
 }
