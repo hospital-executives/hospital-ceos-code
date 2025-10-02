@@ -26,15 +26,15 @@ jw_year_matches <- himss_xwalk %>% filter(str_detect(match_type, "^jw_[0-9]+$"))
 
 mini_individuals <- individuals %>% 
   distinct(entity_aha, entity_uniqueid, year, id, firstname, lastname, full_name, title, title_standardized,
-           ceo_himss_title_exact, ceo_himss_title_fuzzy, ceo_himss_title_general) %>%
+           ceo_himss_title_exact, ceo_himss_title_fuzzy, ceo_himss_title_general, contact_uniqueid, confirmed) %>%
   left_join(himss_xwalk %>% rename(entity_aha = ahanumber) %>% distinct(entity_aha, id, match_type), by = c("id", "entity_aha")) %>%
   mutate(aha_leader_flag = ifelse(is.na(match_type), FALSE, TRUE)) %>%
   group_by(entity_aha, year) %>%
   mutate(himss_has_ceo = any(ceo_himss_title_fuzzy)) %>%
   ungroup()
 
-cat(sum(mini_individuals$aha_leader_flag, na.rm = TRUE))
-cat(individuals %>% filter(ceo_himss_title_fuzzy & !is.na(entity_aha)) %>% distinct(id) %>% nrow())
+# cat(sum(mini_individuals$aha_leader_flag, na.rm = TRUE))
+# cat(individuals %>% filter(ceo_himss_title_fuzzy & !is.na(entity_aha)) %>% distinct(id) %>% nrow())
 
 # first assign if title standardized == ceo
 pt1  <- mini_individuals %>% 
@@ -86,81 +86,45 @@ pt2 <- pt1 %>%
     TRUE ~ aha_leader_flag
   ))
 
+# 1: assign aha_leader_flag = false in the rare cases where there are multiple aha_leader_flag per (entity, year)
+# 2: assign aha_leader_flag = false in the rare cases where match_type is not on title/jw or off by one year (<1%)
 drop_multiples <- pt2 %>% 
   group_by(entity_uniqueid, year) %>%
   mutate(multiple_ceos = n_distinct(full_name[aha_leader_flag]) > 1) %>%
   ungroup() %>%
   mutate(
-    aha_leader_flag = ifelse(multiple_ceos, FALSE, aha_leader_flag)
+    aha_leader_flag = ifelse(multiple_ceos, FALSE, aha_leader_flag),
+    aha_clean_match = (match_type %in% c("title", "jw", "title_1","jw_1")),
+    aha_leader_flag = ifelse(aha_clean_match, aha_leader_flag, FALSE)
   )
 
-test_df <- rbind(drop_multiples[colnames(mini_individuals)], 
-                 mini_individuals %>% filter(!(aha_leader_flag|ceo_himss_title_fuzzy)))
-
-keys <- test_df %>%
+# combine cases with matches to AHA and those without and create umbrella flag
+combined_df <- rbind(
+  drop_multiples[colnames(mini_individuals)], 
+  mini_individuals %>% filter(!(aha_leader_flag|ceo_himss_title_fuzzy))) %>%
   mutate(
-    aha_flag = coalesce(aha_leader_flag, FALSE),
-    ceo_flag = coalesce(ceo_himss_title_fuzzy, FALSE)
-  ) %>%
-  filter(!is.na(entity_aha), aha_flag | ceo_flag, !is.na(full_name)) %>%
+    std_ceo = title_standardized == "CEO:  Chief Executive Officer", 
+    all_leader_flag = aha_leader_flag | std_ceo | ceo_himss_title_fuzzy
+  ) 
+
+# make sure umbrella flag is only assigned once per entity_uniqueid, year
+final_flag_df <- combined_df %>% 
   group_by(entity_uniqueid, year) %>%
-  summarise(
-    aha_names = list(sort(unique(full_name[aha_flag]))),
-    ceo_names = list(sort(unique(full_name[ceo_flag]))),
-    # Count exclusive flags
-    aha_only = sum(aha_flag & !ceo_flag),
-    ceo_only = sum(ceo_flag & !aha_flag),
-    .groups = "drop"
+  mutate(multiple_ceos = n_distinct(full_name[all_leader_flag]) > 1,
+         distinct_std_ceos = n_distinct(full_name[std_ceo])) %>%
+  ungroup() %>%
+  mutate(
+    all_leader_flag = case_when(
+      distinct_std_ceos == 1 & std_ceo ~ TRUE,
+      distinct_std_ceos == 1 & !std_ceo ~ FALSE,
+      TRUE ~ FALSE
+    )
   ) %>%
-  # Keep only cases with exactly one person in each exclusive category
-  filter(aha_only == 1 & ceo_only == 1)
+  distinct(id, aha_leader_flag, all_leader_flag)
 
-# Pull all original rows for the disagreeing groups
-test_disagreements <- test_df %>% 
-  filter(!is.na(entity_aha) & (aha_leader_flag|ceo_himss_title_fuzzy)) %>%
-  semi_join(keys, by = c("entity_uniqueid", "year")) %>%
-  arrange(entity_uniqueid, year)
+# combine with import df for clean export
+export_df <- individuals %>% left_join(final_flag_df) %>%
+  mutate(all_leader_flag = ifelse(is.na(all_leader_flag), FALSE, all_leader_flag),
+         aha_leader_flag = ifelse(is.na(aha_leader_flag), FALSE, aha_leader_flag))
 
-
-# Pull all original rows for the disagreeing groups
-test_disagreements <- test_merge %>% 
-  filter(!is.na(entity_aha)) %>%
-  semi_join(keys, by = c("entity_uniqueid", "year")) %>%
-  arrange(entity_uniqueid, year)
-
-
-## there are 2 potential sources of disagreement that we need to check: 
-# the first is that if someone is actually cfo in period t,
-# but is ceo in t+k that they arent marked as ceo in period t
-# make sure 6540753 is cleaned
-
-check_mismatch <- test_merge %>% filter(!ceo_himss_title_fuzzy & !ceo_himss_title_general & aha_leader_flag)
-
-# the second is what to do when himss and aha_leader_flag mark different people as ceo in the same year
-# i think it's fine if we treat himss as the ground truth
-
-
-
-
-## need to check non-ceo cases to make sure they are accurate
-## particularly, want to make sure that if someone is actually cfo in period t,
-## but is ceo in t+k that they arent marked as ceo in period t
-cleaned_aha <- read.csv("temp/cleaned_aha_madmin.csv") 
-
-title_count <- test_merge %>%
-  filter(aha_leader_flag & !ceo_himss_title_fuzzy) %>%
-  count( title_standardized, sort = TRUE)
-
-## check rare titles
-check_rare <- test_merge %>% filter(title_standardized == "PACS Administrator" & aha_leader_flag)
-check_himss <- individuals %>% filter(full_name == "chasitytrivette") %>%
-  distinct(title, title_standardized, year, entity_name, entity_aha)
-any_ceo <- individuals %>% filter(entity_aha == 6520023 & year == 2014)%>%
-  distinct(title, title_standardized, full_name, year, entity_name, entity_aha)
-check_aha <- cleaned_aha %>% filter(ahanumber == 6520023)
-
-# ids - 4738906, 4738923
-
-check_xwalk <- himss_xwalk %>% filter(ahanumber == 6410027 & year == 2010)
-
-check_mini <- matched_himss %>% filter(ahanumber == 6230041 & year == 2009)
+write_feather(export_df, paste0(derived_data, "/individuals_final.feather"))

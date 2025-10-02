@@ -104,6 +104,7 @@ CEO_SUMMARY_STAMP := $(STAMP_DIR)/ceo_summary.stamp
 NON_CEO_SUMMARY_STAMP := $(STAMP_DIR)/non_ceo_summary.stamp
 MADMIN_SUMMARY_STAMP := $(STAMP_DIR)/madmin_summary.stamp
 HIMSS_TO_AHA_STAMP := $(STAMP_DIR)/himss_to_aha.stamp
+AHA_TITLE_FLAG_STAMP := $(STAMP_DIR)/aha_title_flag.stamp
 
 # Define error message
 define safe_run
@@ -205,7 +206,6 @@ $(CLEAN_AHA_STAMP): $(MAKE_AHA_STAMP)
 	touch $(CLEAN_AHA_STAMP)
 
 # Step 11: match aha madmin to himss
-
 temp/cleaned_aha_madmin.csv temp/cleaned_aha.csv: input/aha_data_raw.csv
 	Rscript clean_aha.R
 
@@ -240,6 +240,11 @@ $(HIMSS_TO_AHA_STAMP): temp/cleaned_aha_madmin.csv $(DERIVED_DIR)/hospitals_with
 	Rscript himss_to_aha_ceos.R $(DERIVED_DIR)/hospitals_with_xwalk.feather \
 	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_data/summary_stats/execs
 
+assign_aha_flag: $(AHA_TITLE_FLAG_STAMP)
+$(AHA_TITLE_FLAG_STAMP): temp/cleaned_aha_madmin.csv temp/himss_to_aha_matches.feather \
+	$(DERIVED_DIR)/hospitals_with_xwalk.feather $(DERIVED_DIR)/individuals_with_xwalk.feather 
+	Rscript assign_leadership_flag.R $(DERIVED_DIR)/hospitals_with_xwalk.feather \
+	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_data/summary_stats/execs
 
 ## specify paths
 input/aha_data_raw.csv: | input
