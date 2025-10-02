@@ -1,4 +1,5 @@
-
+library(tibble)
+library(rstudioapi)
 # load data
 if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
   setwd(dirname(getActiveDocumentContext()$path))
@@ -104,7 +105,7 @@ combined_df <- rbind(
   mini_individuals %>% filter(!(aha_leader_flag|ceo_himss_title_fuzzy))) %>%
   mutate(
     std_ceo = title_standardized == "CEO:  Chief Executive Officer", 
-    all_leader_flag = aha_leader_flag | std_ceo | ceo_himss_title_fuzzy
+    all_leader_flag = aha_leader_flag | std_ceo | ceo_himss_title_fuzzy | ceo_himss_title_exact
   ) 
 
 # make sure umbrella flag is only assigned once per entity_uniqueid, year
@@ -115,16 +116,79 @@ final_flag_df <- combined_df %>%
   ungroup() %>%
   mutate(
     all_leader_flag = case_when(
-      distinct_std_ceos == 1 & std_ceo ~ TRUE,
-      distinct_std_ceos == 1 & !std_ceo ~ FALSE,
-      TRUE ~ FALSE
+      multiple_ceos & distinct_std_ceos == 1 & std_ceo ~ TRUE,
+      multiple_ceos & distinct_std_ceos == 1 & !std_ceo ~ FALSE,
+      multiple_ceos ~ FALSE, 
+      TRUE ~ all_leader_flag
     )
   ) %>%
   distinct(id, aha_leader_flag, all_leader_flag)
 
 # combine with import df for clean export
-export_df <- individuals %>% left_join(final_flag_df) %>%
+export_df <- individuals %>% left_join(final_flag_df, by = "id") %>%
   mutate(all_leader_flag = ifelse(is.na(all_leader_flag), FALSE, all_leader_flag),
          aha_leader_flag = ifelse(is.na(aha_leader_flag), FALSE, aha_leader_flag))
 
 write_feather(export_df, paste0(derived_data, "/individuals_final.feather"))
+
+### create leader flag summary statistics 
+summary_file <- paste0(output_dir, "/leader_flags_summary.tex")
+if (file.exists(summary_file)) {
+  file.remove(summary_file)
+}
+
+valid_obs <- export_df %>%
+  mutate(std_ceo = title_standardized == "CEO:  Chief Executive Officer",
+         himss_ceo = std_ceo|ceo_himss_title_fuzzy|ceo_himss_title_exact) %>%
+  filter(!is.na(entity_aha))
+denom <- nrow(valid_obs)
+vars   <- c("std_ceo", "himss_ceo", "aha_leader_flag", "all_leader_flag") 
+
+summ <- valid_obs %>%
+  summarise(across(all_of(vars), ~ sum(.x, na.rm = TRUE))) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "count_true") %>%
+  mutate(
+    denominator = denom,
+    pct         = 100 * count_true / denominator,
+    pct_str     = sprintf("%.1f\\%%", pct)   # escape % for LaTeX
+  )
+
+## export sum stats
+label_map <- c(
+  std_ceo = "HIMSS \texttt{title\\_standardized} is CEO: ",
+  himss_ceo = "HIMSS \texttt{title} contains CEO or similar: ",
+  aha_leader_flag  = "HIMSS obs corresponds to AHA \texttt{madmin}: ",
+  all_leader_flag = "Any of the previous conditions hold: "
+)
+
+# Replace variable names with descriptive labels
+summ <- summ %>%
+  mutate(label = label_map[variable])
+
+# Now build LaTeX
+tex_out <- paste0(
+  "\\begin{tabular}{lr}\n\\toprule\n",
+  "Condition & Count True \\\\\n\\midrule\n",
+  paste(sprintf("%s & %d \\\\",
+                summ$label, summ$count_true),
+        collapse = "\n"),
+  "\n\\bottomrule\n\\end{tabular}\n"
+)
+
+writeLines(tex_out, summary_file)
+
+## get number of people who first appear in himss as std_ceo but are ever a leader before
+prev_leader <- export_df %>%
+  filter(confirmed) %>%
+  distinct(title, title_standardized, all_leader_flag, entity_name, year, full_name, contact_uniqueid) %>%
+  mutate(std_ceo = title_standardized == "CEO:  Chief Executive Officer") %>%
+  group_by(contact_uniqueid) %>%
+  mutate(first_std_ceo_year = if (any(std_ceo)) min(year[std_ceo], na.rm = TRUE) else NA_integer_,
+         first_leader_year = if (any(all_leader_flag)) min(year[all_leader_flag], na.rm = TRUE) else NA_integer_) %>%
+  filter(first_leader_year < first_std_ceo_year) %>%
+  ungroup() %>%
+  arrange(contact_uniqueid)
+
+cat("It's rare for an individual with title_standardized == CEO to be a leader in a previous year.\n", file = summary_file, append = TRUE)
+cat("Only", n_distinct(prev_leader$contact_uniqueid), "confirmed individuals have this occur.", file = summary_file, append = TRUE)
+
