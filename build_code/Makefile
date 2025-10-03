@@ -117,7 +117,7 @@ define safe_run
 endef
 
 # Stamp Dependencies
-all: $(CLEAN_AHA_STAMP)
+all: $(AHA_TITLE_FLAG_STAMP)
 
 # Step 1: Compile HIMSS data
 compile_himss: $(COMPILE_STAMP)
@@ -133,7 +133,7 @@ $(MANUAL_STAMP): $(COMPILE_STAMP)
 
 # Step 3: Clean data
 clean_py : $(CLEAN_PY_STAMP)
-$(CLEAN_PY_STAMP): $(MANUAL_STAMP)
+$(CLEAN_PY_STAMP): $(MANUAL_STAMP) $(CONFIRMED_R) $(REMAINING_R) $(HIMSS_ENTITIES_CONTACTS) clean_data.py
 	$(call safe_run,python3 clean_data.py $(CODE_DIR) $(CONFIRMED_R) $(REMAINING_R) \
 	$(HIMSS_ENTITIES_CONTACTS) $(CONFIRMED_1) $(REMAINING_1) \
 	$(HIMSS_1) $(HIMSS_NICKNAMES))
@@ -141,28 +141,29 @@ $(CLEAN_PY_STAMP): $(MANUAL_STAMP)
 
 # Step 4: Update gender
 update_gender: $(GENDER_STAMP)
-$(GENDER_STAMP): $(CLEAN_PY_STAMP)
+$(GENDER_STAMP): $(CLEAN_PY_STAMP) $(CONFIRMED_1)
 	$(call safe_run,python3 helper_scripts/update_gender.py $(CONFIRMED_1) \
 	$(UPDATED_GENDER) $(DATA_DIR) $(R_GENDER))
 	touch $(GENDER_STAMP)
 
 # Step 5: Generate Jaro
 update_jaro : $(JARO_STAMP)
-$(JARO_STAMP): $(GENDER_STAMP)
+$(JARO_STAMP): $(GENDER_STAMP) $(CONFIRMED_R) $(UPDATED_GENDER)
 	$(call safe_run,python3 helper_scripts/jaro_algo.py $(CODE_DIR) \
 	$(CONFIRMED_R) $(UPDATED_GENDER) $(JARO))
 	touch $(JARO_STAMP)
 
 # Step 6: Generate digraphs
 make_digraphs: $(DIGRAPHS_STAMP)
-$(DIGRAPHS_STAMP): $(JARO_STAMP)
+$(DIGRAPHS_STAMP): $(JARO_STAMP) $(HIMSS_1) $(HIMSS_NICKNAMES)
 	$(call safe_run,python3 helper_scripts/generate_digraphs.py $(HIMSS_1) \
 	$(HIMSS_NICKNAMES) $(DIGRAPHNAME) $(DIGRAPHMETA) $(SUPP_DIR))
 	touch $(DIGRAPHS_STAMP)
 
 # Step 7: Generate blocks
 make_blocks: $(BLOCKS_STAMP)
-$(BLOCKS_STAMP): $(DIGRAPHS_STAMP)
+$(BLOCKS_STAMP): $(DIGRAPHS_STAMP) $(HIMSS_ENTITIES_CONTACTS) $(CONFIRMED_1) $(REMAINING_1) \
+	$(UPDATED_GENDER) $(HIMSS_1)
 	$(call safe_run,python3 generate_blocks.py $(HIMSS_ENTITIES_CONTACTS) \
 	$(CONFIRMED_1) $(REMAINING_1) $(UPDATED_GENDER) $(HIMSS_1) $(CONFIRMED_2) \
 	$(REMAINING_2) $(DATA_DIR))
@@ -170,7 +171,7 @@ $(BLOCKS_STAMP): $(DIGRAPHS_STAMP)
 
 # Step 8: Generate pairwise comparisons
 pairs: $(PAIRS_STAMP)
-$(PAIRS_STAMP): $(BLOCKS_STAMP)
+$(PAIRS_STAMP): $(BLOCKS_STAMP) $(CONFIRMED_2) $(REMAINING_2)
 	$(call safe_run,python3 generate_pairs.py  $(CONFIRMED_2) $(REMAINING_2) \
 	$(COMP_PAIRS) $(META_PAIRS) $(CLEAN_META_PAIRS) \
 	$(COMP_CLEANED) $(META_CLEANED) \
@@ -178,7 +179,8 @@ $(PAIRS_STAMP): $(BLOCKS_STAMP)
 	touch $(PAIRS_STAMP)
 
 fuzzy: $(FUZZY_STAMP)
-$(FUZZY_STAMP): $(PAIRS_STAMP)
+$(FUZZY_STAMP): $(PAIRS_STAMP) $(CONFIRMED_2) $(REMAINING_2) $(COMP_PAIRS) $(META_PAIRS) $(CLEAN_META_PAIRS) \
+	$(COMP_CLEANED) $(META_CLEANED)
 	$(call safe_run,python3 new_fuzzy_match.py $(CONFIRMED_2) $(REMAINING_2) \
 	$(COMP_PAIRS) $(META_PAIRS) $(CLEAN_META_PAIRS) $(COMP_CLEANED) $(META_CLEANED) \
 	$(PY_CLEANED) $(PY_REMAINING) $(GRAPH_COMPS) \
@@ -188,7 +190,7 @@ $(FUZZY_STAMP): $(PAIRS_STAMP)
 # Step 9: Generate final HIMSS dataset and cleaned dta with flags
 # TO DO: clean up so not writing excess files to Dropbox
 individual_output: $(FINAL_INDIVIDUAL_STAMP)
-$(FINAL_INDIVIDUAL_STAMP): $(FUZZY_STAMP)
+$(FINAL_INDIVIDUAL_STAMP): $(FUZZY_STAMP) $(PY_CLEANED) $(PY_REMAINING) $(GRAPH_COMPS)
 	$(call safe_run,python3 generate_final.py $(PY_CLEANED) $(PY_REMAINING) \
 	$(GRAPH_COMPS) $(FINAL_HIMSS) $(FINAL_CONFIRMED_DTA) \
 	$(FINAL_CONFIRMED_FEATHER) $(HIMSS_ENTITIES_CONTACTS))
@@ -214,37 +216,45 @@ $(HOSPITAL_SUMMARY_STAMP): temp/cleaned_aha.csv $(DERIVED_DIR)/hospitals_with_xw
 	$(SUPP_DIR)/hospital_ownership.dta sumstats_hospitals.R
 	Rscript sumstats_hospitals.R  $(DERIVED_DIR)/hospitals_with_xwalk.feather $(AUX_DIR)/haentity.feather \
 	$(SUPP_DIR)/hospital_ownership.dta $(USER_DIR)/_data/summary_stats/hospitals
+	touch $(HOSPITAL_SUMMARY_STAMP)
 
 ## AHA CEO to HIMSS summary statistics
 ceo_sum_stats: $(CEO_SUMMARY_STAMP)
 $(CEO_SUMMARY_STAMP): temp/cleaned_aha_madmin.csv $(DERIVED_DIR)/hospitals_with_xwalk.feather \
-	$(DERIVED_DIR)/individuals_with_xwalk.feather 
+	$(DERIVED_DIR)/individuals_with_xwalk.feather $(HOSPITAL_SUMMARY_STAMP)
 	Rscript aha_to_himss_ceos.R $(DERIVED_DIR)/hospitals_with_xwalk.feather \
 	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_data/summary_stats/execs
+	touch $(CEO_SUMMARY_STAMP)
 
 non_ceo_sum_stats: $(NON_CEO_SUMMARY_STAMP)
 $(NON_CEO_SUMMARY_STAMP): temp/cleaned_aha_madmin.csv $(DERIVED_DIR)/hospitals_with_xwalk.feather \
-	$(DERIVED_DIR)/individuals_with_xwalk.feather 
+	$(DERIVED_DIR)/individuals_with_xwalk.feather $(CEO_SUMMARY_STAMP)
 	Rscript aha_to_himss_leadership.R $(DERIVED_DIR)/hospitals_with_xwalk.feather \
 	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_data/summary_stats/execs
+	touch $(NON_CEO_SUMMARY_STAMP)
 
 madmin_sum_stats: $(MADMIN_SUMMARY_STAMP)
 $(MADMIN_SUMMARY_STAMP): temp/cleaned_aha_madmin.csv $(DERIVED_DIR)/hospitals_with_xwalk.feather \
 	$(DERIVED_DIR)/individuals_with_xwalk.feather $(AUX_DIR)/matched_aha_ceos.feather $(AUX_DIR)/matched_aha_no_ceos.feather
 	Rscript aha_to_himss_all.R $(DERIVED_DIR)/hospitals_with_xwalk.feather \
 	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_data/summary_stats/execs
+	touch $(MADMIN_SUMMARY_STAMP)
 
+# match himss observations to aha madmin observations and assign flag
 himss_to_aha: $(HIMSS_TO_AHA_STAMP)
 $(HIMSS_TO_AHA_STAMP): temp/cleaned_aha_madmin.csv $(DERIVED_DIR)/hospitals_with_xwalk.feather \
-	$(DERIVED_DIR)/individuals_with_xwalk.feather $(AUX_DIR)/matched_aha_ceos.feather $(AUX_DIR)/matched_aha_no_ceos.feather
+	$(DERIVED_DIR)/individuals_with_xwalk.feather $(AUX_DIR)/matched_aha_ceos.feather $(AUX_DIR)/matched_aha_no_ceos.feather \
+	$(MADMIN_SUMMARY_STAMP)
 	Rscript himss_to_aha_ceos.R $(DERIVED_DIR)/hospitals_with_xwalk.feather \
 	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_data/summary_stats/execs
+	touch $(HIMSS_TO_AHA_STAMP)
 
 assign_aha_flag: $(AHA_TITLE_FLAG_STAMP)
 $(AHA_TITLE_FLAG_STAMP): temp/cleaned_aha_madmin.csv temp/himss_to_aha_matches.feather \
-	$(DERIVED_DIR)/hospitals_with_xwalk.feather $(DERIVED_DIR)/individuals_with_xwalk.feather 
+	$(DERIVED_DIR)/hospitals_with_xwalk.feather $(DERIVED_DIR)/individuals_with_xwalk.feather $(HIMSS_TO_AHA_STAMP)
 	Rscript assign_leadership_flag.R $(DERIVED_DIR)/hospitals_with_xwalk.feather \
 	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_data/summary_stats/execs
+	touch $(AHA_TITLE_FLAG_STAMP)
 
 ## specify paths
 input/aha_data_raw.csv: | input

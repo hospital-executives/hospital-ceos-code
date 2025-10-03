@@ -1,65 +1,25 @@
 # clean_data.R
 
-
-# take inputs from Makefile
-args <- commandArgs(trailingOnly = TRUE)
-code_path <- args[1]
-data_path <- paste0(args[2], "/_data/")
-himss_path <- args[3]
+library(rstudioapi)
+# load data
+if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
+  setwd(dirname(getActiveDocumentContext()$path))
+  source("config.R")
+  code_path <- code_directory
+  data_path <- data_file_path
+  himss_path <- paste0(derived_data, "/himss_entities_contacts_0517_v1.feather")
+} else {
+  args <- commandArgs(trailingOnly = TRUE)
+  source("config.R")
+  args <- commandArgs(trailingOnly = TRUE)
+  code_path <- args[1]
+  data_path <- paste0(args[2], "/_data/")
+  himss_path <- args[3]
+}
 
 cat(paste0("CODE PATH: ", code_path))
 cat(paste0("DATA PATH: ", data_path))
 cat(paste0("HIMSS PATH: ", himss_path))
-
-# set up script directory
-get_script_directory <- function() {
-  # Try to get the path of the current Rmd file during rendering
-  if (!is.null(knitr::current_input())) {
-    script_directory <- dirname(normalizePath(knitr::current_input()))
-    return(script_directory)
-  }
-  
-  # Fallback to params$code_dir if provided
-  if (!is.null(code_path) && code_path != "None") {
-    return(code_path)
-  }
-  
-  # Try to get the script path when running via Rscript
-  args <- commandArgs(trailingOnly = FALSE)
-  file_arg_index <- grep("--file=", args)
-  if (length(file_arg_index) > 0) {
-    # Running via Rscript
-    file_arg <- args[file_arg_index]
-    script_path <- normalizePath(sub("--file=", "", file_arg))
-    return(dirname(script_path))
-  } else if (interactive()) {
-    # Running interactively in RStudio
-    if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
-      script_path <- rstudioapi::getActiveDocumentContext()$path
-      if (nzchar(script_path)) {
-        return(dirname(normalizePath(script_path)))
-      } else {
-        stop("Cannot determine script directory: No active document found in RStudio.")
-      }
-    } else {
-      stop("Cannot determine script directory: Not running in RStudio or rstudioapi not available.")
-    }
-  } else {
-    # Fallback to current working directory
-    script_directory <- getwd()
-    return(script_directory)
-  }
-}
-
-# Detect the script directory
-script_directory <- get_script_directory()
-
-# Construct the path to the config.R file
-config_path <- file.path(script_directory, "config.R")
-
-# Source the config file dynamically
-source(config_path)
-
 
 ##### load files ##### 
 df <- read_feather(paste0(himss_path)) %>%
@@ -207,10 +167,14 @@ one_name_m_ids_remaining <- final_remaining %>% #18,979 remaining
   filter(num_ids>1)
 
 final_confirmed <- final_confirmed %>%
-  select(-c(add_list, entity_name_list, entityid_list))
+  select(-c(add_list, entity_name_list, entityid_list)) %>%
+  mutate(nan_flag = ifelse(firstname == "Nan", TRUE, FALSE),
+         firstname = ifelse(nan_flag, "Nancy", FALSE))
 write_feather(final_confirmed, paste0(data_path,"derived/auxiliary/", "r_confirmed.feather"))
 
 final_remaining <- final_remaining %>%
-  select(-c(add_list, entity_name_list, entityid_list))
+  select(-c(add_list, entity_name_list, entityid_list)) %>%
+  mutate(nan_flag = ifelse(firstname == "Nan", TRUE, FALSE),
+         firstname = ifelse(nan_flag, "Nancy", FALSE))
 write_feather(final_remaining, paste0(data_path,"derived/auxiliary/", "r_remaining.feather"))
 
