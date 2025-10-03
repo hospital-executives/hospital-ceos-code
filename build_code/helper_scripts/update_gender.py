@@ -26,7 +26,6 @@ import blocking_helper
 
 cleaned_confirmed = pd.read_csv(confirmed_1_path)
 
-
 contact_dict = {}
 for _, row in cleaned_confirmed.iterrows():
     contact_id = row['contact_uniqueid']
