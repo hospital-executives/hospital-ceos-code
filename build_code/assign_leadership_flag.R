@@ -127,9 +127,12 @@ final_flag_df <- combined_df %>%
 # combine with import df for clean export
 export_df <- individuals %>% left_join(final_flag_df, by = "id") %>%
   mutate(all_leader_flag = ifelse(is.na(all_leader_flag), FALSE, all_leader_flag),
-         aha_leader_flag = ifelse(is.na(aha_leader_flag), FALSE, aha_leader_flag))
+         aha_leader_flag = ifelse(is.na(aha_leader_flag), FALSE, aha_leader_flag),
+         firstname = ifelse(nan_flag, "nan", firstname)) %>%
+  select(-nan_flag)
 
 write_feather(export_df, paste0(derived_data, "/individuals_final.feather"))
+
 
 ### create leader flag summary statistics 
 summary_file <- paste0(output_dir, "/leader_flags_summary.tex")
