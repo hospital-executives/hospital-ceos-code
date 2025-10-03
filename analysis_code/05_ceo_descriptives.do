@@ -62,10 +62,14 @@ Goal: 			Compute descriptive stats for CEOs
 		
 		bysort contact_uniqueid (year): gen year_obs = _n
 		
-		twoway (line step year_obs if char_female == 0) ///
-				(line step year_obs if char_female == 1)
+		twoway (line step year_obs if contact_uniqueid == 74169) ///
+			(line step year_obs if contact_uniqueid == 74279)
+		
 		
 		collapse step, by(year_obs char_female)
+		
+		twoway (line step year_obs if char_female == 0) ///
+				(line step year_obs if char_female == 1)
 		
 	restore
 	
@@ -87,6 +91,75 @@ Goal: 			Compute descriptive stats for CEOs
 		
 	restore
 	
+	* SEPARATELY BY #YR-COHORT
+	preserve
+	
+		keep if ever_hospital_ceo
+		
+		collapse (max) step char_ceo char_female char_md, by(contact_uniqueid year)
+		xtset contact_uniqueid year // panel dataset
+		tsfill // fill missing years
+		
+		bysort contact_uniqueid (year): gen year_obs = _n
+		
+		bysort contact_uniqueid: egen tot_years = max(year_obs)
+		
+		collapse step, by(year_obs tot_years char_female)
+		
+		twoway (line step year_obs if tot_years == 3 & char_female == 1) ///
+				(line step year_obs if tot_years == 4 & char_female == 1) ///
+				(line step year_obs if tot_years == 5 & char_female == 1) ///
+				(line step year_obs if tot_years == 6 & char_female == 1) ///
+				(line step year_obs if tot_years == 7 & char_female == 1) ///
+				(line step year_obs if tot_years == 8 & char_female == 1) ///
+				(line step year_obs if tot_years == 9 & char_female == 1)
+		
+		
+		twoway (line step year_obs if tot_years == 3 & char_female == 0) ///
+				(line step year_obs if tot_years == 4 & char_female == 0) ///
+				(line step year_obs if tot_years == 5 & char_female == 0) ///
+				(line step year_obs if tot_years == 6 & char_female == 0) ///
+				(line step year_obs if tot_years == 7 & char_female == 0) ///
+				(line step year_obs if tot_years == 8 & char_female == 0) ///
+				(line step year_obs if tot_years == 9 & char_female == 0)
+				
+	restore
+	
+	* SEPARATELY BY #YR-COHORT and initial step
+	preserve
+	
+		keep if ever_hospital_ceo // compatible with steps?
+		
+		collapse (max) step char_ceo char_female char_md, by(contact_uniqueid year)
+		xtset contact_uniqueid year // panel dataset
+		tsfill // fill missing years
+		
+		bysort contact_uniqueid (year): gen year_obs = _n
+		bysort contact_uniqueid (year): gen init_step_yr1 = step if _n == 1
+		bysort contact_uniqueid: egen init_step = max(init_step_yr1)
+		bysort contact_uniqueid: egen tot_years = max(year_obs)
+		
+		collapse step, by(year_obs tot_years char_female init_step)
+		
+		twoway (line step year_obs if tot_years == 3 & char_female == 1 & init_step == 3) ///
+				(line step year_obs if tot_years == 4 & char_female == 1 & init_step == 3) ///
+				(line step year_obs if tot_years == 5 & char_female == 1 & init_step == 3) ///
+				(line step year_obs if tot_years == 6 & char_female == 1 & init_step == 3) ///
+				(line step year_obs if tot_years == 7 & char_female == 1 & init_step == 3) ///
+				(line step year_obs if tot_years == 8 & char_female == 1 & init_step == 3) ///
+				(line step year_obs if tot_years == 9 & char_female == 1 & init_step == 3)
+		
+//		
+// 		twoway (line step year_obs if tot_years == 3 & char_female == 0 & init_step == 3) ///
+// 				(line step year_obs if tot_years == 4 & char_female == 0 & init_step == 3) ///
+// 				(line step year_obs if tot_years == 5 & char_female == 0 & init_step == 3) ///
+// 				(line step year_obs if tot_years == 6 & char_female == 0 & init_step == 3) ///
+// 				(line step year_obs if tot_years == 7 & char_female == 0 & init_step == 3) ///
+// 				(line step year_obs if tot_years == 8 & char_female == 0 & init_step == 3) ///
+// 				(line step year_obs if tot_years == 9 & char_female == 0 & init_step == 3)
+				
+	restore
+	
 
 * how common is it for there to be a woman who is second in commmand to a man?
 	preserve
@@ -104,6 +177,16 @@ Goal: 			Compute descriptive stats for CEOs
 		tab char_female if regexm(title_standardized,"Chief Financial Officer")
 		* slightly less likely to have women in these roles if CEO is male
 	restore
+	
+* share of CEOs who are female by facility type
+	display "Female Share"
+	tab entity_type if char_ceo ==1, sum(char_female)
+	tab type if char_ceo ==1 & entity_type == "Hospital", sum(char_female)
+	
+	display "MD Share"
+	tab entity_type if char_ceo ==1, sum(char_md)
+	tab type if char_ceo ==1 & entity_type == "Hospital", sum(char_md)
+
 
 * most common jobs right before becoming hospital ceo?
 	* by gender
