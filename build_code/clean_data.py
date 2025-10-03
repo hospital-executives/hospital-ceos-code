@@ -58,10 +58,7 @@ for package in required:
         install(package)
 
 import pandas as pd
-#code_path = sys.argv[1]
-#data_path = sys.argv[2]
-#code_path = '/Users/loaner/hospital-ceos-code/'
-#user_path = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data/"
+
 cleaned_r_path = str(confirmed_r)
 remaining_r_path = str(remaining_r)
 himss_path = str(himss_entities_contacts)
@@ -97,6 +94,7 @@ for df in dataframes:
     cleaned_dataframes.append(df_copy)
 
 cleaned_himss, cleaned_confirmed, cleaned_remainder = cleaned_dataframes
+cleaned_himss.loc[cleaned_himss["firstname"] == "Nan", "firstname"] = "Nancy"
 
 # create nickname pairings from HIMSS
 himss_by_nickname = blocking_helper.clean_for_metaphone(himss[['firstname']])
