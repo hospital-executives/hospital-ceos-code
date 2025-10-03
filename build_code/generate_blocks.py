@@ -25,7 +25,7 @@ for package in required_packages:
     except ImportError:
         install(package)
 
-data_path = "/Users/loaner/BFI Dropbox/Katherine Papen/hospital_ceos/_data"
+data_path = "/Users/katherinepapen/Library/CloudStorage/Dropbox/hospital_ceos/_data"
 data_dir = data_path
 # Get command-line arguments
 if len(sys.argv) == 9:
@@ -55,7 +55,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'helper_scripts'))
 import blocking_helper
 import cleaned_confirmed_helper as cc
 
- 
 gender_df = pd.read_csv(updated_gender_path)
 gender_df_unique = gender_df.drop_duplicates(subset='firstname')
 
@@ -142,7 +141,6 @@ cleaned_confirmed['last_component'] = cleaned_confirmed['last_meta'].map(last_me
 
 cleaned_remained['last_meta'] = cleaned_remained['last_meta'].apply(remove_last_s)
 cleaned_remained['last_component'] = cleaned_remained['last_meta'].map(last_metaphone_to_component)
-    
 
 max_female_group= max(female_metaphone_to_component.values())
 def map_component(row, metaphone_code):
@@ -150,7 +148,7 @@ def map_component(row, metaphone_code):
         return female_metaphone_to_component.get(row[metaphone_code], 'Unknown')
     else:
         temp_component = male_metaphone_to_component.get(row[metaphone_code], 'Unknown')
-        if isinstance(temp_component, int|float):
+        if isinstance(temp_component, int or float):
             return temp_component +  max_female_group
         return male_metaphone_to_component.get(row[metaphone_code], 'Unknown') 
 cleaned_confirmed['first_component'] = cleaned_confirmed.apply(lambda row: map_component(row, 'first_meta'), axis=1)
