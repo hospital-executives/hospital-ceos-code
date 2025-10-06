@@ -128,7 +128,7 @@ Goal: 			Compute descriptive stats for CEOs
 	* SEPARATELY BY #YR-COHORT and initial step
 	preserve
 	
-		keep if ever_hospital_ceo // compatible with steps?
+// 		keep if ever_hospital_ceo // compatible with steps?
 		
 		collapse (max) step char_ceo char_female char_md, by(contact_uniqueid year)
 		xtset contact_uniqueid year // panel dataset
@@ -141,23 +141,38 @@ Goal: 			Compute descriptive stats for CEOs
 		
 		collapse step, by(year_obs tot_years char_female init_step)
 		
-		twoway (line step year_obs if tot_years == 3 & char_female == 1 & init_step == 3) ///
-				(line step year_obs if tot_years == 4 & char_female == 1 & init_step == 3) ///
-				(line step year_obs if tot_years == 5 & char_female == 1 & init_step == 3) ///
-				(line step year_obs if tot_years == 6 & char_female == 1 & init_step == 3) ///
-				(line step year_obs if tot_years == 7 & char_female == 1 & init_step == 3) ///
-				(line step year_obs if tot_years == 8 & char_female == 1 & init_step == 3) ///
-				(line step year_obs if tot_years == 9 & char_female == 1 & init_step == 3)
+		forval i = 1/6 {
+			twoway (line step year_obs if tot_years == 3 & char_female == 1 & init_step == `i') ///
+				(line step year_obs if tot_years == 4 & char_female == 1 & init_step == `i') ///
+				(line step year_obs if tot_years == 5 & char_female == 1 & init_step == `i') ///
+				(line step year_obs if tot_years == 6 & char_female == 1 & init_step == `i') ///
+				(line step year_obs if tot_years == 7 & char_female == 1 & init_step == `i') ///
+				(line step year_obs if tot_years == 8 & char_female == 1 & init_step == `i') ///
+				(line step year_obs if tot_years == 9 & char_female == 1 & init_step == `i'), ///
+			   title("Female") ///
+			   name(female_plot, replace)
 		
-//		
-// 		twoway (line step year_obs if tot_years == 3 & char_female == 0 & init_step == 3) ///
-// 				(line step year_obs if tot_years == 4 & char_female == 0 & init_step == 3) ///
-// 				(line step year_obs if tot_years == 5 & char_female == 0 & init_step == 3) ///
-// 				(line step year_obs if tot_years == 6 & char_female == 0 & init_step == 3) ///
-// 				(line step year_obs if tot_years == 7 & char_female == 0 & init_step == 3) ///
-// 				(line step year_obs if tot_years == 8 & char_female == 0 & init_step == 3) ///
-// 				(line step year_obs if tot_years == 9 & char_female == 0 & init_step == 3)
-				
+			twoway (line step year_obs if tot_years == 3 & char_female == 0 & init_step == `i') ///
+					(line step year_obs if tot_years == 4 & char_female == 0 & init_step == `i') ///
+					(line step year_obs if tot_years == 5 & char_female == 0 & init_step == `i') ///
+					(line step year_obs if tot_years == 6 & char_female == 0 & init_step == `i') ///
+					(line step year_obs if tot_years == 7 & char_female == 0 & init_step == `i') ///
+					(line step year_obs if tot_years == 8 & char_female == 0 & init_step == `i') ///
+					(line step year_obs if tot_years == 9 & char_female == 0 & init_step == `i'), ///
+				   title("Male") ///
+				   name(male_plot, replace)
+				   
+			* Combine vertically
+			graph combine female_plot male_plot, col(1) ///
+				title("Initial Step `i': Career Progression by Gender") ///
+				iscale(1) ///
+				ycommon ///
+				name(step`i', replace)
+
+			* Export
+			graph export "${overleaf}/notes/CEO Descriptives/figures/steps_ever_hospital_ceo_initstep`i'.pdf", as(pdf) name(step`i') replace
+		}
+		
 	restore
 	
 
@@ -179,13 +194,46 @@ Goal: 			Compute descriptive stats for CEOs
 	restore
 	
 * share of CEOs who are female by facility type
-	display "Female Share"
-	tab entity_type if char_ceo ==1, sum(char_female)
-	tab type if char_ceo ==1 & entity_type == "Hospital", sum(char_female)
+	preserve 
+		replace entity_type= "SHHS" if entity_type == "Single Hospital Health System"
+		display "Female Share"
+		* female CEO share by entity_type
+		tab entity_type if char_ceo ==1, sum(char_female)
+		graph bar char_female if char_ceo ==1, over(entity_type) /// frequencies 
+			title("Female CEO Share by Entity Type") ///
+			ytitle("Female Share")
+		graph export "${overleaf}/notes/CEO Descriptives/figures/ceosharefemale_entity_type.pdf", as(pdf) name("Graph") replace
+		graph bar (count) char_female if char_ceo ==1, over(entity_type) /// counts 
+			title("Count of CEO Observations by Entity Type") ///
+			ytitle("Count")
+		graph export "${overleaf}/notes/CEO Descriptives/figures/ceocount_entity_type.pdf", as(pdf) name("Graph") replace
+		* detailed hospital type
+		tab type if char_ceo ==1 & entity_type == "Hospital", sum(char_female)
+		graph hbar char_female if char_ceo ==1 & entity_type == "Hospital", ///
+			over(type, sort(1) descending label(angle(0))) ///
+			ytitle("Female Share") ///
+			title("Female CEO Share by Detailed Hospital Type") 
+		graph export "${overleaf}/notes/CEO Descriptives/figures/ceosharefemale_hospital_type_detail.pdf", as(pdf) name("Graph") replace
+		graph hbar (count) char_female if char_ceo ==1 & entity_type == "Hospital", ///
+			over(type) ///
+			ytitle("Count") ///
+			title("Count of CEO Observations by Detailed Hospital Type") 
+		graph export "${overleaf}/notes/CEO Descriptives/figures/ceocount_hospital_type_detail.pdf", as(pdf) name("Graph") replace
+		
+		display "MD Share"
+		tab entity_type if char_ceo ==1, sum(char_md)
+		graph bar char_md if char_ceo ==1, over(entity_type) /// frequencies 
+			title("MD CEO Share by Entity Type") ///
+			ytitle("MD Share")
+		graph export "${overleaf}/notes/CEO Descriptives/figures/ceosharemd_entity_type.pdf", as(pdf) name("Graph") replace
+		tab type if char_ceo ==1 & entity_type == "Hospital", sum(char_md)
+		graph hbar char_md if char_ceo ==1 & entity_type == "Hospital", ///
+			over(type, sort(1) descending label(angle(0))) ///
+			ytitle("MD Share") ///
+			title("MD CEO Share by Detailed Hospital Type") 
+		graph export "${overleaf}/notes/CEO Descriptives/figures/ceosharemd_hospital_type_detail.pdf", as(pdf) name("Graph") replace
 	
-	display "MD Share"
-	tab entity_type if char_ceo ==1, sum(char_md)
-	tab type if char_ceo ==1 & entity_type == "Hospital", sum(char_md)
+	restore
 
 
 * most common jobs right before becoming hospital ceo?

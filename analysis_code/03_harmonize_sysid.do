@@ -186,7 +186,7 @@ Goal: 			Clean system ID variable from Cooper et al data
 	restore
 	
 	* create example file for RA
-	preserve
+// 	preserve
 		* reduce sample 
 		restrict_hosp_sample
 		
@@ -201,16 +201,45 @@ Goal: 			Clean system ID variable from Cooper et al data
 		}
 		rename type entity_detail_type
 	
-	order entity_uniqueid year entity_name entity_type entity_detail_type entity_system_id entity_sysname entity_uniqueid_parent entity_type_parent entity_name_parent entity_medicarenumber entity_city entity_state entity_aha _merge_entity_aha aha_hos_name sysid aha_sys_name forprofit tar any acq syschng_sysid syschng_system_id 	
-	
-	* pre-make flag variables
-	gen entity_misschange = tar ==1 & syschng_system_id == 0
-	gen aha_misschange = tar == 0 & syschng_system_id == 1
-	bysort entity_uniqueid: egen ever_entity_misschange = max(entity_misschange)
-	bysort entity_uniqueid: egen ever_aha_misschange = max(aha_misschange)
-	
-	* save a version for RA
-	save "${dbdata}/derived/temp/merge_checks_RA.dta", replace
+		order entity_uniqueid year entity_name entity_type entity_detail_type entity_system_id entity_sysname entity_uniqueid_parent entity_type_parent entity_name_parent entity_medicarenumber entity_city entity_state entity_aha _merge_entity_aha aha_hos_name sysid aha_sys_name forprofit tar any acq syschng_sysid syschng_system_id 	
+		
+		* pre-make flag variables
+		gen entity_misschange = tar ==1 & syschng_system_id == 0
+		gen aha_misschange = tar == 0 & syschng_system_id == 1
+		bysort entity_uniqueid: egen ever_entity_misschange = max(entity_misschange)
+		bysort entity_uniqueid: egen ever_aha_misschange = max(aha_misschange)
+		
+		* save a version for RA
+		save "${dbdata}/derived/temp/merge_checks_RA.dta", replace
+		
+		* check around for system-to-system acquisitions
+			* tar ==1 and sysid changes and permanently disappears from the data
+			
+			* flag SYSIDs if it is their last year
+			bysort sysid: egen last_sysid_year = max(year)
+			replace last_sysid_year = . if last_sysid_year == 2017 // don't count end of sample
+			* just note that we might be missing conversions in the last year
+			replace last_sysid_year = . if missing(sysid)
+			* problem is that a lot of individual facilities have a sysid only for them
+			bysort sysid year: gen mult_sysid = 1 if _N > 1
+			
+			* make a variable for last entity year
+			bysort entity_uniqueid: egen last_entity_year = max(year)
+			replace last_entity_year = . if last_entity_year == 2017
+			
+			* make a first system-tar variable
+			* should this be lagged one year?
+			bysort entity_uniqueid (year): gen v1_tar_sys = tar ==1 ///
+				& year[_n-1] == last_sysid_year[_n-1] ///
+				& mult_sysid[_n-1] == 1
+			bysort entity_uniqueid: egen ever_v1_tar_sys = max(v1_tar_sys)
+			
+			* make another system-tar variable that doesn't require tar == 1
+			bysort entity_uniqueid (year): gen v2_tar_sys = year[_n-1] == last_sysid_year[_n-1] ///
+				&  mult_sysid[_n-1] == 1 ///
+				& entity_type_parent[_n-1] == "IDS/RHA" // only apply to former system-owned
+			bysort entity_uniqueid: egen ever_v2_tar_sys = max(v2_tar_sys)
+			
 	
 	restore
 	
@@ -270,7 +299,7 @@ Goal: 			Clean system ID variable from Cooper et al data
 	foreach var in forprofit himss_forprofit {
 		bysort entity_uniqueid year: gen change`var' = `var' != `var'[_n-1] & !missing(`var') & !missing(`var'[_n-1])
 	}
-	tab change* // NEVER any changes within IDs
+	tab change* // NEVER any changes within IDs - actually think this is wrong
 	
 	gen forprofit_imputed = forprofit
 	tab forprofit, m
@@ -287,7 +316,10 @@ Goal: 			Clean system ID variable from Cooper et al data
 	
 	save "${dbdata}/derived/temp/systems_nonharmonized_withprofit.dta", replace
 	
-* pull this back into 
+* test whether there is a system change or a indiv. hosp change
+
+
+
 	
 * case studies _________________________________________________________________
 
