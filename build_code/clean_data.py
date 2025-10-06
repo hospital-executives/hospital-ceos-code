@@ -94,7 +94,6 @@ for df in dataframes:
     cleaned_dataframes.append(df_copy)
 
 cleaned_himss, cleaned_confirmed, cleaned_remainder = cleaned_dataframes
-cleaned_himss.loc[cleaned_himss["firstname"] == "Nan", "firstname"] = "Nancy"
 
 # create nickname pairings from HIMSS
 himss_by_nickname = blocking_helper.clean_for_metaphone(himss[['firstname']])
