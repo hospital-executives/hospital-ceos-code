@@ -86,6 +86,8 @@ def drop_nickname(name):
     if isinstance(name, str):
         name = re.split(r'[\(\)"\']', name)[0].strip()
         name = name.lower()
+        if name == "nan":
+            name = "nancy"
         return name
     
 def split_content(cell):
@@ -336,7 +338,7 @@ def clean_lastnames(df, column):
     # List of suffixes to remove
     suffixes = [' II', ' Jr', ' Sr', ' Sr.', ' Jr.', ' III', ' IV', ' V', 
                 ' Esq', ' M.D.', ' Ph.D.', ' D.D.S.', "M.B.A", 'MBA', 
-                "jr", "sr", "ii", "iii", "iv", "v"]
+                "jr", "sr", "ii", "iii", "iv", "v", " CPA", " RN"]
     
     def remove_suffixes(name):
         for suffix in suffixes:

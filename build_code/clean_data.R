@@ -1,5 +1,5 @@
 # clean_data.R
-
+library(stringr)
 library(rstudioapi)
 # load data
 if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
@@ -17,15 +17,12 @@ if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable())
   himss_path <- args[3]
 }
 
-cat(paste0("CODE PATH: ", code_path))
-cat(paste0("DATA PATH: ", data_path))
-cat(paste0("HIMSS PATH: ", himss_path))
-
 ##### load files ##### 
 df <- read_feather(paste0(himss_path)) %>%
   filter(year > 2008) %>%
   mutate(full_name = str_to_lower(str_replace_all(paste0(firstname, lastname), 
-                                                  "[[:punct:]\\s]", ""))) %>%
+                                                  "[[:punct:]\\s]", "")),
+         lastname = str_remove(lastname, ",\\s*CPA$")) %>%
   filter(!grepl("[A-Za-z]", entity_zip) & 
            !str_detect(entity_state, "AB|BC|PE|NB|NL|NS|MB|SK|PR")) 
 
@@ -169,12 +166,12 @@ one_name_m_ids_remaining <- final_remaining %>% #18,979 remaining
 final_confirmed <- final_confirmed %>%
   select(-c(add_list, entity_name_list, entityid_list)) %>%
   mutate(nan_flag = ifelse(firstname == "Nan", TRUE, FALSE),
-         firstname = ifelse(nan_flag, "Nancy", FALSE))
+         firstname = ifelse(nan_flag, "Nancy", firstname))
 write_feather(final_confirmed, paste0(data_path,"derived/auxiliary/", "r_confirmed.feather"))
 
 final_remaining <- final_remaining %>%
   select(-c(add_list, entity_name_list, entityid_list)) %>%
   mutate(nan_flag = ifelse(firstname == "Nan", TRUE, FALSE),
-         firstname = ifelse(nan_flag, "Nancy", FALSE))
+         firstname = ifelse(nan_flag, "Nancy", firstname))
 write_feather(final_remaining, paste0(data_path,"derived/auxiliary/", "r_remaining.feather"))
 
