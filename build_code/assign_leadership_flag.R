@@ -1,5 +1,6 @@
 library(tibble)
 library(rstudioapi)
+library(janitor)
 # load data
 if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
   setwd(dirname(getActiveDocumentContext()$path))
@@ -131,8 +132,9 @@ export_df <- individuals %>% left_join(final_flag_df, by = "id") %>%
          firstname = ifelse(nan_flag, "nan", firstname)) %>%
   select(-nan_flag)
 
+export_df <- export_df %>% clean_names()
 write_feather(export_df, paste0(derived_data, "/individuals_final.feather"))
-
+write_dta(export_df, paste0(derived_data, "/individuals_final.dta"))
 
 ### create leader flag summary statistics 
 summary_file <- paste0(output_dir, "/leader_flags_summary.tex")
