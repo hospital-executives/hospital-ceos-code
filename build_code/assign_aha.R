@@ -63,8 +63,8 @@ merged_haentity <- haentity %>% select(-ahanumber) %>%
   mutate(is_hospital = !is.na(entity_aha)) %>% distinct()
 
 merged_haentity <- merged_haentity %>% clean_names()
-write_feather(merged_haentity, paste0(derived_data,'/hospitals_final.feather'))
-write_dta(merged_haentity, paste0(derived_data,'/hospitals_final.dta'))
+write_feather(merged_haentity, paste0(derived_data,'/hospitals_with_xwalk.feather'))
+#write_dta(merged_haentity, paste0(derived_data,'/hospitals_final.dta'))
 
 ## CREATE INDIVIDUAL LEVEL EXPORT
 himss <- read_feather(paste0(derived_data, '/final_himss.feather'))

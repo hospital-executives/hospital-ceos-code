@@ -29,7 +29,7 @@ rm(script_directory, config_path)
 
 #### Pull in AHA<>MCR Crosswalk 2 - it should be the case that after updating
 #### zip codes that all assigned AHAs in haentityhosp are assigned here
-raw_xwalk <- read.csv(paste0(auxiliary_data, "/aha_himss_xwalk_old.csv"))
+raw_xwalk <- read.csv(paste0(auxiliary_data, "/aha_himss_xwalk_msa.csv"))
 xwalk2 <- raw_xwalk %>%
   mutate(ahanumber = filled_aha) %>%
   group_by(entity_uniqueid) %>%
