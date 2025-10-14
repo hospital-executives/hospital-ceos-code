@@ -7,7 +7,7 @@ library(janitor)
 if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
   setwd(dirname(getActiveDocumentContext()$path))
   source("config.R")
-  hospitals <- read_feather(paste0(derived_data, "/hospitals_with_xwalk.feather"))
+  hospitals <- read_feather(paste0(derived_data, "/hospitals_final.feather"))
   cleaned_individuals <- read_feather(paste0(derived_data, "/individuals_final.feather"))
   supp_path <- supplemental_data
   output_dir <- paste0(data_file_path, "/summary_stats/execs")
@@ -149,4 +149,3 @@ export <- export %>% clean_names() %>%
          patient_accounting_head = patient_accounting_revenue_cycle_head,
          cnis = cnis_chief_nursing_informatics_officer)
 write_dta(export, paste0(derived_data, "/himss_title_master.dta"))
-
