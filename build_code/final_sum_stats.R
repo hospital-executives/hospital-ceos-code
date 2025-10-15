@@ -1,5 +1,6 @@
 ## create final ceo level summary statistics
-
+rm(list = ls())
+library(rstudioapi)
 if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
   setwd(dirname(getActiveDocumentContext()$path))
   source("config.R")
@@ -42,16 +43,19 @@ merged_madmin <- cleaned_aha %>%
   )
 
 # load aha no ceos
-all_aha_ceos <- hospitals %>% distinct(ahanumber,year) %>% 
+all_aha_ceos <- hospitals %>% distinct(entity_aha,year) %>% 
+  rename(ahanumber = entity_aha) %>%
   left_join(
     cleaned_aha %>% distinct(full_aha, ahanumber, year, cleaned_title_aha)
   ) %>% 
-  filter(year > 2008 & !is.na(full_aha) & str_detect(cleaned_title_aha, "ceo|chief executive"))
+  filter(year > 2008 & !is.na(full_aha) & str_detect(cleaned_title_aha, "ceo|chief executive officer"))
 
-all_aha_no_ceos <- hospitals %>% distinct(ahanumber,year) %>% left_join(
+all_aha_no_ceos <- hospitals %>% distinct(entity_aha,year) %>% 
+  rename(ahanumber = entity_aha) %>%
+  left_join(
   cleaned_aha %>% distinct(full_aha, ahanumber, year)) %>% 
   filter(year > 2008 & !is.na(full_aha)) %>%
-  anti_join(all_aha_ceos)
+  anti_join(all_aha_ceos, by = c("ahanumber","year","full_aha"))
 
 # load himss matches
 himss_matches <- read_feather("temp/himss_to_aha_matches.feather")
@@ -77,7 +81,7 @@ cat("There are ", num_obs,
     "hospital-year observations shared across HIMSS and the AHA.\n", 
     file = summary_file, append = TRUE)
 cat("I.\n", file = summary_file, append = TRUE)
-cat("AHA reports madmin that are not CEOs in ", nrow(all_aha_no_ceos), 
+cat("AHA reports madmin that are not CEOs in", nrow(all_aha_no_ceos), 
     "hospital-years.\n", file = summary_file, append = TRUE)
 
 # himss missing ceo
@@ -95,10 +99,28 @@ cat("HIMSS reports madmin that are not CEOs in ", nrow(missing),
     "hospital-years.\n", file = summary_file, append = TRUE)
 
 # number with the same person as CEO
-exact_matches <- merged_madmin %>% filter(match_type == "jw")
+exact_matches <- himss_aha %>% left_join(merged_madmin, by = c("ahanumber", "year")) %>% 
+  filter(match_type == "jw")
 cat("II.\n", file = summary_file, append = TRUE)
-cat("AHA and HIMSS overlap on year and entity in ", nrow(exact_matches), 
+cat("AHA and HIMSS overlap exactly on year, entity, and being a CEO in ", nrow(exact_matches), 
     "cases (", round(nrow(exact_matches) / num_obs, 2), ").\n",
+    file = summary_file, append = TRUE)
+
+matches_3_years <- himss_aha %>% left_join(merged_madmin, by = c("ahanumber", "year")) %>% 
+  filter(match_type %in% c("jw", "jw_0", "jw_1", "jw_2", "jw_3"))
+cat("AHA and HIMSS exactly on entity and being a CEO and are within 3 years of each other in ", nrow(matches_3_years), 
+    "cases (", round(nrow(matches_3_years) / num_obs, 2), ").\n",
+    file = summary_file, append = TRUE)
+
+matches_title <- himss_aha %>% left_join(merged_madmin, by = c("ahanumber", "year")) %>% 
+  filter(match_type %in% c("title", "jw_title", "jw_title_1", "jw_title_3"))
+cat("AHA and HIMSS exactly on entity and have a title mismatch (up to 3 years a part) in an additional", nrow(matches_title), 
+    "cases (", round(nrow(matches_title) / num_obs, 2), ").\n",
+    file = summary_file, append = TRUE)
+
+ever_matched_num <- nrow(himss_aha %>% left_join(merged_madmin, by = c("ahanumber", "year")) %>% filter(!is.na(match_type)))
+cat("In all, we are able to match", ever_matched_num,
+    "cases in the AHA to HIMSS in the same hospital and/or system (", round(ever_matched_num / num_obs, 2), ").\n",
     file = summary_file, append = TRUE)
 
 # number with the same person | both are non na
@@ -111,7 +133,7 @@ non_na_matches <- non_na_obs %>%
 
 cat("III.\n", file = summary_file, append = TRUE)
 cat(
-  "AHA and HIMSS overlap on year and entity in ",
+  "AHA and HIMSS overlap on year, title, and entity in ",
   nrow(non_na_matches), " cases out of ", nrow(non_na_obs),
   " where CEO is non-missing in both datasets (",
   round(nrow(non_na_matches) / nrow(non_na_obs), 2),
@@ -119,10 +141,44 @@ cat(
   file = summary_file, append = TRUE
 )
 
+non_na_matches_years <- non_na_obs %>%
+  left_join(matches_3_years) %>% filter(!is.na(match_type))
+non_na_matches_titles <- non_na_obs %>%
+  left_join(matches_title) %>% filter(!is.na(match_type))
+non_na_matches_all <- non_na_obs %>%
+  left_join(merged_madmin) %>% filter(!is.na(match_type))
+
+cat(
+  "AHA and HIMSS overlap on entity and title, and are within 3 years of each other, in ",
+  nrow(non_na_matches_years), " cases out of ", nrow(non_na_obs),
+  " where CEO is non-missing in both datasets (",
+  round(nrow(non_na_matches_years) / nrow(non_na_obs), 2),
+  ").\n",
+  file = summary_file, append = TRUE
+)
+
+cat(
+  "AHA and HIMSS overlap on entity but not title (or necessarily year) in ",
+  nrow(non_na_matches_titles), " cases out of ", nrow(non_na_obs),
+  " where CEO is non-missing in both datasets (",
+  round(nrow(non_na_matches_titles) / nrow(non_na_obs), 2),
+  ").\n",
+  file = summary_file, append = TRUE
+)
+
+cat(
+  "AHA and HIMSS ever overlap in ",
+  nrow(non_na_matches_all), " cases out of ", nrow(non_na_obs),
+  " where CEO is non-missing in both datasets (",
+  round(nrow(non_na_matches_all) / nrow(non_na_obs), 2),
+  ").\n",
+  file = summary_file, append = TRUE
+)
+
 # hospital year overlaps
 year_mismatches <- merged_madmin %>% filter(grepl("^jw(_\\d+)?$", match_type))
 cat("IV.\n", file = summary_file, append = TRUE)
-cat("AHA and HIMSS overlap on entity in ", nrow(year_mismatches), 
+cat("AHA and HIMSS overlap on entity, but not necessarily year, in ", nrow(year_mismatches), 
     "cases (",round(nrow(year_mismatches) / num_obs, 2), ").\n",
     file = summary_file, append = TRUE
 )
