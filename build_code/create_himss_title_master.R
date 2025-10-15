@@ -7,7 +7,7 @@ library(janitor)
 if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
   setwd(dirname(getActiveDocumentContext()$path))
   source("config.R")
-  hospitals <- read_feather(paste0(derived_data, "/hospitals_final.feather"))
+  hospitals <- read_feather(paste0(derived_data, "/hospitals_with_xwalk.feather"))
   cleaned_individuals <- read_feather(paste0(derived_data, "/individuals_final.feather"))
   supp_path <- supplemental_data
   output_dir <- paste0(data_file_path, "/summary_stats/execs")
@@ -32,7 +32,11 @@ for (prefix in file_prefixes) {
   
   # Loop through each year
   for (year in year_range) {
-    file_path <- paste0(prefix, year, ".csv")  # Construct the file name
+    if (year == 2017){
+      file_path <- paste0("dbo", prefix, year, ".csv")
+    } else {
+      file_path <- paste0(prefix, year, ".csv")  # Construct the file name
+    }
     full_path <- file.path(raw_data, as.character(year), file_path)  # Full file path
     
     #Check if the file exists, import
@@ -149,3 +153,14 @@ export <- export %>% clean_names() %>%
          patient_accounting_head = patient_accounting_revenue_cycle_head,
          cnis = cnis_chief_nursing_informatics_officer)
 write_dta(export, paste0(derived_data, "/himss_title_master.dta"))
+
+## merge on hospitals df
+selected_titles <- export %>% distinct(entity_uniqueid, year,
+                                       all_ceo,all_cfo, all_coo, all_cio,
+                                       head_of_facility, flagged_leader_in_aha)
+
+merged_hospitals <- hospitals %>% 
+  left_join(selected_titles, by = c("entity_uniqueid", "year"))
+
+write_feather(merged_hospitals, paste0(derived_data, "/hospitals_final.feather"))
+write_dta(merged_hospitals, paste0(derived_data, "/hospitals_final.dta"))
