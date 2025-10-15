@@ -9,6 +9,10 @@
 # 8. generate_clean_df.py
 # 9. generate_final.py
 
+# setup python
+PROJ_ENV := ../setup_environment/proj-env
+PY  := $(PROJ_ENV)/bin/python
+
 # Capture USER_DIR by running get_project_directory.R
 USER_DIR := $(shell Rscript get_makefile_paths.R)
 R_USER_DIR := $(shell Rscript get_project_directory.R)
@@ -51,7 +55,7 @@ $(MANUAL_STAMP): $(COMPILE_STAMP) clean_data.R
 # clean data
 clean_py : $(CLEAN_PY_STAMP) clean_data.py
 $(CLEAN_PY_STAMP): $(MANUAL_STAMP) $(CONFIRMED_R) $(REMAINING_R) $(HIMSS_ENTITIES_CONTACTS) clean_data.py
-	$(call safe_run,python3 clean_data.py $(CODE_DIR) $(CONFIRMED_R) $(REMAINING_R) \
+	$(call safe_run,$(PY) clean_data.py $(CODE_DIR) $(CONFIRMED_R) $(REMAINING_R) \
 	$(HIMSS_ENTITIES_CONTACTS) $(CONFIRMED_1) $(REMAINING_1) \
 	$(HIMSS_1) $(HIMSS_NICKNAMES))
 	touch $(CLEAN_PY_STAMP)
@@ -59,21 +63,21 @@ $(CLEAN_PY_STAMP): $(MANUAL_STAMP) $(CONFIRMED_R) $(REMAINING_R) $(HIMSS_ENTITIE
 # update gender
 update_gender: $(GENDER_STAMP)
 $(GENDER_STAMP): $(CLEAN_PY_STAMP) $(CONFIRMED_1) helper_scripts/update_gender.py
-	$(call safe_run,python3 helper_scripts/update_gender.py $(CONFIRMED_1) \
+	$(call safe_run,$(PY) helper_scripts/update_gender.py $(CONFIRMED_1) \
 	$(UPDATED_GENDER) $(DATA_DIR) $(R_GENDER))
 	touch $(GENDER_STAMP)
 
 # generate jaro-winkler similarity scores
 update_jaro : $(JARO_STAMP)
 $(JARO_STAMP): $(GENDER_STAMP) $(CONFIRMED_R) $(UPDATED_GENDER) helper_scripts/jaro_algo.py
-	$(call safe_run,python3 helper_scripts/jaro_algo.py $(CODE_DIR) \
+	$(call safe_run,$(PY) helper_scripts/jaro_algo.py $(CODE_DIR) \
 	$(CONFIRMED_R) $(UPDATED_GENDER) $(JARO))
 	touch $(JARO_STAMP)
 
 # generate digraphs of nicknames
 make_digraphs: $(DIGRAPHS_STAMP)
 $(DIGRAPHS_STAMP): $(JARO_STAMP) $(HIMSS_1) $(HIMSS_NICKNAMES) helper_scripts/generate_digraphs.py
-	$(call safe_run,python3 helper_scripts/generate_digraphs.py $(HIMSS_1) \
+	$(call safe_run,$(PY) helper_scripts/generate_digraphs.py $(HIMSS_1) \
 	$(HIMSS_NICKNAMES) $(DIGRAPHNAME) $(DIGRAPHMETA) $(SUPP_DIR))
 	touch $(DIGRAPHS_STAMP)
 
@@ -81,7 +85,7 @@ $(DIGRAPHS_STAMP): $(JARO_STAMP) $(HIMSS_1) $(HIMSS_NICKNAMES) helper_scripts/ge
 make_blocks: $(BLOCKS_STAMP)
 $(BLOCKS_STAMP): $(DIGRAPHS_STAMP) $(HIMSS_ENTITIES_CONTACTS) $(CONFIRMED_1) $(REMAINING_1) \
 	$(UPDATED_GENDER) $(HIMSS_1) generate_blocks.py
-	$(call safe_run,python3 generate_blocks.py $(HIMSS_ENTITIES_CONTACTS) \
+	$(call safe_run,$(PY) generate_blocks.py $(HIMSS_ENTITIES_CONTACTS) \
 	$(CONFIRMED_1) $(REMAINING_1) $(UPDATED_GENDER) $(HIMSS_1) $(CONFIRMED_2) \
 	$(REMAINING_2) $(DATA_DIR))
 	touch $(BLOCKS_STAMP)
@@ -89,7 +93,7 @@ $(BLOCKS_STAMP): $(DIGRAPHS_STAMP) $(HIMSS_ENTITIES_CONTACTS) $(CONFIRMED_1) $(R
 # generate pairwise comparisons
 pairs: $(PAIRS_STAMP)
 $(PAIRS_STAMP): $(BLOCKS_STAMP) $(CONFIRMED_2) $(REMAINING_2) generate_pairs.py
-	$(call safe_run,python3 generate_pairs.py  $(CONFIRMED_2) $(REMAINING_2) \
+	$(call safe_run,$(PY) generate_pairs.py  $(CONFIRMED_2) $(REMAINING_2) \
 	$(COMP_PAIRS) $(META_PAIRS) $(CLEAN_META_PAIRS) \
 	$(COMP_CLEANED) $(META_CLEANED) \
 	$(DATA_DIR) $(CODE_DIR))
@@ -99,7 +103,7 @@ $(PAIRS_STAMP): $(BLOCKS_STAMP) $(CONFIRMED_2) $(REMAINING_2) generate_pairs.py
 fuzzy: $(FUZZY_STAMP)
 $(FUZZY_STAMP): $(PAIRS_STAMP) $(CONFIRMED_2) $(REMAINING_2) $(COMP_PAIRS) $(META_PAIRS) $(CLEAN_META_PAIRS) \
 	$(COMP_CLEANED) $(META_CLEANED) new_fuzzy_match.py
-	$(call safe_run,python3 new_fuzzy_match.py $(CONFIRMED_2) $(REMAINING_2) \
+	$(call safe_run,$(PY) new_fuzzy_match.py $(CONFIRMED_2) $(REMAINING_2) \
 	$(COMP_PAIRS) $(META_PAIRS) $(CLEAN_META_PAIRS) $(COMP_CLEANED) $(META_CLEANED) \
 	$(PY_CLEANED) $(PY_REMAINING) $(GRAPH_COMPS) \
 	$(DATA_DIR) $(CODE_DIR))
@@ -108,7 +112,7 @@ $(FUZZY_STAMP): $(PAIRS_STAMP) $(CONFIRMED_2) $(REMAINING_2) $(COMP_PAIRS) $(MET
 # generate final cleaned individual-level output
 individual_output: $(FINAL_INDIVIDUAL_STAMP)
 $(FINAL_INDIVIDUAL_STAMP): $(FUZZY_STAMP) $(PY_CLEANED) $(PY_REMAINING) $(GRAPH_COMPS) generate_final.py
-	$(call safe_run,python3 generate_final.py $(PY_CLEANED) $(PY_REMAINING) \
+	$(call safe_run,$(PY) generate_final.py $(PY_CLEANED) $(PY_REMAINING) \
 	$(GRAPH_COMPS) $(FINAL_HIMSS) $(FINAL_CONFIRMED_DTA) \
 	$(FINAL_CONFIRMED_FEATHER) $(HIMSS_ENTITIES_CONTACTS))
 	touch $(FINAL_INDIVIDUAL_STAMP)
