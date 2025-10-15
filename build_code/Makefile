@@ -190,7 +190,7 @@ $(TITLE_MASTER_STAMP): $(AHA_TITLE_FLAG_STAMP)
 	$(DERIVED_DIR)/individuals_final.feather $(SUPP_DIR) $(USER_DIR)/_data/_outputs/execs
 
 # make final summary statistics using make_title_xwalk 
-final_sum_tstats: $(FINAL_SUMSTATS_STAMP)
+final_sum_stats: $(FINAL_SUMSTATS_STAMP)
 $(FINAL_SUMSTATS_STAMP): $(TITLE_MASTER_STAMP)
 	Rscript final_sum_stats.R $(DERIVED_DIR)/hospitals_with_xwalk.feather \
 	$(DERIVED_DIR)/individuals_final.feather $(SUPP_DIR) $(USER_DIR)/_data/_outputs/execs
