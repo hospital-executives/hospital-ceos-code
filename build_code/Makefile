@@ -12,14 +12,13 @@
 # Capture USER_DIR by running get_project_directory.R
 USER_DIR := $(shell Rscript get_makefile_paths.R)
 R_USER_DIR := $(shell Rscript get_project_directory.R)
+CODE_DIR := $(CURDIR)
 
 # Check if USER_DIR is empty
 ifeq ($(strip $(USER_DIR)),)
 $(error USER_DIR could not be determined. Please check get_makefile_paths.R)
 endif
 
-# Define Code Directory as the directory containing the Makefile
-CODE_DIR := $(CURDIR)
 include paths.mk
 
 # Define error message
@@ -35,19 +34,21 @@ endef
 # Stamp Dependencies
 all: $(FINAL_SUMSTATS_STAMP)
 
-# Step 1: Compile HIMSS data
+#### CLEAN INDIVIDUAL LEVEL DATA ####
+
+# compile himss from raw files
 compile_himss: $(COMPILE_STAMP)
 $(COMPILE_STAMP): compile_himss.R
 	$(call safe_run,Rscript compile_himss.R $(CODE_DIR))
 	touch $(COMPILE_STAMP)
 
-# Step 2: Manual assignment
+# manually check m:1 and 1:m cases
 manual_assignment: $(MANUAL_STAMP)
 $(MANUAL_STAMP): $(COMPILE_STAMP) clean_data.R
 	$(call safe_run,Rscript clean_data.R $(CODE_DIR) '$(R_USER_DIR)' '$(HIMSS_R)')
 	touch $(MANUAL_STAMP)
 
-# Step 3: Clean data
+# clean data
 clean_py : $(CLEAN_PY_STAMP) clean_data.py
 $(CLEAN_PY_STAMP): $(MANUAL_STAMP) $(CONFIRMED_R) $(REMAINING_R) $(HIMSS_ENTITIES_CONTACTS) clean_data.py
 	$(call safe_run,python3 clean_data.py $(CODE_DIR) $(CONFIRMED_R) $(REMAINING_R) \
@@ -55,28 +56,28 @@ $(CLEAN_PY_STAMP): $(MANUAL_STAMP) $(CONFIRMED_R) $(REMAINING_R) $(HIMSS_ENTITIE
 	$(HIMSS_1) $(HIMSS_NICKNAMES))
 	touch $(CLEAN_PY_STAMP)
 
-# Step 4: Update gender
+# update gender
 update_gender: $(GENDER_STAMP)
 $(GENDER_STAMP): $(CLEAN_PY_STAMP) $(CONFIRMED_1) helper_scripts/update_gender.py
 	$(call safe_run,python3 helper_scripts/update_gender.py $(CONFIRMED_1) \
 	$(UPDATED_GENDER) $(DATA_DIR) $(R_GENDER))
 	touch $(GENDER_STAMP)
 
-# Step 5: Generate Jaro
+# generate jaro-winkler similarity scores
 update_jaro : $(JARO_STAMP)
 $(JARO_STAMP): $(GENDER_STAMP) $(CONFIRMED_R) $(UPDATED_GENDER) helper_scripts/jaro_algo.py
 	$(call safe_run,python3 helper_scripts/jaro_algo.py $(CODE_DIR) \
 	$(CONFIRMED_R) $(UPDATED_GENDER) $(JARO))
 	touch $(JARO_STAMP)
 
-# Step 6: Generate digraphs
+# generate digraphs of nicknames
 make_digraphs: $(DIGRAPHS_STAMP)
 $(DIGRAPHS_STAMP): $(JARO_STAMP) $(HIMSS_1) $(HIMSS_NICKNAMES) helper_scripts/generate_digraphs.py
 	$(call safe_run,python3 helper_scripts/generate_digraphs.py $(HIMSS_1) \
 	$(HIMSS_NICKNAMES) $(DIGRAPHNAME) $(DIGRAPHMETA) $(SUPP_DIR))
 	touch $(DIGRAPHS_STAMP)
 
-# Step 7: Generate blocks
+# generate blocks
 make_blocks: $(BLOCKS_STAMP)
 $(BLOCKS_STAMP): $(DIGRAPHS_STAMP) $(HIMSS_ENTITIES_CONTACTS) $(CONFIRMED_1) $(REMAINING_1) \
 	$(UPDATED_GENDER) $(HIMSS_1) generate_blocks.py
@@ -85,7 +86,7 @@ $(BLOCKS_STAMP): $(DIGRAPHS_STAMP) $(HIMSS_ENTITIES_CONTACTS) $(CONFIRMED_1) $(R
 	$(REMAINING_2) $(DATA_DIR))
 	touch $(BLOCKS_STAMP)
 
-# Step 8: Generate pairwise comparisons
+# generate pairwise comparisons
 pairs: $(PAIRS_STAMP)
 $(PAIRS_STAMP): $(BLOCKS_STAMP) $(CONFIRMED_2) $(REMAINING_2) generate_pairs.py
 	$(call safe_run,python3 generate_pairs.py  $(CONFIRMED_2) $(REMAINING_2) \
@@ -94,6 +95,7 @@ $(PAIRS_STAMP): $(BLOCKS_STAMP) $(CONFIRMED_2) $(REMAINING_2) generate_pairs.py
 	$(DATA_DIR) $(CODE_DIR))
 	touch $(PAIRS_STAMP)
 
+# determine if pairs are the same or different
 fuzzy: $(FUZZY_STAMP)
 $(FUZZY_STAMP): $(PAIRS_STAMP) $(CONFIRMED_2) $(REMAINING_2) $(COMP_PAIRS) $(META_PAIRS) $(CLEAN_META_PAIRS) \
 	$(COMP_CLEANED) $(META_CLEANED) new_fuzzy_match.py
@@ -103,8 +105,7 @@ $(FUZZY_STAMP): $(PAIRS_STAMP) $(CONFIRMED_2) $(REMAINING_2) $(COMP_PAIRS) $(MET
 	$(DATA_DIR) $(CODE_DIR))
 	touch $(FUZZY_STAMP)
 
-# Step 9: Generate final HIMSS dataset and cleaned dta with flags
-# TO DO: clean up so not writing excess files to Dropbox
+# generate final cleaned individual-level output
 individual_output: $(FINAL_INDIVIDUAL_STAMP)
 $(FINAL_INDIVIDUAL_STAMP): $(FUZZY_STAMP) $(PY_CLEANED) $(PY_REMAINING) $(GRAPH_COMPS) generate_final.py
 	$(call safe_run,python3 generate_final.py $(PY_CLEANED) $(PY_REMAINING) \
@@ -112,31 +113,38 @@ $(FINAL_INDIVIDUAL_STAMP): $(FUZZY_STAMP) $(PY_CLEANED) $(PY_REMAINING) $(GRAPH_
 	$(FINAL_CONFIRMED_FEATHER) $(HIMSS_ENTITIES_CONTACTS))
 	touch $(FINAL_INDIVIDUAL_STAMP)
 
-# Step 10: build crosswalk between himss and aha
+#### CLEAN HOSPITAL LEVEL DATA ####
+# build crosswalk between himss and aha + add latitude and longitude
 assign_aha: $(MAKE_AHA_STAMP)
 $(MAKE_AHA_STAMP): $(FINAL_INDIVIDUAL_STAMP) mcr_aha_xwalk.py
 	$(call safe_run,python mcr_aha_xwalk.py $(DATA_DIR) $(AHA_OUTPUT))
 	touch $(MAKE_AHA_STAMP)
 
+# add msa based on latitude and longitude
 add_msa: $(ADD_MSA_STAMP)
 $(ADD_MSA_STAMP): $(MAKE_AHA_STAMP) map_to_msa.py $(AUX_DIR)/aha_himss_xwalk.csv
 	$(call safe_run,python map_to_msa.py $(DATA_DIR) $(AHA_OUTPUT))
 	touch $(ADD_MSA_STAMP)
 
+# assign entity_aha
 clean_aha: $(CLEAN_AHA_STAMP)
 $(CLEAN_AHA_STAMP): $(MAKE_AHA_STAMP) himss_to_aha.R
 	$(call safe_run,Rscript himss_to_aha.R $(CODE_DIR) '$(R_USER_DIR)')
 	touch $(CLEAN_AHA_STAMP)
 
+# finalize cleaning aha numbers for both hospital and individual dfs
 finalize_aha: $(FINALIZE_AHA_STAMP)
 $(FINALIZE_AHA_STAMP): $(CLEAN_AHA_STAMP) assign_aha.R
 	$(call safe_run,Rscript assign_aha.R $(CODE_DIR) '$(R_USER_DIR)')
 	touch $(FINALIZE_AHA_STAMP)
 
-# Step 11: match aha madmin to himss
+#### MATCH AHA MADMIN TO HIMSS CONTACTS ####
+
+# clean aha data to extract madmin (for use in multiple downstream files)
 temp/cleaned_aha_madmin.csv temp/cleaned_aha.csv: input/aha_data_raw.csv
 	Rscript clean_aha.R
 
+# create aha to himss hospital-level summary statistics
 hospital_sum_stats: $(HOSPITAL_SUMMARY_STAMP)
 $(HOSPITAL_SUMMARY_STAMP): $(CLEAN_AHA_STAMP) temp/cleaned_aha.csv $(DERIVED_DIR)/hospitals_with_xwalk.feather \
 	$(AUX_DIR)/haentity.feather $(SUPP_DIR)/hospital_ownership.dta sumstats_hospitals.R
@@ -144,7 +152,7 @@ $(HOSPITAL_SUMMARY_STAMP): $(CLEAN_AHA_STAMP) temp/cleaned_aha.csv $(DERIVED_DIR
 	$(SUPP_DIR)/hospital_ownership.dta $(USER_DIR)/_data/_outputs/hospitals
 	touch $(HOSPITAL_SUMMARY_STAMP)
 
-## AHA CEO to HIMSS summary statistics
+# create aha to himss summary statistics for ceos (from madmin)
 ceo_sum_stats: $(CEO_SUMMARY_STAMP)
 $(CEO_SUMMARY_STAMP): temp/cleaned_aha_madmin.csv $(DERIVED_DIR)/hospitals_with_xwalk.feather \
 	$(DERIVED_DIR)/individuals_with_xwalk.feather $(HOSPITAL_SUMMARY_STAMP) aha_to_himss_ceos.R
@@ -152,6 +160,7 @@ $(CEO_SUMMARY_STAMP): temp/cleaned_aha_madmin.csv $(DERIVED_DIR)/hospitals_with_
 	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_data/_outputs/execs
 	touch $(CEO_SUMMARY_STAMP)
 
+# create aha to himss summary statistics for non-ceos (from madmin)
 non_ceo_sum_stats: $(NON_CEO_SUMMARY_STAMP)
 $(NON_CEO_SUMMARY_STAMP): temp/cleaned_aha_madmin.csv $(DERIVED_DIR)/hospitals_with_xwalk.feather \
 	$(DERIVED_DIR)/individuals_with_xwalk.feather $(CEO_SUMMARY_STAMP) aha_to_himss_leadership.R
@@ -159,6 +168,7 @@ $(NON_CEO_SUMMARY_STAMP): temp/cleaned_aha_madmin.csv $(DERIVED_DIR)/hospitals_w
 	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_data/_outputs/execs
 	touch $(NON_CEO_SUMMARY_STAMP)
 
+# create aha to himss summary statistics for all madmin
 madmin_sum_stats: $(MADMIN_SUMMARY_STAMP)
 $(MADMIN_SUMMARY_STAMP): $(NON_CEO_SUMMARY_STAMP) aha_to_himss_all.R temp/cleaned_aha_madmin.csv \
 	$(DERIVED_DIR)/hospitals_with_xwalk.feather $(DERIVED_DIR)/individuals_with_xwalk.feather \
@@ -176,6 +186,7 @@ $(HIMSS_TO_AHA_STAMP): $(MADMIN_SUMMARY_STAMP) himss_to_aha_ceos.R temp/cleaned_
 	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_data/_outputs/execs
 	touch $(HIMSS_TO_AHA_STAMP)
 
+# add flag to himss df if individuals show up as madmin in AHA
 assign_aha_flag: $(AHA_TITLE_FLAG_STAMP)
 $(AHA_TITLE_FLAG_STAMP): $(HIMSS_TO_AHA_STAMP) assign_leadership_flag.R temp/cleaned_aha_madmin.csv temp/himss_to_aha_matches.feather \
 	$(DERIVED_DIR)/hospitals_with_xwalk.feather $(DERIVED_DIR)/individuals_with_xwalk.feather $(HIMSS_TO_AHA_STAMP)
