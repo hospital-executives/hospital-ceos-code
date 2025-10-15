@@ -558,7 +558,8 @@ write_feather(matched_himss, paste0(auxiliary_data, "/matched_aha_ceos_himss.fea
 
 ###### ggplot code #####
 get_count <- cleaned_matches %>% distinct(full_aha,ahanumber, year) 
-cat(nrow(get_count), file = summary_file, append = TRUE)
+cat("Of all AHA CEO, AHA number, year pairs, there are:\n", file = summary_file, append = TRUE)
+cat(paste0(nrow(get_count), "\n"), file = summary_file, append = TRUE)
 cat(nrow(get_count)/nrow(all_aha_ceos), file = summary_file, append = TRUE)
 
 df_counts <- final_matches %>% 
