@@ -121,18 +121,18 @@ $(FINAL_INDIVIDUAL_STAMP): $(FUZZY_STAMP) $(PY_CLEANED) $(PY_REMAINING) $(GRAPH_
 # build crosswalk between himss and aha + add latitude and longitude
 assign_aha: $(MAKE_AHA_STAMP)
 $(MAKE_AHA_STAMP): $(FINAL_INDIVIDUAL_STAMP) mcr_aha_xwalk.py
-	$(call safe_run,python mcr_aha_xwalk.py $(DATA_DIR) $(AHA_OUTPUT))
+	$(call safe_run,$(PY) mcr_aha_xwalk.py $(DATA_DIR) $(AHA_OUTPUT))
 	touch $(MAKE_AHA_STAMP)
 
 # add msa based on latitude and longitude
 add_msa: $(ADD_MSA_STAMP)
 $(ADD_MSA_STAMP): $(MAKE_AHA_STAMP) map_to_msa.py $(AUX_DIR)/aha_himss_xwalk.csv
-	$(call safe_run,python map_to_msa.py $(DATA_DIR) $(AHA_OUTPUT))
+	$(call safe_run,$(PY) map_to_msa.py $(DATA_DIR))
 	touch $(ADD_MSA_STAMP)
 
 # assign entity_aha
 clean_aha: $(CLEAN_AHA_STAMP)
-$(CLEAN_AHA_STAMP): $(MAKE_AHA_STAMP) himss_to_aha.R
+$(CLEAN_AHA_STAMP): $(ADD_MSA_STAMP) himss_to_aha.R
 	$(call safe_run,Rscript himss_to_aha.R $(CODE_DIR) '$(R_USER_DIR)')
 	touch $(CLEAN_AHA_STAMP)
 
@@ -214,3 +214,5 @@ $(FINAL_SUMSTATS_STAMP): $(TITLE_MASTER_STAMP)
 input/aha_data_raw.csv: | input
 	@src="$(USER_DIR)/_data/supplemental/AHA_2004_2017.csv"; \
 	ln -s "$$src" "$@"
+input:
+	mkdir -p input
