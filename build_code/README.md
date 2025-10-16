@@ -1,6 +1,7 @@
 This folder contains the code to create the cleaned HIMSS files.
 
 Make sure your _data folder is up to date before re-running the Makefile.
+Additionally, run `make` in the `setup_environment` folder before running scripts in this folder.
 
 From the root of this directory, you should be able to run 'make' in terminal
 and completely regenerate the two final products:
@@ -39,6 +40,6 @@ R packages required (you can also open "config.R" and it will prompt you to inst
   "writexl",
   "stringr"
 
-Python packages required can be found in helper_scripts/py_requirements.txt and are handled in clean_data.py.
+Python packages are handled in `setup_environment` and will be installed automatically when running `make` in `setup_environment`. The list of necessary Python packages can be found in `setup_environment/python_environment.yml`.
 
 If errors related to missing columns, files, etc. persist, check that the files are up to date from Dropbox.
