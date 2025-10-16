@@ -2,6 +2,8 @@ SHELL = bash
 
 PROJ_ENV := proj-env
 
+all: python_packages.txt
+
 python_packages.txt: python_environment.yml
 	-conda env remove --prefix=$(PROJ_ENV) --yes
 	conda env create -f $< --prefix=$(PROJ_ENV)
