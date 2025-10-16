@@ -12,7 +12,7 @@ if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable())
   args <- commandArgs(trailingOnly = TRUE)
   source("config.R")
   hospitals <- read_feather(args[1])
-  individuals <- read_feather(args[2])
+  cleaned_individuals <- read_feather(args[2])
   supp_path <- args[3]
   output_dir <- args[4] 
 }
