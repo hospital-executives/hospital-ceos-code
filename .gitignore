@@ -7,3 +7,5 @@ __pycache__/
 **/.Rhistory
 build_code/input/
 build_code/temp/
+setup_environment/python_packages.txt
+setup_environment/proj-env
