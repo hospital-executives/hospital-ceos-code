@@ -153,7 +153,7 @@ hospital_sum_stats: $(HOSPITAL_SUMMARY_STAMP)
 $(HOSPITAL_SUMMARY_STAMP): $(CLEAN_AHA_STAMP) temp/cleaned_aha.csv $(DERIVED_DIR)/hospitals_with_xwalk.feather \
 	$(AUX_DIR)/haentity.feather $(SUPP_DIR)/hospital_ownership.dta sumstats_hospitals.R
 	Rscript sumstats_hospitals.R  $(DERIVED_DIR)/hospitals_with_xwalk.feather $(AUX_DIR)/haentity.feather \
-	$(SUPP_DIR)/hospital_ownership.dta $(USER_DIR)/_data/_outputs/hospitals
+	$(SUPP_DIR)/hospital_ownership.dta $(USER_DIR)/_outputs/hospitals
 	touch $(HOSPITAL_SUMMARY_STAMP)
 
 # create aha to himss summary statistics for ceos (from madmin)
@@ -161,7 +161,7 @@ ceo_sum_stats: $(CEO_SUMMARY_STAMP)
 $(CEO_SUMMARY_STAMP): temp/cleaned_aha_madmin.csv $(DERIVED_DIR)/hospitals_with_xwalk.feather \
 	$(DERIVED_DIR)/individuals_with_xwalk.feather $(HOSPITAL_SUMMARY_STAMP) aha_to_himss_ceos.R
 	Rscript aha_to_himss_ceos.R $(DERIVED_DIR)/hospitals_with_xwalk.feather \
-	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_data/_outputs/execs
+	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_outputs/execs
 	touch $(CEO_SUMMARY_STAMP)
 
 # create aha to himss summary statistics for non-ceos (from madmin)
@@ -169,7 +169,7 @@ non_ceo_sum_stats: $(NON_CEO_SUMMARY_STAMP)
 $(NON_CEO_SUMMARY_STAMP): temp/cleaned_aha_madmin.csv $(DERIVED_DIR)/hospitals_with_xwalk.feather \
 	$(DERIVED_DIR)/individuals_with_xwalk.feather $(CEO_SUMMARY_STAMP) aha_to_himss_leadership.R
 	Rscript aha_to_himss_leadership.R $(DERIVED_DIR)/hospitals_with_xwalk.feather \
-	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_data/_outputs/execs
+	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_outputs/execs
 	touch $(NON_CEO_SUMMARY_STAMP)
 
 # create aha to himss summary statistics for all madmin
@@ -178,7 +178,7 @@ $(MADMIN_SUMMARY_STAMP): $(NON_CEO_SUMMARY_STAMP) aha_to_himss_all.R temp/cleane
 	$(DERIVED_DIR)/hospitals_with_xwalk.feather $(DERIVED_DIR)/individuals_with_xwalk.feather \
 	$(AUX_DIR)/matched_aha_ceos.feather $(AUX_DIR)/matched_aha_no_ceos.feather
 	Rscript aha_to_himss_all.R $(DERIVED_DIR)/hospitals_with_xwalk.feather \
-	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_data/_outputs/execs
+	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_outputs/execs
 	touch $(MADMIN_SUMMARY_STAMP)
 
 # match himss observations to aha madmin observations and assign flag
@@ -187,7 +187,7 @@ $(HIMSS_TO_AHA_STAMP): $(MADMIN_SUMMARY_STAMP) himss_to_aha_ceos.R temp/cleaned_
 	$(DERIVED_DIR)/individuals_with_xwalk.feather $(AUX_DIR)/matched_aha_ceos.feather $(AUX_DIR)/matched_aha_no_ceos.feather \
 	$(MADMIN_SUMMARY_STAMP)
 	Rscript himss_to_aha_ceos.R $(DERIVED_DIR)/hospitals_with_xwalk.feather \
-	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_data/_outputs/execs
+	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_outputs/execs
 	touch $(HIMSS_TO_AHA_STAMP)
 
 # add flag to himss df if individuals show up as madmin in AHA
@@ -195,20 +195,20 @@ assign_aha_flag: $(AHA_TITLE_FLAG_STAMP)
 $(AHA_TITLE_FLAG_STAMP): $(HIMSS_TO_AHA_STAMP) assign_leadership_flag.R temp/cleaned_aha_madmin.csv temp/himss_to_aha_matches.feather \
 	$(DERIVED_DIR)/hospitals_with_xwalk.feather $(DERIVED_DIR)/individuals_with_xwalk.feather $(HIMSS_TO_AHA_STAMP)
 	Rscript assign_leadership_flag.R $(DERIVED_DIR)/hospitals_with_xwalk.feather \
-	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_data/_outputs/execs
+	$(DERIVED_DIR)/individuals_with_xwalk.feather $(SUPP_DIR) $(USER_DIR)/_outputs/execs
 	touch $(AHA_TITLE_FLAG_STAMP)
 
 # make master himss title file
 make_title_xwalk: $(TITLE_MASTER_STAMP)
 $(TITLE_MASTER_STAMP): $(AHA_TITLE_FLAG_STAMP)
 	Rscript create_himss_title_master.R $(DERIVED_DIR)/hospitals_with_xwalk.feather \
-	$(DERIVED_DIR)/individuals_final.feather $(SUPP_DIR) $(USER_DIR)/_data/_outputs/execs
+	$(DERIVED_DIR)/individuals_final.feather $(SUPP_DIR) $(USER_DIR)/_outputs/execs
 
 # make final summary statistics using make_title_xwalk 
 final_sum_stats: $(FINAL_SUMSTATS_STAMP)
 $(FINAL_SUMSTATS_STAMP): $(TITLE_MASTER_STAMP)
 	Rscript final_sum_stats.R $(DERIVED_DIR)/hospitals_with_xwalk.feather \
-	$(DERIVED_DIR)/individuals_final.feather $(SUPP_DIR) $(USER_DIR)/_data/_outputs/execs
+	$(DERIVED_DIR)/individuals_final.feather $(SUPP_DIR) $(USER_DIR)/_outputs/execs
 
 ## specify paths
 input/aha_data_raw.csv: | input
