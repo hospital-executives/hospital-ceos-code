@@ -45,7 +45,7 @@ Notes to think about:
 		
 
 * make status_role variable 
-	* ORDER: CEO > CFO > COO > CIO > CMO > CNIS > CSIO > Head of Facility > President > VP > Medical Staff Chief > Other Directors > CNH > Other Head
+	* ORDER: CEO > CFO > COO > CIO > CMO > CNIS > CSIO > Head of Facility > President > VP > CNH 
 	gen status_role = "CEO" if char_ceo == 1
 		* other C-suite ("officers")
 		replace status_role = "CFO" if regexm(title_standardized,"CFO:") & missing(status_role)
@@ -54,21 +54,19 @@ Notes to think about:
 		replace status_role = "CMO" if regexm(title_standardized,"Chief Medical Officer") & missing(status_role)
 		replace status_role = "CCO" if regexm(title_standardized,"Chief Compliance Officer") & missing(status_role)
 		replace status_role = "CNIS" if regexm(title_standardized,"CNIS:") & missing(status_role)
+		replace status_role = "CSIO" if regexm(title_standardized,"CSIO") & missing(status_role)
+		replace status_role = "CNH" if regexm(title_standardized,"Chief Nursing Head") & missing(status_role)
+		replace status_role = "CMIO" if regexm(title_standardized,"Chief Medical Information Officer") & missing(status_role)
+		replace status_role = "ChiefExperienceOfficer" if regexm(title_standardized,"Chief Experience") & missing(status_role)
 		
 		* if all C-suite missing: 
 		replace status_role = "HeadofFacility" if regexm(title_standardized,"Head of Facility") & missing(status_role)
 		replace status_role = "President" if regexm(title,"President") & missing(status_role)
 		replace status_role = "VP" if regexm(title,"VP|Vice President") & missing(status_role)
 		
-		* other "chief"
-		replace status_role = "MedicalStaffChief" if regexm(title_standardized,"Medical Staff Chief") & missing(status_role)
-		
-		* "directors"
-		replace status_role = "OtherDirector" if regexm(title_standardized,"Director|Adm Dir|Med Dir") & missing(status_role)
-		
-		* "heads"
-		replace status_role = "CNH" if regexm(title_standardized,"Chief Nursing Head") & missing(status_role)
-		replace status_role = "OtherHead" if regexm(title_standardized,"Head") & missing(status_role)
+		* Non-Csuite
+		replace status_role = "NonCsuite" if missing(status_role)
+
 	
 * make an ordinal ranking of the jobs/systems
 	* system > hospital > non
@@ -77,10 +75,10 @@ Notes to think about:
 		replace status_entity_rank = 3 if status_entity == "Non-Hospital, Non-System Facility" 
 		
 	* facility: 
-	local role_order = "CFO COO CIO CMO CCO CNIS HeadofFacility President VP MedicalStaffChief OtherDirector CNH OtherHead"
+	local role_order = "CFO COO CIO CMO CCO CNIS CSIO CMIO ChiefExperienceOfficer HeadofFacility President VP CNH NonCsuite"
 	
-	gen status_role_rank = .
-	local i = 1
+	gen status_role_rank = 1 if status_role == "CEO"
+	local i = 2
 	foreach var in `role_order' {
 		replace  status_role_rank = `i' if status_role == "`var'"
 		local i = `i' + 1
@@ -96,11 +94,11 @@ Notes to think about:
 
 * make a flag for hospital CEO in 2017
 
-	gen hosp_ceo_2017 = 1 if year == 2017 & hospital_ceo == 1 // does the hospital_ceo flag depend on is_hospital? Matters if we take that requirement away
+	gen hosp_ceo_2017 = 1 if year == 2017 & char_ceo == 1 & partofsample == 1 // does the hospital_ceo flag depend on is_hospital? Matters if we take that requirement away
 
 	bysort contact_uniqueid: egen was_hosp_ceo_2017 = max(hosp_ceo_2017)
 
-	*preserve
+	preserve
 		keep if was_hosp_ceo_2017 ==1
 		keep if keep == 1
 		drop was_hosp_ceo_2017 keep 
@@ -111,10 +109,54 @@ Notes to think about:
 		reshape wide traminer_status, i(contact_uniqueid) j(year)
 		* problem: mismatch between hospital_ceo variable and the roles that I have defined?
 		* or is it the way I have assigned role ranks? 
-
+		
+		tab traminer_status2017
+		
+		export delimited "${dbdata}/derived/traminer_wide_2017_hospital_ceo.csv", replace
 
 	restore
 
 
 
 * make dataset for ever-hosp CEOs ______________________________________________ 
+
+	gen hosp_ceo = 1 if char_ceo == 1 & partofsample == 1
+	
+	bysort contact_uniqueid: egen was_hosp_ceo = max(hosp_ceo)
+
+	preserve
+		* identify first year where they become hospital CEO
+		bysort contact_uniqueid hosp_ceo (year): gen first_ceo_year = 1 if _n == 1 & hosp_ceo == 1
+		* make counter
+		bysort contact_uniqueid (year): egen flag_year = max(cond(first_ceo_year==1, year, .))
+	
+		keep if was_hosp_ceo ==1
+		keep if keep == 1
+		drop was_hosp_ceo keep 
+		
+		xtset contact_uniqueid year
+		gen filled = 0
+		tsfill
+		replace filled = 1 if missing(filled)
+		replace traminer_status = "Missing" if filled == 1
+		
+		* make relative year measure
+		gen rel_year = year - flag_year + 9
+		keep if rel_year <= 9
+		
+		rename traminer_status t 
+		
+		* reshape
+		keep contact_uniqueid rel_year t
+		
+		reshape wide t, i(contact_uniqueid) j(rel_year)
+		* problem: mismatch between hospital_ceo variable and the roles that I have defined?
+		* or is it the way I have assigned role ranks? 
+		
+		forval i = 1/9 {
+			replace t`i' = "Out of Sample" if missing(t`i')
+		}
+		
+		export delimited "${dbdata}/derived/traminer_wide_ever_hospital_ceo.csv", replace
+
+	restore
