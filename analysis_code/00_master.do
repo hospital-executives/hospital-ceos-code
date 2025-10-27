@@ -20,7 +20,13 @@ Goal: 			Master do-file for Hospital CEOs analysis.
 		glob dropbox "/Users/juliaparis/Library/CloudStorage/Dropbox/hospital_ceos"
 		glob github "/Users/juliaparis/GitHub/hospital-ceos-code"
 		glob overleaf "/Users/juliaparis/Library/CloudStorage/Dropbox/Apps/Overleaf/Hospital CEOs"
-	} // can add other users and file locations
+	}
+	if "`c(username)'" == "katherinepapen" {
+		glob dropbox "/Users/katherinepapen/Library/CloudStorage/Dropbox/hospital_ceos"
+		glob github "/Users/katherinepapen/github/hospital-ceos-4"
+		glob overleaf "/Users/katherinepapen/Library/CloudStorage/Dropbox/Apps/Overleaf/Hospital CEOs"
+	}
+	// can add other users and file locations
 
 * RUN PROGRAMS _________________________________________________________________	
 	
