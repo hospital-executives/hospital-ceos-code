@@ -31,5 +31,5 @@ Goal: 			Master do-file for Hospital CEOs event-study.
 * RUN PROGRAMS _________________________________________________________________	
 	
 * Set globals
-	do "${github}/analysis_code/01_set_globals.do"
+	do "${github}/event_code/01_set_globals.do"
 	

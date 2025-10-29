@@ -170,15 +170,20 @@ end
 summarize_turnover , cond("never_tar")              prefix(never_tar0)
 summarize_turnover , cond("full_tar_sample") 		prefix(full_tar)
 summarize_turnover , cond("restricted_tar_sample") 	prefix(restricted_tar)
+summarize_turnover , cond("full_tar_sample & tar_reltime < 0") 			prefix(pre_full_tar)
+summarize_turnover , cond("restricted_tar_sample & tar_reltime < 0") 	prefix(pre_restricted_tar)
 
 summarize_turnover , cond("never_acq")              prefix(never_acq0)
 summarize_turnover , cond("full_acq_sample")        prefix(full_acq)
 summarize_turnover , cond("restricted_acq_sample")  prefix(restricted_acq)
+summarize_turnover , cond("full_acq_sample & acq_reltime < 0")        prefix(pre_full_acq)
+summarize_turnover , cond("restricted_acq_sample & acq_reltime < 0")  prefix(pre_restricted_acq)
 
 *----------------------------------------------------------
 * Format all numbers for LaTeX
 *----------------------------------------------------------
-foreach v in never_tar0 full_tar restricted_tar never_acq0 full_acq restricted_acq{
+foreach v in never_tar0 full_tar restricted_tar pre_full_tar pre_restricted_tar ///
+	never_acq0 full_acq restricted_acq pre_full_acq pre_restricted_acq {
     local val_mean = ``v'_mean'
     local val_se   = ``v'_se'
     local val_N    = ``v'_N'
@@ -206,9 +211,13 @@ file write out ///
 "Never treated (tar) & `never_tar0_mean_str' & `never_tar0_se_str' & `never_tar0_N_str' & `never_tar0_nent_str'\\\\\n " ///
 "Full treated sample (tar) & `full_tar_mean_str' & `full_tar_se_str' & `full_tar_N_str' & `full_tar_nent_str'\\\\\n " ///
 "Restricted treated sample (tar) & `restricted_tar_mean_str' & `restricted_tar_se_str' & `restricted_tar_N_str' & `restricted_tar_nent_str'\\\\\n " ///
+"Full treated sample : pre-period only (tar) & `pre_full_tar_mean_str' & `pre_full_tar_se_str' & `pre_full_tar_N_str' & `fpre_ull_tar_nent_str'\\\\\n " ///
+"Restricted treated sample : pre-period only (tar)& `pre_restricted_tar_mean_str' & `pre_restricted_tar_se_str' & `pre_restricted_tar_N_str' & `restricted_tar_nent_str'\\\\\n " ///
 "Never treated (acq) & `never_acq0_mean_str' & `never_acq0_se_str' & `never_acq0_N_str' & `never_acq0_nent_str'\\\\\n " ///
 "Full treated sample (acq) & `full_acq_mean_str' & `full_acq_se_str' & `full_acq_N_str' & `full_acq_nent_str'\\\\\n " ///
 "Restricted treated sample (acq) & `restricted_acq_mean_str' & `restricted_acq_se_str' & `restricted_acq_N_str' & `restricted_acq_nent_str'\\\\\n " ///
+"Full treated sample : pre-period only (acq) & `pre_full_acq_mean_str' & `pre_full_acq_se_str' & `pre_full_acq_N_str' & `pre_full_acq_nent_str'\\\\\n " ///
+"Restricted treated sample : pre-period only (acq) & `pre_restricted_acq_mean_str' & `pre_restricted_acq_se_str' & `pre_restricted_acq_N_str' & `restricted_acq_nent_str'\\\\\n " ///
 "\bottomrule\n" ///
 "\end{tabular}\n" ///
 "\end{table}\n"
