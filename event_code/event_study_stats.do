@@ -356,241 +356,214 @@ restore
 sort entity_uniqueid year
 by entity_uniqueid: gen byte ever_turnover = sum(cond(ceo_turnover1==1, 1, 0)) > 0
 
-* SA - Never Treated Control (Targets)
+*----------------------------------------------------------
+* Effect on Targeted Hospitals
+*----------------------------------------------------------
 preserve
 
 sum tar_reltime, meanonly
 local rmin = r(min)
 local rmax = r(max)
 
-* Post periods (lags): t = 0..Lpost
+* Create Relative Time Indicators
 forvalues h = 0/`rmax' {
     gen byte ev_lag`h' = (tar_reltime == `h')
 }
-
-* Pre periods (leads): t = -1..-Lpre
 forvalues h = 1/`=abs(`rmin')' {
     gen byte ev_lead`h' = (tar_reltime == -`h')
 }
-
 replace ev_lead1 = 0
 
-// full sample
-eventstudyinteract ceo_turnover1 ev_lead* ev_lag* if (full_treated_sample == 1|never_tar == 1), vce(cluster entity_uniqueid) ///
-	absorb(entity_uniqueid year) cohort(tar_event_year) control_cohort(never_tar)
-
-	event_plot e(b_iw)#e(V_iw), default_look graph_opt(xtitle("Periods since the event") ytitle("Average effect") xlabel(-4(1)4) ///
-		title("Effect Being Acquired on CEO Turnover - Never Treated")) stub_lag(ev_lag#) stub_lead(ev_lead#) trimlag(4) trimlead(4) plottype(scatter) ciplottype(rcap)
-
-graph export "${overleaf}/notes/Event Study Setup/figures/sa_tar_never_treated_control.pdf", as(pdf) name("Graph") replace
-
-eventstudyinteract ever_turnover ev_lead* ev_lag* if (full_treated_sample == 1|never_tar == 1), vce(cluster entity_uniqueid) ///
-	absorb(entity_uniqueid year) cohort(tar_event_year) control_cohort(never_tar)
-
-	event_plot e(b_iw)#e(V_iw), default_look graph_opt(xtitle("Periods since the event") ytitle("Average effect") xlabel(-4(1)4) ///
-		title("Effect Being Acquired on Ever CEO Turnover - Never Treated")) stub_lag(ev_lag#) stub_lead(ev_lead#) trimlag(4) trimlead(4) plottype(scatter) ciplottype(rcap)
-
-graph export "${overleaf}/notes/Event Study Setup/figures/sa_tar_never_absorb.pdf", as(pdf) name("Graph") replace
-
-// restricted sample
-eventstudyinteract ceo_turnover1 ev_lead* ev_lag* if (restricted_treated_sample == 1|never_tar == 1), vce(cluster entity_uniqueid) ///
-	absorb(entity_uniqueid year) cohort(tar_event_year) control_cohort(never_tar)
-
-	event_plot e(b_iw)#e(V_iw), default_look graph_opt(xtitle("Periods since the event") ytitle("Average effect") xlabel(-4(1)4) ///
-		title("Effect Being Acquired on CEO Turnover - Never Treated")) stub_lag(ev_lag#) stub_lead(ev_lead#) trimlag(4) trimlead(4) plottype(scatter) ciplottype(rcap)
-
-graph export "${overleaf}/notes/Event Study Setup/figures/restricted_sa_tar_never_treated_control.pdf", as(pdf) name("Graph") replace
-
-eventstudyinteract ever_turnover ev_lead* ev_lag* if (restricted_treated_sample == 1|never_tar == 1), vce(cluster entity_uniqueid) ///
-	absorb(entity_uniqueid year) cohort(tar_event_year) control_cohort(never_tar)
-
-	event_plot e(b_iw)#e(V_iw), default_look graph_opt(xtitle("Periods since the event") ytitle("Average effect") xlabel(-4(1)4) ///
-		title("Effect Being Acquired on Ever CEO Turnover - Never Treated")) stub_lag(ev_lag#) stub_lead(ev_lead#) trimlag(4) trimlead(4) plottype(scatter) ciplottype(rcap)
-
-graph export "${overleaf}/notes/Event Study Setup/figures/restricted_sa_tar_never_absorb.pdf", as(pdf) name("Graph") replace
-
-restore
-
-* SA - Last Treated Control (Target in 2015)
-preserve
-
+* Create last-treated indicator
 gen last_treated = tar_event_year == 2017
-keep if year < 2017
 
-sum tar_reltime, meanonly
-local rmin = r(min)
-local rmax = r(max)
+* Specify conditions
+local spec1_treated "full_tar_sample == 1"
+local spec1_control "never_tar == 1"
+local spec1_cohort "never_tar"
+local spec1_name "Full Sample, Never Treated"
 
-* Post periods (lags): t = 0..Lpost
-forvalues h = 0/`rmax' {
-    gen byte ev_lag`h' = (tar_reltime == `h')
+local spec2_treated "restricted_tar_sample == 1"
+local spec2_control "never_tar == 1"
+local spec2_cohort "never_tar"
+local spec2_name "Restricted Sample, Never Treated"
+
+local spec3_treated "full_tar_sample == 1"
+local spec3_control "never_m_and_a == 1"
+local spec3_cohort "never_m_and_a"
+local spec3_name "Full Sample, Never M&A"
+
+local spec4_treated "restricted_tar_sample == 1"
+local spec4_control "never_m_and_a == 1"
+local spec4_cohort "never_m_and_a"
+local spec4_name "Restricted Sample, Never M&A"
+
+local spec5_treated "full_tar_sample == 1 & year < 2017"
+local spec5_control "last_treated == 1 & year < 2017"
+local spec5_cohort "last_treated"
+local spec5_name "Full Sample, Last Treated"
+
+local spec6_treated "restricted_tar_sample == 1 & year < 2017"
+local spec6_control "last_treated == 1 & year < 2017" 
+local spec6_cohort "last_treated"
+local spec6_name "Restricted Sample, Last Treated"
+
+local nspecs = 6
+
+**** loop through specifications ****
+forvalues s = 1/`nspecs' {
+    
+    display _newline(2) "{hline 60}"
+    display "Specification `s': `spec`s'_name'"
+    display "{hline 60}"
+    
+    // First run: Calculate average effect
+    eventstudyinteract ceo_turnover1 ev_lead* ev_lag* ///
+        if (`spec`s'_treated'|`spec`s'_control'), ///
+        vce(cluster entity_uniqueid) ///
+        absorb(entity_uniqueid year) ///
+        cohort(tar_event_year) ///
+        control_cohort(`spec`s'_cohort')
+    
+    matrix b = e(b_iw)
+    matrix V = e(V_iw)
+    ereturn post b V
+    
+    display _newline "Average Treatment Effect (periods 0-2):"
+    lincom (ev_lag0 + ev_lag1 + ev_lag2)/3
+    
+    // Store the result rounded to 3 decimal places
+    local avg_effect = round(r(estimate), 0.001)
+    local avg_se = round(r(se), 0.001)
+    
+    // Second run: Event plot with average effect in title
+    eventstudyinteract ceo_turnover1 ev_lead* ev_lag* ///
+        if (`spec`s'_treated'|`spec`s'_control'), ///
+        vce(cluster entity_uniqueid) ///
+        absorb(entity_uniqueid year) ///
+        cohort(tar_event_year) ///
+        control_cohort(`spec`s'_cohort')
+    
+    event_plot e(b_iw)#e(V_iw), ///
+        default_look ///
+        graph_opt(xtitle("Periods since the event") ///
+                  ytitle("Average effect") ///
+                  xlabel(-4(1)4) ///
+                  title("Effect Being Acquired on CEO Turnover - `spec`s'_name'" ///
+                        "Average Effect: `avg_effect' (SE: `avg_se')", size(medium))) ///
+        stub_lag(ev_lag#) ///
+        stub_lead(ev_lead#) ///
+        trimlag(4) ///
+        trimlead(4) ///
+        plottype(scatter) ///
+        ciplottype(rcap)
+    graph export "${overleaf}/notes/Event Study Setup/figures/tar_spec`s'.pdf", as(pdf) name("Graph") replace
 }
-
-* Pre periods (leads): t = -1..-Lpre
-forvalues h = 1/`=abs(`rmin')' {
-    gen byte ev_lead`h' = (tar_reltime == -`h')
-}
-
-replace ev_lead1 = 0
-
-// full sample
-eventstudyinteract ceo_turnover1 ev_lead* ev_lag* if (full_treated_sample == 1|never_tar == 1), vce(cluster entity_uniqueid) ///
-	absorb(entity_uniqueid year) cohort(tar_event_year) control_cohort(last_treated)
-	
-event_plot e(b_iw)#e(V_iw), default_look graph_opt(xtitle("Periods since the event") ytitle("Average effect") xlabel(-4(1)4) ///
-		title("Effect of Being Acquired on CEO Turnover - Last Treated")) stub_lag(ev_lag#) stub_lead(ev_lead#) ///
-		trimlag(4) trimlead(4) plottype(scatter) ciplottype(rcap)
-
-graph export "${overleaf}/notes/Event Study Setup/figures/sa_tar_last_treated_control.pdf", as(pdf) name("Graph") replace
-
-eventstudyinteract ever_turnover ev_lead* ev_lag* if (full_treated_sample == 1|never_tar == 1), vce(cluster entity_uniqueid) ///
-	absorb(entity_uniqueid year) cohort(tar_event_year) control_cohort(last_treated)
-	
-event_plot e(b_iw)#e(V_iw), default_look graph_opt(xtitle("Periods since the event") ytitle("Average effect") xlabel(-4(1)4) ///
-		title("Effect of Being Acquired on Ever CEO Turnover - Last Treated")) stub_lag(ev_lag#) stub_lead(ev_lead#) ///
-		trimlag(4) trimlead(4) plottype(scatter) ciplottype(rcap)
-
-graph export "${overleaf}/notes/Event Study Setup/figures/sa_tar_last_absorb.pdf", as(pdf) name("Graph") replace
-
-// restricted sample
-eventstudyinteract ceo_turnover1 ev_lead* ev_lag* if (restricted_treated_sample == 1|never_tar == 1), vce(cluster entity_uniqueid) ///
-	absorb(entity_uniqueid year) cohort(tar_event_year) control_cohort(last_treated)
-	
-event_plot e(b_iw)#e(V_iw), default_look graph_opt(xtitle("Periods since the event") ytitle("Average effect") xlabel(-4(1)4) ///
-		title("Effect of Being Acquired on CEO Turnover - Last Treated")) stub_lag(ev_lag#) stub_lead(ev_lead#) ///
-		trimlag(4) trimlead(4) plottype(scatter) ciplottype(rcap)
-
-graph export "${overleaf}/notes/Event Study Setup/figures/restricted_sa_tar_last_treated_control.pdf", as(pdf) name("Graph") replace
-
-eventstudyinteract ever_turnover ev_lead* ev_lag* if (restricted_treated_sample == 1|never_tar == 1), vce(cluster entity_uniqueid) ///
-	absorb(entity_uniqueid year) cohort(tar_event_year) control_cohort(last_treated)
-	
-event_plot e(b_iw)#e(V_iw), default_look graph_opt(xtitle("Periods since the event") ytitle("Average effect") xlabel(-4(1)4) ///
-		title("Effect of Being Acquired on Ever CEO Turnover - Last Treated")) stub_lag(ev_lag#) stub_lead(ev_lead#) ///
-		trimlag(4) trimlead(4) plottype(scatter) ciplottype(rcap)
-
-graph export "${overleaf}/notes/Event Study Setup/figures/restricted_sa_tar_last_absorb.pdf", as(pdf) name("Graph") replace
-
 
 restore
 
-* SA - Never Treated Control (Acquisitions)
+*----------------------------------------------------------
+* Effect on Acquiring Hospitals
+*----------------------------------------------------------
 preserve
 
 sum acq_reltime, meanonly
 local rmin = r(min)
 local rmax = r(max)
 
-* Post periods (lags): t = 0..Lpost
+* Create Relative Time Indicators
 forvalues h = 0/`rmax' {
     gen byte ev_lag`h' = (acq_reltime == `h')
 }
-
-* Pre periods (leads): t = -1..-Lpre
 forvalues h = 1/`=abs(`rmin')' {
     gen byte ev_lead`h' = (acq_reltime == -`h')
 }
+replace ev_lead1 = 0
 
-// full sample
-eventstudyinteract ceo_turnover1 ev_lead* ev_lag* if (full_acq_sample == 1|never_acq == 1), vce(cluster entity_uniqueid) ///
-	absorb(entity_uniqueid year) cohort(acq_event_year) control_cohort(never_acq)
-
-event_plot e(b_iw)#e(V_iw), default_look graph_opt(xtitle("Periods since the event") ytitle("Average effect") xlabel(-4(1)4) ///
-		title("Effect of Acquiring on CEO Turnover - Never Treated")) stub_lag(ev_lag#) stub_lead(ev_lead#) trimlag(4) trimlead(4) ///
-		plottype(scatter) ciplottype(rcap)
-graph export "${overleaf}/notes/Event Study Setup/figures/sa_acq_never_treated_control.pdf", as(pdf) name("Graph") replace
-
-eventstudyinteract ever_turnover ev_lead* ev_lag* if (full_acq_sample == 1|never_acq == 1), vce(cluster entity_uniqueid) ///
-	absorb(entity_uniqueid year) cohort(acq_event_year) control_cohort(never_acq)
-
-event_plot e(b_iw)#e(V_iw), default_look graph_opt(xtitle("Periods since the event") ytitle("Average effect") xlabel(-4(1)4) ///
-		title("Effect of Acquiring on Ever CEO Turnover - Never Treated")) stub_lag(ev_lag#) stub_lead(ev_lead#) trimlag(4) trimlead(4) ///
-		plottype(scatter) ciplottype(rcap)
-graph export "${overleaf}/notes/Event Study Setup/figures/sa_acq_never_absorb.pdf", as(pdf) name("Graph") replace
-
-// restricted sample
-eventstudyinteract ceo_turnover1 ev_lead* ev_lag* if (restricted_acq_sample == 1|never_acq == 1), vce(cluster entity_uniqueid) ///
-	absorb(entity_uniqueid year) cohort(acq_event_year) control_cohort(never_acq)
-
-event_plot e(b_iw)#e(V_iw), default_look graph_opt(xtitle("Periods since the event") ytitle("Average effect") xlabel(-4(1)4) ///
-		title("Effect of Acquiring on CEO Turnover - Never Treated")) stub_lag(ev_lag#) stub_lead(ev_lead#) trimlag(4) trimlead(4) ///
-		plottype(scatter) ciplottype(rcap)
-graph export "${overleaf}/notes/Event Study Setup/figures/restricted_sa_acq_never_treated_control.pdf", as(pdf) name("Graph") replace
-
-eventstudyinteract ever_turnover ev_lead* ev_lag* if (restricted_acq_sample == 1|never_acq == 1), vce(cluster entity_uniqueid) ///
-	absorb(entity_uniqueid year) cohort(acq_event_year) control_cohort(never_acq)
-
-event_plot e(b_iw)#e(V_iw), default_look graph_opt(xtitle("Periods since the event") ytitle("Average effect") xlabel(-4(1)4) ///
-		title("Effect of Acquiring on Ever CEO Turnover - Never Treated")) stub_lag(ev_lag#) stub_lead(ev_lead#) trimlag(4) trimlead(4) ///
-		plottype(scatter) ciplottype(rcap)
-graph export "${overleaf}/notes/Event Study Setup/figures/restricted_sa_acq_never_absorb.pdf", as(pdf) name("Graph") replace
-
-
-
-restore
-
-* SA - Last Treated Control (Target in 2017)
-preserve
-
+* Create last-treated indicator
 gen last_treated = acq_event_year == 2017
-keep if year < 2017
 
-sum acq_reltime, meanonly
-local rmin = r(min)
-local rmax = r(max)
+* Specify conditions
+local spec1_treated "full_acq_sample == 1"
+local spec1_control "never_acq == 1"
+local spec1_cohort "never_acq"
+local spec1_name "Full Sample, Never Treated"
 
-* Post periods (lags): t = 0..Lpost
-forvalues h = 0/`rmax' {
-    gen byte ev_lag`h' = (acq_reltime == `h')
+local spec2_treated "restricted_acq_sample == 1"
+local spec2_control "never_acq == 1"
+local spec2_cohort "never_acq"
+local spec2_name "Restricted Sample, Never Treated"
+
+local spec3_treated "full_acq_sample == 1"
+local spec3_control "never_m_and_a == 1"
+local spec3_cohort "never_m_and_a"
+local spec3_name "Full Sample, Never M&A"
+
+local spec4_treated "restricted_acq_sample == 1"
+local spec4_control "never_m_and_a == 1"
+local spec4_cohort "never_m_and_a"
+local spec4_name "Restricted Sample, Never M&A"
+
+local spec5_treated "full_acq_sample == 1 & year < 2017"
+local spec5_control "last_treated == 1 & year < 2017"
+local spec5_cohort "last_treated"
+local spec5_name "Full Sample, Last Treated"
+
+local spec6_treated "restricted_acq_sample == 1 & year < 2017"
+local spec6_control "last_treated == 1 & year < 2017" 
+local spec6_cohort "last_treated"
+local spec6_name "Restricted Sample, Last Treated"
+
+local nspecs = 6
+
+**** loop through specifications ****
+forvalues s = 1/`nspecs' {
+    
+    display _newline(2) "{hline 60}"
+    display "Specification `s': `spec`s'_name'"
+    display "{hline 60}"
+    
+    // First run: Calculate average effect
+    eventstudyinteract ceo_turnover1 ev_lead* ev_lag* ///
+        if (`spec`s'_treated'|`spec`s'_control'), ///
+        vce(cluster entity_uniqueid) ///
+        absorb(entity_uniqueid year) ///
+        cohort(tar_event_year) ///
+        control_cohort(`spec`s'_cohort')
+    
+    matrix b = e(b_iw)
+    matrix V = e(V_iw)
+    ereturn post b V
+    
+    display _newline "Average Treatment Effect (periods 0-2):"
+    lincom (ev_lag0 + ev_lag1 + ev_lag2)/3
+    
+    // Store the result rounded to 3 decimal places
+    local avg_effect = round(r(estimate), 0.001)
+    local avg_se = round(r(se), 0.001)
+    
+    // Second run: Event plot with average effect in title
+    eventstudyinteract ceo_turnover1 ev_lead* ev_lag* ///
+        if (`spec`s'_treated'|`spec`s'_control'), ///
+        vce(cluster entity_uniqueid) ///
+        absorb(entity_uniqueid year) ///
+        cohort(tar_event_year) ///
+        control_cohort(`spec`s'_cohort')
+    
+    event_plot e(b_iw)#e(V_iw), ///
+        default_look ///
+        graph_opt(xtitle("Periods since the event") ///
+                  ytitle("Average effect") ///
+                  xlabel(-4(1)4) ///
+                  title("Effect of Acquiring on CEO Turnover - `spec`s'_name'" ///
+                        "Average Effect: `avg_effect' (SE: `avg_se')", size(medium))) ///
+        stub_lag(ev_lag#) ///
+        stub_lead(ev_lead#) ///
+        trimlag(4) ///
+        trimlead(4) ///
+        plottype(scatter) ///
+        ciplottype(rcap)
+    graph export "${overleaf}/notes/Event Study Setup/figures/acq_spec`s'.pdf", as(pdf) name("Graph") replace
 }
-
-* Pre periods (leads): t = -1..-Lpre
-forvalues h = 1/`=abs(`rmin')' {
-    gen byte ev_lead`h' = (acq_reltime == -`h')
-}
-
-replace ev_lead1 = 0
-
-// full sample
-eventstudyinteract ceo_turnover1 ev_lead* ev_lag* if (full_acq_sample == 1|never_acq == 1), vce(cluster entity_uniqueid) ///
-	absorb(entity_uniqueid year) cohort(tar_event_year) control_cohort(last_treated)
-	
-event_plot e(b_iw)#e(V_iw), default_look graph_opt(xtitle("Periods since the event") ytitle("Average effect") xlabel(-4(1)4) ///
-		title("Effect of Acquiring on CEO Turnover - Last Treated")) stub_lag(ev_lag#) stub_lead(ev_lead#)  ///
-		trimlag(4) trimlead(4) plottype(scatter) ciplottype(rcap)
-
-graph export "${overleaf}/notes/Event Study Setup/figures/sa_acq_last_treated_control.pdf", as(pdf) name("Graph") replace
-
-
-eventstudyinteract ever_turnover ev_lead* ev_lag* if (restricted_acq_sample == 1|never_acq == 1), vce(cluster entity_uniqueid) ///
-	absorb(entity_uniqueid year) cohort(tar_event_year) control_cohort(last_treated)
-	
-event_plot e(b_iw)#e(V_iw), default_look graph_opt(xtitle("Periods since the event") ytitle("Average effect") xlabel(-4(1)4) ///
-		title("Effect of Acquiring on Ever CEO Turnover - Last Treated")) stub_lag(ev_lag#) stub_lead(ev_lead#)  ///
-		trimlag(4) trimlead(4) plottype(scatter) ciplottype(rcap)
-
-graph export "${overleaf}/notes/Event Study Setup/figures/sa_acq_last_absorb.pdf", as(pdf) name("Graph") replace
-
-// restricted sample
-eventstudyinteract ceo_turnover1 ev_lead* ev_lag* if (full_acq_sample == 1|never_acq == 1), vce(cluster entity_uniqueid) ///
-	absorb(entity_uniqueid year) cohort(tar_event_year) control_cohort(last_treated)
-	
-event_plot e(b_iw)#e(V_iw), default_look graph_opt(xtitle("Periods since the event") ytitle("Average effect") xlabel(-4(1)4) ///
-		title("Effect of Acquiring on CEO Turnover - Last Treated")) stub_lag(ev_lag#) stub_lead(ev_lead#)  ///
-		trimlag(4) trimlead(4) plottype(scatter) ciplottype(rcap)
-
-graph export "${overleaf}/notes/Event Study Setup/figures/restricted_sa_acq_last_treated_control.pdf", as(pdf) name("Graph") replace
-
-
-eventstudyinteract ever_turnover ev_lead* ev_lag* if (restricted_acq_sample == 1|never_acq == 1), vce(cluster entity_uniqueid) ///
-	absorb(entity_uniqueid year) cohort(tar_event_year) control_cohort(last_treated)
-	
-event_plot e(b_iw)#e(V_iw), default_look graph_opt(xtitle("Periods since the event") ytitle("Average effect") xlabel(-4(1)4) ///
-		title("Effect of Acquiring on Ever CEO Turnover - Last Treated")) stub_lag(ev_lag#) stub_lead(ev_lead#)  ///
-		trimlag(4) trimlead(4) plottype(scatter) ciplottype(rcap)
-
-graph export "${overleaf}/notes/Event Study Setup/figures/restricted_sa_acq_last_absorb.pdf", as(pdf) name("Graph") replace
-
 
 restore
-
