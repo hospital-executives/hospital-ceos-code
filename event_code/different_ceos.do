@@ -1,6 +1,6 @@
 /* EVENT_STUDY_STATS *************************************************************
 
-Program name: 	event_study_stats.do
+Program name: 	different_ceos.do
 Programmer: 	Katherine Papen
 
 Goal: 			Generate preliminary statistics to inform event study set up
@@ -45,74 +45,26 @@ gen multi_contact = n_unique_contacts > 1
 count if multi_contact == 1
 assert r(N) == 2
 drop if multi_contact == 1
+bysort entity_aha year: keep if _n == 1
 
-* get 2 year vars
-preserve
-    keep entity_aha contact_uniqueid year
-    duplicates drop
-	rename year old_year
-    gen year = old_year + 2
-    tempfile prior2
-    save `prior2'
-restore
+sort entity_aha year
 
-merge m:1 entity_aha contact_uniqueid year using `prior2', gen(_m2y)
-gen byte same_ceo_2_years = (_m2y == 3)
+by entity_aha: gen contact_lag2 = contact_uniqueid[_n-2]
+by entity_aha: gen year_lag2 = year[_n-2]
 
-* merge in to distinguish between no obs in sample and obs is different
-preserve
-    keep entity_aha year
-    duplicates drop
-    rename year old_year
-    gen year = old_year + 2
-    keep entity_aha year
-    tempfile prior_any2
-    save `prior_any2'
-restore
+by entity_aha: gen contact_lag3 = contact_uniqueid[_n-3]
+by entity_aha: gen year_lag3 = year[_n-3]
 
-merge m:1 entity_aha year using `prior_any2', gen(_m2y_any)
-gen byte had_any_obs_2y_ago = (_m2y_any == 3)
+keep if contact_lag2 != .
 
-replace same_ceo_2_years = 0 if same_ceo_2_years == 0 & had_any_obs_2y_ago == 1
-replace same_ceo_2_years = . if had_any_obs_2y_ago == 0
+gen diff_contact_from_two_years = ///
+     (contact_lag2 != contact_uniqueid & !missing(contact_lag2) & year == year_lag2 + 2)
 
-drop if _m2y == 2 | contact_uniqueid == .
-drop _m2y _m2y_any
-
-* get 3 year vars
-preserve
-    keep entity_aha contact_uniqueid year
-    duplicates drop
-	rename year old_year
-    gen year = old_year + 3
-    tempfile prior3
-    save `prior3'
-restore
-
-merge m:1 entity_aha contact_uniqueid year using `prior3', gen(_m3y)
-gen byte same_ceo_3_years = (_m3y == 3)
-
-preserve
-    keep entity_aha year
-    duplicates drop
-    rename year old_year
-    gen year = old_year + 3
-    keep entity_aha year
-    tempfile prior_any3
-    save `prior_any3'
-restore
-
-merge m:1 entity_aha year using `prior_any3', gen(_m3y_any)
-gen byte had_any_obs_3y_ago = (_m3y_any == 3)
-
-replace same_ceo_3_years = 0 if same_ceo_3_years == 0 & had_any_obs_3y_ago == 1
-replace same_ceo_3_years = . if had_any_obs_3y_ago == 0
-
-drop if _m3y == 2 | contact_uniqueid == .
-drop _m3y _m3y_any
+gen diff_contact_from_three_years = ///
+     (contact_lag3 != contact_uniqueid & !missing(contact_lag3) & year == year_lag3 + 3)
 
 rename entity_aha aha_id
-keep aha_id year same_ceo_2_years same_ceo_3_years
+keep aha_id year diff_contact_from_two_years diff_contact_from_three_years contact_lag3
 
 bys aha_id year: keep if _n == 1
 
@@ -157,8 +109,8 @@ file close out
 *----------------------------------------------------------
 * Create summary statistics (means)
 *----------------------------------------------------------
-gen ceo_turnover_past_2_years = 1 - same_ceo_2_years
-gen ceo_turnover_past_3_years = 1 - same_ceo_3_years
+rename diff_contact_from_two_years ceo_turnover_past_2_years
+rename diff_contact_from_three_years ceo_turnover_past_3_years
 
 capture program drop summarize_turnover
 program define summarize_turnover
@@ -276,8 +228,8 @@ local spec1_cohort "never_tar"
 local spec1_name "Full Sample, Never Treated"
 local spec1_file "full_tar_vs_2yr_never"
 
-local spec2_treated "full_treated_sample == 1"
-local spec2_control "never_tar == 1"
+local spec2_treated "full_treated_sample == 1 & contact_lag3 != ."
+local spec2_control "never_tar == 1 & contact_lag3 != ."
 local spec2_cohort "never_tar"
 local spec2_name "Full Sample, Never Treated"
 local spec2_file "full_tar_vs_3yr_never"
@@ -288,8 +240,8 @@ local spec3_cohort "never_tar"
 local spec3_name "Restricted Sample, Never Treated"
 local spec3_file "restricted_tar_vs_2yr_never"
 
-local spec4_treated "restricted_treated_sample == 1"
-local spec4_control "never_tar == 1"
+local spec4_treated "restricted_treated_sample == 1 & contact_lag3 != ."
+local spec4_control "never_tar == 1 & contact_lag3 != ."
 local spec4_cohort "never_tar"
 local spec4_name "Restricted Sample, Never Treated"
 local spec4_file "restricted_tar_vs_3yr_never"
@@ -300,8 +252,8 @@ local spec5_cohort "never_m_and_a"
 local spec5_name "Full Sample, Never M&A"
 local spec5_file "full_tar_vs_2yr_never_m_and_a"
 
-local spec6_treated "full_treated_sample == 1"
-local spec6_control "never_m_and_a == 1"
+local spec6_treated "full_treated_sample == 1 & contact_lag3 != ."
+local spec6_control "never_m_and_a == 1 & contact_lag3 != ."
 local spec6_cohort "never_m_and_a"
 local spec6_name "Full Sample, Never M&A"
 local spec6_file "full_tar_vs_3yr_never_m_and_a"
@@ -312,8 +264,8 @@ local spec7_cohort "never_m_and_a"
 local spec7_name "Restricted Sample, Never M&A"
 local spec7_file "restricted_tar_vs_2yr_never_m_and_a"
 
-local spec8_treated "restricted_treated_sample == 1"
-local spec8_control "never_m_and_a == 1"
+local spec8_treated "restricted_treated_sample == 1 & contact_lag3 != ."
+local spec8_control "never_m_and_a == 1 & contact_lag3 != ."
 local spec8_cohort "never_m_and_a"
 local spec8_name "Restricted Sample, Never M&A"
 local spec8_file "restricted_tar_vs_3yr_never_m_and_a"

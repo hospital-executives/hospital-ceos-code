@@ -30,7 +30,7 @@ merge 1:1 entity_uniqueid year using `himss_type_xwalk', nogen
 restrict_hosp_sample
 
 *----------------------------------------------------------
-* Create indicator for whether the CEO was the same 2 & three years before
+* Create indicator for whether the CEO changed at all in the previous 2-3 years
 *----------------------------------------------------------
 frame create turnover_indicators
 frame change turnover_indicators
@@ -45,6 +45,7 @@ gen multi_contact = n_unique_contacts > 1
 count if multi_contact == 1
 assert r(N) == 2
 drop if multi_contact == 1
+bysort entity_aha year: keep if _n == 1
 
 sort entity_aha year
 by entity_aha: gen contact_lag1 = contact_uniqueid[_n-1]
@@ -61,11 +62,11 @@ gen contact_changed_prev2yrs = ///
      (contact_lag2 != contact_uniqueid & !missing(contact_lag2) & year == year_lag2 + 2))
 
 gen contact_changed_prev3yrs = ///
-    (contact_changed_prev2yrs | ///
+    ((contact_changed_prev2yrs & !missing(year_lag3))| ///
 	(contact_lag3 != contact_uniqueid & !missing(contact_lag3) & year == year_lag3 + 3))
 
 rename entity_aha aha_id
-keep aha_id year contact_changed_prev2yrs contact_changed_prev3yrs
+keep aha_id year contact_changed_prev2yrs contact_changed_prev3yrs contact_lag3
 
 bys aha_id year: keep if _n == 1
 
@@ -229,8 +230,8 @@ local spec1_cohort "never_tar"
 local spec1_name "Full Sample, Never Treated"
 local spec1_file "full_tar_vs_2yr_never"
 
-local spec2_treated "full_treated_sample == 1"
-local spec2_control "never_tar == 1"
+local spec2_treated "full_treated_sample == 1 & contact_lag3 != ."
+local spec2_control "never_tar == 1 & contact_lag3 != ."
 local spec2_cohort "never_tar"
 local spec2_name "Full Sample, Never Treated"
 local spec2_file "full_tar_vs_3yr_never"
@@ -241,8 +242,8 @@ local spec3_cohort "never_tar"
 local spec3_name "Restricted Sample, Never Treated"
 local spec3_file "restricted_tar_vs_2yr_never"
 
-local spec4_treated "restricted_treated_sample == 1"
-local spec4_control "never_tar == 1"
+local spec4_treated "restricted_treated_sample == 1 & contact_lag3 != ."
+local spec4_control "never_tar == 1 & contact_lag3 != ."
 local spec4_cohort "never_tar"
 local spec4_name "Restricted Sample, Never Treated"
 local spec4_file "restricted_tar_vs_3yr_never"
@@ -253,8 +254,8 @@ local spec5_cohort "never_m_and_a"
 local spec5_name "Full Sample, Never M&A"
 local spec5_file "full_tar_vs_2yr_never_m_and_a"
 
-local spec6_treated "full_treated_sample == 1"
-local spec6_control "never_m_and_a == 1"
+local spec6_treated "full_treated_sample == 1 & contact_lag3 != ."
+local spec6_control "never_m_and_a == 1 & contact_lag3 != ."
 local spec6_cohort "never_m_and_a"
 local spec6_name "Full Sample, Never M&A"
 local spec6_file "full_tar_vs_3yr_never_m_and_a"
@@ -265,8 +266,8 @@ local spec7_cohort "never_m_and_a"
 local spec7_name "Restricted Sample, Never M&A"
 local spec7_file "restricted_tar_vs_2yr_never_m_and_a"
 
-local spec8_treated "restricted_treated_sample == 1"
-local spec8_control "never_m_and_a == 1"
+local spec8_treated "restricted_treated_sample == 1 & contact_lag3 != ."
+local spec8_control "never_m_and_a == 1 & contact_lag3 != ."
 local spec8_cohort "never_m_and_a"
 local spec8_name "Restricted Sample, Never M&A"
 local spec8_file "restricted_tar_vs_3yr_never_m_and_a"
