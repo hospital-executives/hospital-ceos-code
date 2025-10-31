@@ -1,6 +1,6 @@
 /* EVENT_STUDY_STATS *************************************************************
 
-Program name: 	cumulative_turnover.do
+Program name: 	event_study_stats.do
 Programmer: 	Katherine Papen
 
 Goal: 			Generate preliminary statistics to inform event study set up
@@ -46,26 +46,73 @@ count if multi_contact == 1
 assert r(N) == 2
 drop if multi_contact == 1
 
-sort entity_aha year
-by entity_aha: gen contact_lag1 = contact_uniqueid[_n-1]
-by entity_aha: gen contact_lag2 = contact_uniqueid[_n-2]
-by entity_aha: gen contact_lag3 = contact_uniqueid[_n-3]
-by entity_aha: gen year_lag1 = year[_n-1]
-by entity_aha: gen year_lag2 = year[_n-2]
-by entity_aha: gen year_lag3 = year[_n-3]
+* get 2 year vars
+preserve
+    keep entity_aha contact_uniqueid year
+    duplicates drop
+	rename year old_year
+    gen year = old_year + 2
+    tempfile prior2
+    save `prior2'
+restore
 
-keep if contact_lag1 != . & contact_lag2 != .
+merge m:1 entity_aha contact_uniqueid year using `prior2', gen(_m2y)
+gen byte same_ceo_2_years = (_m2y == 3)
 
-gen contact_changed_prev2yrs = ///
-    ((contact_lag1 != contact_uniqueid & !missing(contact_lag1) & year == year_lag1 + 1) | ///
-     (contact_lag2 != contact_uniqueid & !missing(contact_lag2) & year == year_lag2 + 2))
+* merge in to distinguish between no obs in sample and obs is different
+preserve
+    keep entity_aha year
+    duplicates drop
+    rename year old_year
+    gen year = old_year + 2
+    keep entity_aha year
+    tempfile prior_any2
+    save `prior_any2'
+restore
 
-gen contact_changed_prev3yrs = ///
-    (contact_changed_prev2yrs | ///
-	(contact_lag3 != contact_uniqueid & !missing(contact_lag3) & year == year_lag3 + 3))
+merge m:1 entity_aha year using `prior_any2', gen(_m2y_any)
+gen byte had_any_obs_2y_ago = (_m2y_any == 3)
+
+replace same_ceo_2_years = 0 if same_ceo_2_years == 0 & had_any_obs_2y_ago == 1
+replace same_ceo_2_years = . if had_any_obs_2y_ago == 0
+
+drop if _m2y == 2 | contact_uniqueid == .
+drop _m2y _m2y_any
+
+* get 3 year vars
+preserve
+    keep entity_aha contact_uniqueid year
+    duplicates drop
+	rename year old_year
+    gen year = old_year + 3
+    tempfile prior3
+    save `prior3'
+restore
+
+merge m:1 entity_aha contact_uniqueid year using `prior3', gen(_m3y)
+gen byte same_ceo_3_years = (_m3y == 3)
+
+preserve
+    keep entity_aha year
+    duplicates drop
+    rename year old_year
+    gen year = old_year + 3
+    keep entity_aha year
+    tempfile prior_any3
+    save `prior_any3'
+restore
+
+merge m:1 entity_aha year using `prior_any3', gen(_m3y_any)
+gen byte had_any_obs_3y_ago = (_m3y_any == 3)
+
+replace same_ceo_3_years = 0 if same_ceo_3_years == 0 & had_any_obs_3y_ago == 1
+replace same_ceo_3_years = . if had_any_obs_3y_ago == 0
+
+drop if _m3y == 2 | contact_uniqueid == .
+drop _m3y _m3y_any
 
 rename entity_aha aha_id
-keep aha_id year contact_changed_prev2yrs contact_changed_prev3yrs
+keep aha_id year same_ceo_2_years same_ceo_3_years
 
 bys aha_id year: keep if _n == 1
 
@@ -98,7 +145,7 @@ local count_never_tar = r(ndistinct)
 quietly distinct entity_uniqueid if never_m_and_a
 local clean_control = r(ndistinct)
 
-file open out using "${overleaf}/notes/Event Study Setup/tables/any_sample_counts.tex", write replace
+file open out using "${overleaf}/notes/Event Study Setup/tables/cumulative_sample_counts.tex", write replace
 file write out "\begin{itemize}" _n
 file write out "\item There are `full_tar_final' distinct entities that are ever targeted for an acquisition and have valid observations for turnover in the previous 2 years." _n
 file write out "\item There are `restricted_tar_final' distinct entities that are ever targeted for an acquisition, have valid observations for turnover in the previous 2 years, and have the requisite pre-periods and post-periods." _n
@@ -110,8 +157,8 @@ file close out
 *----------------------------------------------------------
 * Create summary statistics (means)
 *----------------------------------------------------------
-rename contact_changed_prev2yrs ceo_turnover_past_2_years
-rename contact_changed_prev3yrs ceo_turnover_past_3_years
+gen ceo_turnover_past_2_years = 1 - same_ceo_2_years
+gen ceo_turnover_past_3_years = 1 - same_ceo_3_years
 
 capture program drop summarize_turnover
 program define summarize_turnover
@@ -150,7 +197,7 @@ foreach v in never_m_and_a never_tar full_tar restricted_tar pre_full_tar pre_re
     local `v'_nent_str : display %9.0f `val_nent'
 }
 
-file open out using "${overleaf}/notes/Event Study Setup/tables/any_means.tex", write replace
+file open out using "${overleaf}/notes/Event Study Setup/tables/cumulative_means.tex", write replace
 file write out ///
 "\begin{table}[!ht]\n " ///
 "\centering\n" ///
@@ -195,7 +242,7 @@ xtitle("Calendar Year") ///
 title("CEO Turnover by Year and Target Event Year (2011–2015)") ///
 scheme(s1color)
 
-  graph export "${overleaf}/notes/Event Study Setup/figures/any_two_year_turnover_cohort.pdf", as(pdf) name("Graph") replace
+  graph export "${overleaf}/notes/Event Study Setup/figures/two_year_turnover_cohort.pdf", as(pdf) name("Graph") replace
 
 restore
 
@@ -330,7 +377,7 @@ forvalues s = 1/`nspecs' {
         trimlead(4) ///
         plottype(scatter) ///
         ciplottype(rcap)
-    graph export "${overleaf}/notes/Event Study Setup/figures/any_`spec`s'_file'.pdf", as(pdf) name("Graph") replace
+    graph export "${overleaf}/notes/Event Study Setup/figures/`spec`s'_file'.pdf", as(pdf) name("Graph") replace
 }
 
 **** Last Treated Control ****
@@ -418,7 +465,7 @@ forvalues s = 9/12 {
         trimlead(4) ///
         plottype(scatter) ///
         ciplottype(rcap)
-    graph export "${overleaf}/notes/Event Study Setup/figures/any_`spec`s'_file'.pdf", as(pdf) name("Graph") replace
+    graph export "${overleaf}/notes/Event Study Setup/figures/`spec`s'_file'.pdf", as(pdf) name("Graph") replace
 }
 
 restore // Restore to main data
