@@ -1,9 +1,13 @@
-/* EVENT_STUDY_STATS *************************************************************
+/* CUMULATIVE_TURNOVER *************************************************************
 
 Program name: 	cumulative_turnover.do
 Programmer: 	Katherine Papen
 
-Goal: 			Generate preliminary statistics to inform event study set up
+Goal: 			Generate event study plots where outcome variable is whether or
+				not the CEO has changed in the previous 2 years or 3 years. 
+				Note: adjusting for vacancies does not change estimates due to
+				how we designate CEOs (more broadly than title_standardized). 
+				Therefore vacancies are not included. 
 
 *******************************************************************************/
 
@@ -35,25 +39,46 @@ restrict_hosp_sample
 frame create turnover_indicators
 frame change turnover_indicators
 
+use "${dbdata}/derived/hospitals_final.dta", clear
+keep entity_uniqueid year all_ceo entity_aha
+drop if all_ceo != "Vacant"
+gen vacancies = 1
+tempfile vacancies
+save `vacancies'
+
 use "${dbdata}/derived/individuals_final.dta", clear
-keep if all_leader_flag & confirmed & entity_aha != .
-keep entity_aha year contact_uniqueid firstname lastname title title_standardized
+merge m:1 entity_uniqueid year using `vacancies'
+keep if (all_leader_flag & confirmed & contact_uniqueid != .) | (vacancies == 1)
+drop if entity_aha == .
+keep entity_aha year contact_uniqueid firstname lastname title title_standardized vacancies ///
+all_ceo aha_leader_flag all_leader_flag ceo_himss_title_exact ceo_himss_title_fuzzy
+keep if title_standardized == "CEO:  Chief Executive Officer" | ceo_himss_title_exact | ceo_himss_title_fuzzy | vacancies == 1
+
+* keep only one obs if vacant CEO position
+bys entity_aha year: egen all_vacant = min(vacancies)
+bys entity_aha year: gen obs_num = _n
+drop if all_vacant == 1 & obs_num > 1
 
 * verify that there aren't multiples (with one exception)
 bys entity_aha year: egen n_unique_contacts = nvals(contact_uniqueid)
 gen multi_contact = n_unique_contacts > 1
 count if multi_contact == 1
-assert r(N) == 2
-drop if multi_contact == 1
+assert r(N) == 133
+drop if entity_aha == 6930101 & year == 2010
 bysort entity_aha year: keep if _n == 1
 
 sort entity_aha year
 by entity_aha: gen contact_lag1 = contact_uniqueid[_n-1]
 by entity_aha: gen contact_lag2 = contact_uniqueid[_n-2]
 by entity_aha: gen contact_lag3 = contact_uniqueid[_n-3]
+by entity_aha: gen vacancies_lag1 = vacancies[_n-1]
+by entity_aha: gen vacancies_lag2 = vacancies[_n-2]
+by entity_aha: gen vacancies_lag3 = vacancies[_n-3]
 by entity_aha: gen year_lag1 = year[_n-1]
 by entity_aha: gen year_lag2 = year[_n-2]
 by entity_aha: gen year_lag3 = year[_n-3]
+
+drop if contact_uniqueid == .
 
 keep if contact_lag1 != . & contact_lag2 != .
 

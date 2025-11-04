@@ -3,7 +3,11 @@
 Program name: 	different_ceos.do
 Programmer: 	Katherine Papen
 
-Goal: 			Generate preliminary statistics to inform event study set up
+Goal: 			Generate event study plots where outcome variable is whether or
+				not the CEO is different from 2 years and 3 years prior.
+				Note: adjusting for vacancies does not change estimates due to
+				how we designate CEOs (more broadly than title_standardized). 
+				Therefore vacancies are not included. 
 
 *******************************************************************************/
 
