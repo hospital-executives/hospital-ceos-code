@@ -113,3 +113,72 @@ Goal: 			Set globals for Hospital CEOs analysis
         gen restricted_treated_sample = restricted_tar_sample_temp & !ever_second_tar
 
     end
+	
+* WRITE A PROGRAM TO RESTRICT TO GET CUMULATIVE OUTCOMES _______________________________ 
+
+	program make_outcome_vars
+
+		// merge in raw turnover measures
+        preserve
+			use "${dbdata}/derived/temp/indiv_file_contextual.dta", clear
+			 
+			collapse (max) ceo_turnover1, by(entity_uniqueid year)
+
+			keep entity_uniqueid year ceo_turnover1
+
+			tempfile ceo_turnover1_xwalk
+			save `ceo_turnover1_xwalk'
+
+		restore
+
+		merge m:1 entity_uniqueid year using `ceo_turnover1_xwalk'
+		keep if _merge == 3
+		drop _merge
+		
+		// merge in cumulative turnover measures
+		preserve
+		
+			use "${dbdata}/derived/individuals_final.dta", clear
+			keep if all_leader_flag & confirmed & entity_aha != .
+			keep entity_aha year contact_uniqueid firstname lastname title title_standardized
+
+			bys entity_aha year: egen n_unique_contacts = nvals(contact_uniqueid)
+			gen byte multi_contact = n_unique_contacts > 1
+			count if multi_contact == 1
+			assert r(N) == 2
+			drop if multi_contact == 1
+			bysort entity_aha year: keep if _n == 1
+
+			sort entity_aha year
+			by entity_aha: gen contact_lag1 = contact_uniqueid[_n-1]
+			by entity_aha: gen contact_lag2 = contact_uniqueid[_n-2]
+			by entity_aha: gen contact_lag3 = contact_uniqueid[_n-3]
+			by entity_aha: gen year_lag1    = year[_n-1]
+			by entity_aha: gen year_lag2    = year[_n-2]
+			by entity_aha: gen year_lag3    = year[_n-3]
+
+			keep if contact_lag1 != . & contact_lag2 != .
+
+			gen byte contact_changed_prev2yrs = ///
+				((contact_lag1 != contact_uniqueid & !missing(contact_lag1) & year == year_lag1 + 1) | ///
+				 (contact_lag2 != contact_uniqueid & !missing(contact_lag2) & year == year_lag2 + 2))
+
+			gen byte contact_changed_prev3yrs = ///
+				((contact_changed_prev2yrs & !missing(year_lag3)) | ///
+				 (contact_lag3 != contact_uniqueid & !missing(contact_lag3) & year == year_lag3 + 3))
+
+			rename entity_aha aha_id
+			keep aha_id year contact_changed_prev2yrs contact_changed_prev3yrs contact_lag3
+			bys aha_id year: keep if _n == 1
+
+			tempfile prev_ceos
+			save `prev_ceos', replace
+
+		restore
+		
+		destring aha_id, replace
+		merge m:1 aha_id year using `prev_ceos', gen(_merge_turnover)
+		keep if _merge_turnover == 3
+		drop _merge_turnover
+
+    end
