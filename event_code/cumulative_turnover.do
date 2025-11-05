@@ -115,8 +115,11 @@ make_target_sample
 quietly distinct entity_uniqueid if full_treated_sample
 local full_tar_final = r(ndistinct)
 
-quietly distinct entity_uniqueid if restricted_treated_sample
-local restricted_tar_final = r(ndistinct)
+quietly distinct entity_uniqueid if balanced_2_year_sample
+local restricted_tar_final_2yrs = r(ndistinct)
+
+quietly distinct entity_uniqueid if balanced_3_year_sample
+local restricted_tar_final_3yrs = r(ndistinct)
 
 quietly distinct entity_uniqueid if never_tar
 local count_never_tar = r(ndistinct)
@@ -127,7 +130,8 @@ local clean_control = r(ndistinct)
 file open out using "${overleaf}/notes/Event Study Setup/tables/any_sample_counts.tex", write replace
 file write out "\begin{itemize}" _n
 file write out "\item There are `full_tar_final' distinct entities that are ever targeted for an acquisition and have valid observations for turnover in the previous 2 years." _n
-file write out "\item There are `restricted_tar_final' distinct entities that are ever targeted for an acquisition, have valid observations for turnover in the previous 2 years, and have the requisite pre-periods and post-periods." _n
+file write out "\item There are `restricted_tar_final_2yrs' distinct entities that are ever targeted for an acquisition, have valid observations for turnover in the previous 2 years, and have the requisite 2 pre-periods and post-periods." _n
+file write out "\item There are `restricted_tar_final_3yrs' distinct entities that are ever targeted for an acquisition, have valid observations for turnover in the previous 2 years, and have the 3 requisite pre-periods and post-periods." _n
 file write out "\item There are `count_never_tar' distinct entities that are never targeted for an acquisition and have valid observations for turnover in the previous 2 years." _n
 file write out "\item There are `clean_control' distinct entities that are never targeted for an acquisition or are part of a system acquiring another hospital and have valid observations for turnover in the previous 2 years." _n
 file write out "\end{itemize}" _n
@@ -159,12 +163,14 @@ end
 
 summarize_turnover , cond("never_m_and_a")          prefix(never_m_and_a)
 summarize_turnover , cond("never_tar")              prefix(never_tar)
-summarize_turnover , cond("full_tar_sample") 		prefix(full_tar)
-summarize_turnover , cond("restricted_tar_sample") 	prefix(restricted_tar)
-summarize_turnover , cond("full_tar_sample & tar_reltime < 0") 			prefix(pre_full_tar)
-summarize_turnover , cond("restricted_tar_sample & tar_reltime < 0") 	prefix(pre_restricted_tar)
+summarize_turnover , cond("full_treated_sample") 		prefix(full_tar)
+summarize_turnover , cond("balanced_2_year_sample") 	prefix(restricted_tar)
+summarize_turnover , cond("balanced_3_year_sample") 	prefix(restricted_tar_3)
+summarize_turnover , cond("full_treated_sample & tar_reltime < 0") 			prefix(pre_full_tar)
+summarize_turnover , cond("balanced_2_year_sample & tar_reltime < 0") 	prefix(pre_restricted_tar)
+summarize_turnover , cond("balanced_3_year_sample & tar_reltime < 0") 	prefix(pre_restricted_tar_3)
 
-foreach v in never_m_and_a never_tar full_tar restricted_tar pre_full_tar pre_restricted_tar{
+foreach v in never_m_and_a never_tar full_tar restricted_tar restricted_tar_3 pre_full_tar pre_restricted_tar pre_restricted_tar_3{
     local val_mean = ``v'_mean'
     local val_se   = ``v'_se'
     local val_N    = ``v'_N'
@@ -189,9 +195,11 @@ file write out ///
 "Never treated (No M \& A ) & `never_m_and_a_mean_str' & `never_m_and_a_se_str' & `never_m_and_a_N_str' & `never_m_and_a_nent_str'\\\\\n " ///
 "Never treated (tar) & `never_tar_mean_str' & `never_tar_se_str' & `never_tar_N_str' & `never_tar_nent_str'\\\\\n " ///
 "Full treated sample (tar) & `full_tar_mean_str' & `full_tar_se_str' & `full_tar_N_str' & `full_tar_nent_str'\\\\\n " ///
-"Restricted treated sample (tar) & `restricted_tar_mean_str' & `restricted_tar_se_str' & `restricted_tar_N_str' & `restricted_tar_nent_str'\\\\\n " ///
+"Restricted 2 year sample (tar) & `restricted_tar_mean_str' & `restricted_tar_se_str' & `restricted_tar_N_str' & `restricted_tar_nent_str'\\\\\n " ///
+"Restricted 3 year sample (tar) & `restricted_tar_3_mean_str' & `restricted_tar_3_se_str' & `restricted_tar_3_N_str' & `restricted_tar_3_nent_str'\\\\\n " ///
 "Full treated sample : pre-period only (tar) & `pre_full_tar_mean_str' & `pre_full_tar_se_str' & `pre_full_tar_N_str' & `pre_full_tar_nent_str'\\\\\n " ///
-"Restricted treated sample : pre-period only (tar)& `pre_restricted_tar_mean_str' & `pre_restricted_tar_se_str' & `pre_restricted_tar_N_str' & `restricted_tar_nent_str'\\\\\n " ///
+"Restricted 2 year sample : pre-period only (tar)& `pre_restricted_tar_mean_str' & `pre_restricted_tar_se_str' & `pre_restricted_tar_N_str' & `restricted_tar_nent_str'\\\\\n " ///
+"Restricted 3 year sample : pre-period only (tar)& `pre_restricted_tar_3_mean_str' & `pre_restricted_tar_3_se_str' & `pre_restricted_tar_3_N_str' & `restricted_tar_3_nent_str'\\\\\n " ///
 "\bottomrule\n" ///
 "\end{tabular}\n" ///
 "\end{table}\n"
@@ -204,7 +212,7 @@ file close out
 * CEO Turnover by Target Treatment Status
 preserve
 
-keep if restricted_tar_sample == 1
+keep if balanced_2_year_sample == 1
 
 collapse (mean) ceo_turnover_past_2_years, by(year tar_event_year)
 
@@ -253,49 +261,73 @@ local spec1_treated "full_treated_sample == 1"
 local spec1_control "never_tar == 1"
 local spec1_cohort "never_tar"
 local spec1_name "Full Sample, Never Treated"
-local spec1_file "full_tar_vs_2yr_never"
+local spec1_file "full_sample_vs_2yr_never"
 
 local spec2_treated "full_treated_sample == 1 & contact_lag3 != ."
 local spec2_control "never_tar == 1 & contact_lag3 != ."
 local spec2_cohort "never_tar"
 local spec2_name "Full Sample, Never Treated"
-local spec2_file "full_tar_vs_3yr_never"
+local spec2_file "full_sample_vs_3yr_never"
 
-local spec3_treated "restricted_treated_sample == 1"
+local spec3_treated "balanced_2_year_sample == 1"
 local spec3_control "never_tar == 1"
 local spec3_cohort "never_tar"
 local spec3_name "Restricted Sample, Never Treated"
-local spec3_file "restricted_tar_vs_2yr_never"
+local spec3_file "2yrbalanced_vs_2yr_never"
 
-local spec4_treated "restricted_treated_sample == 1 & contact_lag3 != ."
+local spec4_treated "balanced_2_year_sample == 1 & contact_lag3 != ."
 local spec4_control "never_tar == 1 & contact_lag3 != ."
 local spec4_cohort "never_tar"
 local spec4_name "Restricted Sample, Never Treated"
-local spec4_file "restricted_tar_vs_3yr_never"
+local spec4_file "2yrbalanced_vs_3yr_never"
 
-local spec5_treated "full_treated_sample == 1"
-local spec5_control "never_m_and_a == 1"
-local spec5_cohort "never_m_and_a"
-local spec5_name "Full Sample, Never M&A"
-local spec5_file "full_tar_vs_2yr_never_m_and_a"
+local spec5_treated "balanced_3_year_sample == 1"
+local spec5_control "never_tar == 1"
+local spec5_cohort "never_tar"
+local spec5_name "Restricted Sample, Never Treated"
+local spec5_file "3yrbalanced_vs_2yr_never"
 
-local spec6_treated "full_treated_sample == 1 & contact_lag3 != ."
-local spec6_control "never_m_and_a == 1 & contact_lag3 != ."
-local spec6_cohort "never_m_and_a"
-local spec6_name "Full Sample, Never M&A"
-local spec6_file "full_tar_vs_3yr_never_m_and_a"
+local spec6_treated "balanced_3_year_sample == 1 & contact_lag3 != ."
+local spec6_control "never_tar == 1 & contact_lag3 != ."
+local spec6_cohort "never_tar"
+local spec6_name "Restricted Sample, Never Treated"
+local spec6_file "3yrbalanced_vs_3yr_never"
 
-local spec7_treated "restricted_treated_sample == 1"
+local spec7_treated "full_treated_sample == 1"
 local spec7_control "never_m_and_a == 1"
 local spec7_cohort "never_m_and_a"
-local spec7_name "Restricted Sample, Never M&A"
-local spec7_file "restricted_tar_vs_2yr_never_m_and_a"
+local spec7_name "Full Sample, Never M&A"
+local spec7_file "full_sample_vs_2yr_never_m_and_a"
 
-local spec8_treated "restricted_treated_sample == 1 & contact_lag3 != ."
+local spec8_treated "full_treated_sample == 1 & contact_lag3 != ."
 local spec8_control "never_m_and_a == 1 & contact_lag3 != ."
 local spec8_cohort "never_m_and_a"
-local spec8_name "Restricted Sample, Never M&A"
-local spec8_file "restricted_tar_vs_3yr_never_m_and_a"
+local spec8_name "Full Sample, Never M&A"
+local spec8_file "full_sample_vs_3yr_never_m_and_a"
+
+local spec9_treated "balanced_2_year_sample == 1"
+local spec9_control "never_m_and_a == 1"
+local spec9_cohort "never_m_and_a"
+local spec9_name "Restricted Sample, Never M&A"
+local spec9_file "2yrbalanced_vs_2yr_never_m_and_a"
+
+local spec10_treated "balanced_2_year_sample == 1 & contact_lag3 != ."
+local spec10_control "never_m_and_a == 1 & contact_lag3 != ."
+local spec10_cohort "never_m_and_a"
+local spec10_name "Restricted Sample, Never M&A"
+local spec10_file "2yrbalanced_vs_3yr_never_m_and_a"
+
+local spec11_treated "balanced_3_year_sample == 1"
+local spec11_control "never_m_and_a == 1"
+local spec11_cohort "never_m_and_a"
+local spec11_name "Restricted Sample, Never M&A"
+local spec11_file "3yrbalanced_vs_2yr_never_m_and_a"
+
+local spec12_treated "balanced_3_year_sample == 1 & contact_lag3 != ."
+local spec12_control "never_m_and_a == 1 & contact_lag3 != ."
+local spec12_cohort "never_m_and_a"
+local spec12_name "Restricted Sample, Never M&A"
+local spec12_file "3yrbalanced_vs_3yr_never_m_and_a"
 
 * Outcome variables for each spec
 local spec1_outcome "ceo_turnover_past_2_years"
@@ -306,8 +338,12 @@ local spec5_outcome "ceo_turnover_past_2_years"
 local spec6_outcome "ceo_turnover_past_3_years"
 local spec7_outcome "ceo_turnover_past_2_years"
 local spec8_outcome "ceo_turnover_past_3_years"
+local spec9_outcome "ceo_turnover_past_2_years"
+local spec10_outcome "ceo_turnover_past_3_years"
+local spec11_outcome "ceo_turnover_past_2_years"
+local spec12_outcome "ceo_turnover_past_3_years"
 
-local nspecs = 8
+local nspecs = 12
 
 **** Loop through specifications (Never Treated & Never M&A) ****
 forvalues s = 1/`nspecs' {
@@ -368,37 +404,51 @@ gen last_treated = tar_event_year == 2017
 drop if year > 2016
 
 * Define last treated specifications
-local spec9_treated "full_treated_sample == 1"
-local spec9_control "last_treated == 1"
-local spec9_cohort "last_treated"
-local spec9_name "Full Sample, Last Treated"
-local spec9_outcome "ceo_turnover_past_2_years"
-local spec9_file "full_tar_vs_2yr_last"
+local spec13_treated "full_treated_sample == 1"
+local spec13_control "last_treated == 1"
+local spec13_cohort "last_treated"
+local spec13_name "Full Sample, Last Treated"
+local spec13_outcome "ceo_turnover_past_2_years"
+local spec13_file "full_sample_vs_2yr_last"
 
-local spec10_treated "full_treated_sample == 1"
-local spec10_control "last_treated == 1"
-local spec10_cohort "last_treated"
-local spec10_name "Full Sample, Last Treated"
-local spec10_outcome "ceo_turnover_past_3_years"
-local spec10_file "full_tar_vs_3yr_last"
+local spec14_treated "full_treated_sample == 1"
+local spec14_control "last_treated == 1"
+local spec14_cohort "last_treated"
+local spec14_name "Full Sample, Last Treated"
+local spec14_outcome "ceo_turnover_past_3_years"
+local spec14_file "full_sample_vs_3yr_last"
 
-local spec11_treated "restricted_treated_sample == 1"
-local spec11_control "last_treated == 1"
-local spec11_cohort "last_treated"
-local spec11_name "Restricted Sample, Last Treated"
-local spec11_outcome "ceo_turnover_past_2_years"
-local spec11_file "restricted_tar_vs_2yr_last"
+local spec15_treated "balanced_2_year_sample == 1"
+local spec15_control "last_treated == 1"
+local spec15_cohort "last_treated"
+local spec15_name "Restricted Sample, Last Treated"
+local spec15_outcome "ceo_turnover_past_2_years"
+local spec15_file "2yrbalanced_vs_2yr_last"
 
-local spec12_treated "restricted_treated_sample == 1"
-local spec12_control "last_treated == 1"
-local spec12_cohort "last_treated"
-local spec12_name "Restricted Sample, Last Treated"
-local spec12_outcome "ceo_turnover_past_3_years"
-local spec12_file "restricted_tar_vs_3yr_last"
+local spec16_treated "balanced_2_year_sample == 1"
+local spec16_control "last_treated == 1"
+local spec16_cohort "last_treated"
+local spec16_name "Restricted Sample, Last Treated"
+local spec16_outcome "ceo_turnover_past_3_years"
+local spec16_file "2yrbalanced_vs_3yr_last"
 
-local nspecs_last = 4
+local spec17_treated "balanced_3_year_sample == 1"
+local spec17_control "last_treated == 1"
+local spec17_cohort "last_treated"
+local spec17_name "Restricted Sample, Last Treated"
+local spec17_outcome "ceo_turnover_past_2_years"
+local spec17_file "3yrbalanced_vs_2yr_last"
 
-forvalues s = 9/12 {
+local spec18_treated "balanced_3_year_sample == 1"
+local spec18_control "last_treated == 1"
+local spec18_cohort "last_treated"
+local spec18_name "Restricted Sample, Last Treated"
+local spec18_outcome "ceo_turnover_past_3_years"
+local spec18_file "3yrbalanced_vs_3yr_last"
+
+local nspecs_last = 6
+
+forvalues s = 13/18 {
     
     display _newline(2) "{hline 60}"
     display "Specification `s': `spec`s'_name' - `spec`s'_outcome'"
