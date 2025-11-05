@@ -104,13 +104,17 @@ Goal: 			Set globals for Hospital CEOs analysis
 
         * get flags for sample
         gen full_tar_sample_temp = ever_tar_1
-        gen restricted_tar_sample_temp = ever_tar_1 & (tar_event_year >= 2009 & tar_event_year <= 2015)
+        gen temp_sample_2_years = ever_tar_1 & (tar_event_year >= 2011 & tar_event_year <= 2015)
+        gen temp_sample_3_years = ever_tar_1 & (tar_event_year >= 2012 & tar_event_year <= 2014)
 
         * create flags for pre/post sample
         bys entity_uniqueid: egen ever_second_tar = max(tar == 1 & tar_reltime > 0)
 
         gen full_treated_sample = full_tar_sample_temp & !ever_second_tar
-        gen restricted_treated_sample = restricted_tar_sample_temp & !ever_second_tar
+        gen balanced_2_year_sample = temp_sample_2_years & !ever_second_tar
+		gen balanced_3_year_sample = temp_sample_3_years & !ever_second_tar
+		
+		drop full_tar_sample_temp temp_sample_2_years temp_sample_3_years ever_second_tar
 
     end
 	
