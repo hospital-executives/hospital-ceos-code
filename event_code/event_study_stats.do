@@ -75,10 +75,11 @@ gen never_m_and_a = never_tar & never_acq
 
 * get flags for sample
 gen full_tar_sample_temp = ever_tar_1
-gen restricted_tar_sample_temp = ever_tar_1 & (tar_event_year >= 2009 & tar_event_year <= 2015)
+gen restricted_tar_sample_temp = ever_tar_1 & (tar_event_year >= 2011 & tar_event_year <= 2015)
+gen restricted_tar_sample_temp_2 = ever_tar_1 & (tar_event_year >= 2012 & tar_event_year <= 2014)
 
 gen full_acq_sample = ever_acq_1
-gen restricted_acq_sample = ever_acq_1 & (acq_event_year >= 2009 & acq_event_year <= 2015)
+gen restricted_acq_sample = ever_acq_1 & (acq_event_year >= 2011 & acq_event_year <= 2015)
 
 * create flags for pre/post sample
 bys entity_uniqueid: egen ever_second_tar = max(tar == 1 & tar_reltime > 0)
@@ -86,6 +87,7 @@ bys entity_uniqueid: egen ever_second_acq = max(acq == 1 & acq_reltime > 0)
 
 gen full_treated_sample = full_tar_sample_temp & !ever_second_tar
 gen restricted_treated_sample = restricted_tar_sample_temp & !ever_second_tar
+gen balanced_3_year_sample = restricted_tar_sample_temp_2 & !ever_second_tar
 
 quietly distinct entity_uniqueid if never_m_and_a
 local clean_control = r(ndistinct)
@@ -108,6 +110,9 @@ local full_tar_final = r(ndistinct)
 quietly distinct entity_uniqueid if restricted_treated_sample
 local restricted_tar_final = r(ndistinct)
 
+quietly distinct entity_uniqueid if balanced_3_year_sample
+local num_balanced_3_year_sample = r(ndistinct)
+
 quietly distinct entity_uniqueid if restricted_acq_sample
 local restricted_acq_final = r(ndistinct)
 
@@ -120,7 +125,8 @@ file write out "\item There are `second_tar' distinct entities that experience a
 file write out "\item There are `second_acq' distinct entities that conduct another acquisition in the two years following their initial acquisition." _n
 
 file write out "\item This results in `full_tar_final' distinct entities that are ever acquired once within our sample." _n
-file write out "\item There are `restricted_treated_sample' distinct entities that are ever acquired within our sample and have at least 2 years of pre-period observations and 2 years of post-period observations." _n
+file write out "\item There are `restricted_tar_final' distinct entities that are ever acquired within our sample and have at least 2 years of pre-period observations and 2 years of post-period observations." _n
+file write out "\item There are `num_balanced_3_year_sample' distinct entities that are ever acquired within our sample and have at least 3 years of pre-period observations and 3 years of post-period observations." _n
 
 file write out "\item We treat acquiring another hospital as an absorbing state. There are `restricted_acq_final' distinct entities that ever conduct an acquisition within our sample and have at least 2 years of pre-period observations and 2 years of post-period observations." _n
 
@@ -177,9 +183,9 @@ summarize_turnover , cond("never_m_and_a")              prefix(clean_control)
 
 summarize_turnover , cond("never_tar")              prefix(never_tar0)
 summarize_turnover , cond("full_tar_sample") 		prefix(full_tar)
-summarize_turnover , cond("restricted_tar_sample") 	prefix(restricted_tar)
+summarize_turnover , cond("restricted_treated_sample") 	prefix(restricted_tar)
 summarize_turnover , cond("full_tar_sample & tar_reltime < 0") 			prefix(pre_full_tar)
-summarize_turnover , cond("restricted_tar_sample & tar_reltime < 0") 	prefix(pre_restricted_tar)
+summarize_turnover , cond("restricted_treated_sample & tar_reltime < 0") 	prefix(pre_restricted_tar)
 
 summarize_turnover , cond("never_acq")              prefix(never_acq0)
 summarize_turnover , cond("full_acq_sample")        prefix(full_acq)
@@ -243,7 +249,7 @@ gen long obsid = _n
 gen byte g0 = never_m_and_a
 gen byte g1 = never_tar
 gen byte g2 = full_tar_sample
-gen byte g3 = restricted_tar_sample
+gen byte g3 = restricted_treated_sample
 
 reshape long g, i(obsid) j(group)
 keep if g == 1
@@ -326,7 +332,7 @@ restore
 
 * CEO Turnover by Target Treatment Status and Cohort
 preserve
-keep if restricted_tar_sample == 1
+keep if restricted_treated_sample == 1
 
 collapse (mean) ceo_turnover1, by(year tar_event_year)
 
@@ -383,7 +389,7 @@ local spec1_control "never_tar == 1"
 local spec1_cohort "never_tar"
 local spec1_name "Full Sample, Never Treated"
 
-local spec2_treated "restricted_tar_sample == 1"
+local spec2_treated "restricted_treated_sample == 1"
 local spec2_control "never_tar == 1"
 local spec2_cohort "never_tar"
 local spec2_name "Restricted Sample, Never Treated"
@@ -393,7 +399,7 @@ local spec3_control "never_m_and_a == 1"
 local spec3_cohort "never_m_and_a"
 local spec3_name "Full Sample, Never M&A"
 
-local spec4_treated "restricted_tar_sample == 1"
+local spec4_treated "restricted_treated_sample == 1"
 local spec4_control "never_m_and_a == 1"
 local spec4_cohort "never_m_and_a"
 local spec4_name "Restricted Sample, Never M&A"
@@ -403,7 +409,7 @@ local spec5_control "last_treated == 1 & year < 2017"
 local spec5_cohort "last_treated"
 local spec5_name "Full Sample, Last Treated"
 
-local spec6_treated "restricted_tar_sample == 1 & year < 2017"
+local spec6_treated "restricted_treated_sample == 1 & year < 2017"
 local spec6_control "last_treated == 1 & year < 2017" 
 local spec6_cohort "last_treated"
 local spec6_name "Restricted Sample, Last Treated"
