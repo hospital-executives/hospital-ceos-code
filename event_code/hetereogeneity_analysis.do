@@ -77,15 +77,64 @@ forvalues h = 1/`=abs(`rmin')' {
 }
 replace ev_lead1 = 0
 replace fp_ev_lead1 = 0
+replace nfp_ev_lead1 = 0
 
-// try combining estimates
-eventstudyinteract contact_changed_prev2yrs nfp_ev_lead* nfp_ev_lag* fp_ev_lead* fp_ev_lag*  if (restricted_treated_sample|never_m_and_a), vce(cluster entity_uniqueid) absorb(entity_uniqueid year) cohort(tar_event_year) control_cohort(never_m_and_a)
+// combine estimates
+eventstudyinteract ceo_turnover1 nfp_ev_lead* nfp_ev_lag* fp_ev_lead* fp_ev_lag*  if (restricted_treated_sample|never_m_and_a), vce(cluster entity_uniqueid) absorb(entity_uniqueid year) cohort(tar_event_year) control_cohort(never_m_and_a)
 
 matrix b = e(b_iw)
 matrix V = e(V_iw)
 ereturn post b V
 lincom nfp_ev_lag0 - fp_ev_lag0
 
+// plot combined estimates
+eventstudyinteract ceo_turnover1 nfp_ev_lead* nfp_ev_lag* fp_ev_lead* fp_ev_lag*  if (restricted_treated_sample|never_m_and_a), vce(cluster entity_uniqueid) absorb(entity_uniqueid year) cohort(tar_event_year) control_cohort(never_m_and_a)
+	
+
+coefplot (., keep(nfp_ev_lead4 nfp_ev_lead3 nfp_ev_lead2 nfp_ev_lead1 nfp_ev_lag0 nfp_ev_lag1 nfp_ev_lag2 nfp_ev_lag3 nfp_ev_lag4) ///
+             b(b_iw) v(V_iw) label(NFP) mcolor(navy) ciopts(lcolor(navy)) ///
+             rename(nfp_ev_lead4=a1 nfp_ev_lead3=a2 nfp_ev_lead2=a3 nfp_ev_lead1=a4 nfp_ev_lag0=a5 ///
+                    nfp_ev_lag1=a6 nfp_ev_lag2=a7 nfp_ev_lag3=a8 nfp_ev_lag4=a9)) ///
+         (., keep(fp_ev_lead4 fp_ev_lead3 fp_ev_lead2 fp_ev_lead1 fp_ev_lag0 fp_ev_lag1 fp_ev_lag2 fp_ev_lag3 fp_ev_lag4) ///
+             b(b_iw) v(V_iw) label(FP) mcolor(maroon) ciopts(lcolor(maroon)) msymbol(D) ///
+             rename(fp_ev_lead4=a1 fp_ev_lead3=a2 fp_ev_lead2=a3 fp_ev_lead1=a4 fp_ev_lag0=a5 ///
+                    fp_ev_lag1=a6 fp_ev_lag2=a7 fp_ev_lag3=a8 fp_ev_lag4=a9)), ///
+    vertical ///
+    yline(0) ///
+	order(a1 a2 a3 a4 a5 a6 a7 a8 a9) ///
+    coeflabels(a1="-4" a2="-3" a3="-2" a4="-1" a5="0" a6="1" a7="2" a8="3" a9="4") ///
+    xtitle("Periods since the event") ytitle("Average effect")
+	
+	
+local nfp nfp_ev_lag4 nfp_ev_lag3 nfp_ev_lag2 nfp_ev_lag1 ///
+          nfp_ev_lead1 nfp_ev_lead2 nfp_ev_lead3 nfp_ev_lead4
+local fp  fp_ev_lag4  fp_ev_lag3  fp_ev_lag2  fp_ev_lag1  ///
+          fp_ev_lead1  fp_ev_lead2  fp_ev_lead3  fp_ev_lead4
+
+* Panel 1: NFP
+coefplot (., keep(`nfp') b(b_iw) v(V_iw)), ///
+    vertical yline(0, lpattern(dash)) ///
+    order(`nfp') ///
+    coeflabels( ///
+      nfp_ev_lag4 "-4" nfp_ev_lag3 "-3" nfp_ev_lag2 "-2" nfp_ev_lag1 "-1" ///
+      nfp_ev_lead1 "1" nfp_ev_lead2 "2" nfp_ev_lead3 "3" nfp_ev_lead4 "4") ///
+    xtitle("Periods since the event") ytitle("Average effect") ///
+    name(g_nfp, replace)
+
+* Panel 2: FP
+coefplot (., keep(`fp') b(b_iw) v(V_iw)), ///
+    vertical yline(0, lpattern(dash)) ///
+    order(`fp') ///
+    coeflabels( ///
+      fp_ev_lag4 "-4" fp_ev_lag3 "-3" fp_ev_lag2 "-2" fp_ev_lag1 "-1" ///
+      fp_ev_lead1 "1" fp_ev_lead2 "2" fp_ev_lead3 "3" fp_ev_lead4 "4") ///
+    xtitle("Periods since the event") ytitle("Average effect") ///
+    name(g_fp, replace)
+
+* Put them side-by-side
+graph combine g_nfp g_fp, rows(1) imargin(zero)
+
+	
 // estimate effects separately 
 
 // for profit 
