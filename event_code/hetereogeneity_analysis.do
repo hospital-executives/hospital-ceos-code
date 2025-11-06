@@ -232,3 +232,172 @@ coefplot (matrix(b_fp), v(V_fp) label(For-Profit) mcolor(maroon) ciopts(lcolor(m
 graph export "${overleaf}/notes/Event Study Setup/figures/fp_nfp_any_turnover_2.pdf", as(pdf) name("Graph") replace
 
 frame change default
+
+*----------------------------------------------------------
+* Get individual characteristics
+*----------------------------------------------------------
+frame create individual_char
+frame change individual_char
+
+	use "${dbdata}/derived/individuals_final.dta", clear
+	keep id aha_leader_flag all_leader_flag ceo_himss_title_exact ceo_himss_title_fuzzy
+	tempfile ceo_flags
+	save `ceo_flags'
+
+	use "${dbdata}/derived/temp/indiv_file_contextual.dta", clear
+	merge m:1 id using `ceo_flags'
+	
+	keep if _merge == 3 & aha_id != ""
+	keep contact_uniqueid char_female char_md year aha_id aha_leader_flag all_leader_flag ceo_himss_title_exact ceo_himss_title_fuzzy char_ceo title_standardized
+	keep if all_leader_flag
+
+	// confirm that ceo flag is unique
+	bys aha_id year: egen n_unique_contacts = nvals(contact_uniqueid)
+	gen multi_contact = n_unique_contacts > 1
+	count if multi_contact == 1
+	assert r(N) == 0
+	drop multi_contact
+	
+	// get lags
+	sort aha_id year
+	by aha_id: gen char_female_lag_1 = char_female[_n-1]
+	by aha_id: gen char_female_lag_2 = char_female[_n-2]
+	by aha_id: gen char_md_lag_1 = char_md[_n-1]
+	by aha_id: gen char_md_lag_2 = char_md[_n-2]
+	by aha_id: gen year_lag_1 = year[_n-1]
+	by aha_id: gen year_lag_2 = year[_n-2]
+	
+	keep aha_id year* char_female* char_md* 
+	bys aha_id year: keep if _n == 1
+	destring aha_id, replace
+
+	tempfile individual_characteristics
+	save `individual_characteristics'
+
+frame change default
+frame drop individual_char
+
+merge m:1 aha_id year using `individual_characteristics'
+keep if _merge == 3
+drop _merge
+	
+*----------------------------------------------------------
+* Individual-level splits (men vs women, MD CEO)
+*----------------------------------------------------------
+frame copy default indiv_splits
+frame change indiv_splits
+
+
+// Prespecify your binary variables and labels
+local binvar1 "char_female_lag_1"
+local label1_0 "Male CEO Before Acquisition"
+local label1_1 "Female CEO Before Acquisition"
+
+local binvar2 "char_female_lag_2"
+local label2_0 "Male CEO 2 Years Before Acquisition"
+local label2_1 "Female CEO 2 Years Before Acquisition"
+
+local binvar3 "char_md_lag_1"
+local label3_0 "MD CEO Before Acquisition"
+local label3_1 "Non-MD CEO Before Acquisition"
+
+// Number of comparisons to loop through
+local n_comparisons = 3
+
+// Get relative time range
+sum tar_reltime, meanonly
+local rmin = r(min)
+local rmax = r(max)
+
+// Create Relative Time Indicators
+forvalues h = 0/`rmax' {
+    gen byte ev_lag`h' = (tar_reltime == `h')
+}
+forvalues h = 1/`=abs(`rmin')' {
+    gen byte ev_lead`h' = (tar_reltime == -`h')
+}
+replace ev_lead1 = 0
+
+// Loop through each binary variable comparison
+forvalues i = 1/`n_comparisons' {
+    local binvar = "`binvar`i''"
+    
+    // Loop through both estimation methods
+    foreach estimation_method in "separate" "together" {
+        
+        if "`estimation_method'" == "separate" {
+            // SEPARATE ESTIMATION: Run regressions for both conditions separately
+            forvalues c = 0/1 {
+                eventstudyinteract ceo_turnover1 ev_lag* ev_lead* ///
+                    if (balanced_2_year_sample|never_m_and_a) & `binvar' == `c', ///
+                    vce(cluster entity_uniqueid) absorb(entity_uniqueid year) ///
+                    cohort(tar_event_year) control_cohort(never_m_and_a)
+                
+                // Store the matrices
+                matrix b_`c' = e(b_iw)
+                matrix V_`c' = e(V_iw)
+            }
+            
+            // Plot both together
+            coefplot (matrix(b_1), v(V_1) label(`label`i'_1') mcolor(maroon) ciopts(lcolor(maroon) recast(rcap)) msymbol(D)) ///
+                     (matrix(b_0), v(V_0) label(`label`i'_0') mcolor(navy) ciopts(lcolor(navy) recast(rcap)) msymbol(O)), ///
+                keep(ev_lag3 ev_lag2 ev_lag1 ev_lag0 ev_lead1 ev_lead2 ev_lead3) ///
+                vertical ///
+                yline(0, lcolor(gs8)) ///
+                xline(4, lcolor(gs8) lpattern(dash)) ///	
+                order(ev_lead3 ev_lead2 ev_lead1 ev_lag0 ev_lag1 ev_lag2 ev_lag3) ///
+                coeflabels(ev_lag3="3" ev_lag2="2" ev_lag1="1" ev_lag0="0" ///
+                           ev_lead1="-1" ev_lead2="-2" ev_lead3="-3") ///
+                xtitle("Periods since the event") ytitle("Average effect") ///
+                graphregion(color(white)) plotregion(color(white))
+				
+			    graph export "${overleaf}/notes/Event Study Setup/figures/`binvar'_turnover_`estimation_method'.pdf", as(pdf) name("Graph") replace
+
+        }
+        else {
+            // TOGETHER ESTIMATION: Create interaction variables and run single regression
+            forvalues h = 0/`rmax' {
+                forvalues c = 0/1 {
+                    gen byte ev`c'_lag`h' = ev_lag`h' * (`binvar' == `c')
+                }
+            }
+            forvalues h = 1/`=abs(`rmin')' {
+                forvalues c = 0/1 {
+                    gen byte ev`c'_lead`h' = ev_lead`h' * (`binvar' == `c')
+                }
+            }
+            // Set baseline
+            forvalues c = 0/1 {
+                replace ev`c'_lead1 = 0
+            }
+            
+            // Single regression with both groups
+            eventstudyinteract ceo_turnover1 ev0_lead* ev0_lag* ev1_lead* ev1_lag* ///
+                if (balanced_2_year_sample|never_m_and_a), ///
+                vce(cluster entity_uniqueid) absorb(entity_uniqueid year) ///
+                cohort(tar_event_year) control_cohort(never_m_and_a)
+            
+            // Plot directly from regression results
+            coefplot (., keep(ev0_lead3 ev0_lead2 ev0_lead1 ev0_lag0 ev0_lag1 ev0_lag2 ev0_lag3) ///
+                         b(b_iw) v(V_iw) label(`label`i'_0') mcolor(navy) ciopts(lcolor(navy) recast(rcap)) ///
+                         rename(ev0_lead3=a2 ev0_lead2=a3 ev0_lead1=a4 ev0_lag0=a5 ///
+                                ev0_lag1=a6 ev0_lag2=a7 ev0_lag3=a8)) ///
+                     (., keep(ev1_lead3 ev1_lead2 ev1_lead1 ev1_lag0 ev1_lag1 ev1_lag2 ev1_lag3) ///
+                         b(b_iw) v(V_iw) label(`label`i'_1') mcolor(maroon) ciopts(lcolor(maroon) recast(rcap)) msymbol(D) ///
+                         rename(ev1_lead3=a2 ev1_lead2=a3 ev1_lead1=a4 ev1_lag0=a5 ///
+                                ev1_lag1=a6 ev1_lag2=a7 ev1_lag3=a8)), ///
+                vertical ///
+                yline(0, lcolor(gs8)) ///
+                xline(4, lcolor(gs8) lpattern(dash)) ///
+                order(a2 a3 a4 a5 a6 a7 a8) ///
+                coeflabels(a2="-3" a3="-2" a4="-1" a5="0" a6="1" a7="2" a8="3") ///
+                xtitle("Periods since the event") ytitle("Average effect") ///
+                graphregion(color(white)) plotregion(color(white))
+            
+            // Drop interaction variables for next iteration
+            drop ev0_* ev1_*
+        }
+        
+        graph export "${overleaf}/notes/Event Study Setup/figures/`binvar'_turnover_`estimation_method'.pdf", as(pdf) name("Graph") replace
+    }
+}
