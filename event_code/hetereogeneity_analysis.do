@@ -14,7 +14,7 @@ Goal: 			Generate event study plots where outcome variable is whether or
 *----------------------------------------------------------
 * Load data and restrict to correct sample
 *----------------------------------------------------------
-	use "${dbdata}/derived/temp/merged_ma_sysid_xwalk.dta", clear
+	use "${dbdata}/derived/temp/merged_ma_sysid_xwalk.dta", clearfram
 	
 * merge in type 
 preserve
@@ -282,11 +282,56 @@ merge m:1 aha_id year using `individual_characteristics'
 keep if _merge == 3
 drop _merge
 	
+frame create prev_tar
+frame change prev_tar
+
+	use "${dbdata}/derived/temp/merged_ma_sysid_xwalk.dta", clear
+	keep tar year aha_id
+	bys aha_id year: keep if _n == 1
+	tempfile tar_data
+	save `tar_data'
+
+	use "${dbdata}/derived/individuals_final.dta", clear
+	keep id aha_leader_flag all_leader_flag ceo_himss_title_exact ceo_himss_title_fuzzy
+	tempfile ceo_flags
+	save `ceo_flags'
+
+	use "${dbdata}/derived/temp/indiv_file_contextual.dta", clear
+	merge 1:1 id using `ceo_flags', gen(ceo_merge)
+	merge m:1 aha_id year using `tar_data', gen(tar_merge)
+
+	
+	keep if ceo_merge == 3 & tar_merge == 3 & aha_id != ""
+	keep contact_uniqueid aha_id year all_leader_flag ceo_himss_title_exact ceo_himss_title_fuzzy char_ceo title_standardized tar
+	
+	bysort contact_uniqueid aha_id year: egen n_tar = total(tar == 1)
+	bysort contact_uniqueid aha_id year: egen n_tar_ceo = total(tar == 1 & all_leader_flag == 1)
+	
+	keep if all_leader_flag
+	bysort contact_uniqueid: egen serial_tar = max(n_tar_ceo > 1)
+	sort aha_id year
+	by aha_id: gen lag_serial_tar = serial_tar[_n-1]
+
+	keep aha_id year lag_serial_tar serial_tar 
+	bys aha_id year: keep if _n == 1
+	destring aha_id, replace
+
+	tempfile serial_temp
+	save `serial_temp'
+	
+frame change default
+frame drop prev_tar
+	
+merge m:1 aha_id year using `serial_temp'
+keep if _merge == 3
+drop _merge
+
 *----------------------------------------------------------
 * Individual-level splits (men vs women, MD CEO)
 *----------------------------------------------------------
 frame copy default indiv_splits
 frame change indiv_splits
+
 
 // Prespecify outcomes
 local outcome1 "ceo_turnover1"
@@ -333,8 +378,18 @@ local binname4 "md2"
 local label4_0 "MD CEO 2 Years Before Acquisition"
 local label4_1 "Non-MD CEO 2 Years Before Acquisition"
 
+local binvar4 "char_md_lag_2"
+local binname4 "md2"
+local label4_0 "MD CEO 2 Years Before Acquisition"
+local label4_1 "Non-MD CEO 2 Years Before Acquisition"
+
+local binvar5 "lag_serial_tar"
+local binname5 "serial"
+local label5_0 "Serial CEO 1 Year Before Acquisition"
+local label5_1 "Serial CEO 1 Year Before Acquisition"
+
 // Number of comparisons to loop through
-local n_comparisons = 4
+local n_comparisons = 5
 
 // Get relative time range
 sum tar_reltime, meanonly
