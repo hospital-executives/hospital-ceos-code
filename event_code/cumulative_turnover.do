@@ -32,81 +32,7 @@ merge 1:1 entity_uniqueid year using `himss_type_xwalk', nogen
 
 * restrict to hospital sample
 restrict_hosp_sample
-
-*----------------------------------------------------------
-* Create indicator for whether the CEO changed at all in the previous 2-3 years
-*----------------------------------------------------------
-frame create turnover_indicators
-frame change turnover_indicators
-
-use "${dbdata}/derived/hospitals_final.dta", clear
-keep entity_uniqueid year all_ceo entity_aha
-drop if all_ceo != "Vacant"
-gen vacancies = 1
-tempfile vacancies
-save `vacancies'
-
-use "${dbdata}/derived/individuals_final.dta", clear
-merge m:1 entity_uniqueid year using `vacancies'
-keep if (all_leader_flag & confirmed & contact_uniqueid != .) | (vacancies == 1)
-drop if entity_aha == .
-keep entity_aha year contact_uniqueid firstname lastname title title_standardized vacancies ///
-all_ceo aha_leader_flag all_leader_flag ceo_himss_title_exact ceo_himss_title_fuzzy
-keep if title_standardized == "CEO:  Chief Executive Officer" | ceo_himss_title_exact | ceo_himss_title_fuzzy | vacancies == 1
-
-* keep only one obs if vacant CEO position
-bys entity_aha year: egen all_vacant = min(vacancies)
-bys entity_aha year: gen obs_num = _n
-drop if all_vacant == 1 & obs_num > 1
-
-* verify that there aren't multiples (with one exception)
-bys entity_aha year: egen n_unique_contacts = nvals(contact_uniqueid)
-gen multi_contact = n_unique_contacts > 1
-count if multi_contact == 1
-assert r(N) == 133
-drop if entity_aha == 6930101 & year == 2010
-bysort entity_aha year: keep if _n == 1
-
-sort entity_aha year
-by entity_aha: gen contact_lag1 = contact_uniqueid[_n-1]
-by entity_aha: gen contact_lag2 = contact_uniqueid[_n-2]
-by entity_aha: gen contact_lag3 = contact_uniqueid[_n-3]
-by entity_aha: gen vacancies_lag1 = vacancies[_n-1]
-by entity_aha: gen vacancies_lag2 = vacancies[_n-2]
-by entity_aha: gen vacancies_lag3 = vacancies[_n-3]
-by entity_aha: gen year_lag1 = year[_n-1]
-by entity_aha: gen year_lag2 = year[_n-2]
-by entity_aha: gen year_lag3 = year[_n-3]
-
-drop if contact_uniqueid == .
-
-keep if contact_lag1 != . & contact_lag2 != .
-
-gen contact_changed_prev2yrs = ///
-    ((contact_lag1 != contact_uniqueid & !missing(contact_lag1) & year == year_lag1 + 1) | ///
-     (contact_lag2 != contact_uniqueid & !missing(contact_lag2) & year == year_lag2 + 2))
-
-gen contact_changed_prev3yrs = ///
-    ((contact_changed_prev2yrs & !missing(year_lag3))| ///
-	(contact_lag3 != contact_uniqueid & !missing(contact_lag3) & year == year_lag3 + 3))
-
-rename entity_aha aha_id
-keep aha_id year contact_changed_prev2yrs contact_changed_prev3yrs contact_lag3
-
-bys aha_id year: keep if _n == 1
-
-tempfile prev_ceos
-save `prev_ceos'
-
-frame change default
-
-destring aha_id, replace
-merge m:1 aha_id year using `prev_ceos', gen(_merge_turnover)
-keep if _merge_turnover == 3
-
-*----------------------------------------------------------
-* Create target indicators
-*----------------------------------------------------------
+make_outcome_vars
 make_target_sample
 
 *----------------------------------------------------------
@@ -255,6 +181,7 @@ forvalues h = 1/`=abs(`rmin')' {
 }
 
 replace ev_lead1 = 0
+destring contact_lag*, replace
 
 * Specify conditions
 local spec1_treated "full_treated_sample == 1"
@@ -383,13 +310,13 @@ forvalues s = 1/`nspecs' {
         default_look ///
         graph_opt(xtitle("Periods since the event") ///
                   ytitle("Average effect") ///
-                  xlabel(-4(1)4) ///
+                  xlabel(-3(1)3) ///
                   title("Effect of Targeting on `spec`s'_outcome' - `spec`s'_name'" ///
                         "Avg Effect: `avg_effect' (SE: `avg_se')", size(medium))) ///
         stub_lag(ev_lag#) ///
         stub_lead(ev_lead#) ///
-        trimlag(4) ///
-        trimlead(4) ///
+        trimlag(3) ///
+        trimlead(3) ///
         plottype(scatter) ///
         ciplottype(rcap)
     graph export "${overleaf}/notes/Event Study Setup/figures/any_`spec`s'_file'.pdf", as(pdf) name("Graph") replace
@@ -485,13 +412,13 @@ forvalues s = 13/18 {
         default_look ///
         graph_opt(xtitle("Periods since the event") ///
                   ytitle("Average effect") ///
-                  xlabel(-4(1)4) ///
+                  xlabel(-3(1)3) ///
                   title("Effect of Targeting on `spec`s'_outcome' - `spec`s'_name'" ///
                         "Avg Effect: `avg_effect' (SE: `avg_se')", size(medium))) ///
         stub_lag(ev_lag#) ///
         stub_lead(ev_lead#) ///
-        trimlag(4) ///
-        trimlead(4) ///
+        trimlag(3) ///
+        trimlead(3) ///
         plottype(scatter) ///
         ciplottype(rcap)
     graph export "${overleaf}/notes/Event Study Setup/figures/any_`spec`s'_file'.pdf", as(pdf) name("Graph") replace

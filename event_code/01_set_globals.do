@@ -171,16 +171,20 @@ Goal: 			Set globals for Hospital CEOs analysis
 			gen missing_ceo_lag1 = contact_lag1 == ""
 			gen missing_ceo_lag2 = contact_lag2 == ""
 			
+			// get any turnover measures
 			gen byte contact_changed_prev2yrs = ///
 				((contact_lag1 != contact_uniqueid & !missing(contact_lag1) & year == year_lag1 + 1) | ///
 				 (contact_lag2 != contact_uniqueid & !missing(contact_lag2) & year == year_lag2 + 2))
-
 			gen byte contact_changed_prev3yrs = ///
 				((contact_changed_prev2yrs & !missing(year_lag3)) | ///
 				 (contact_lag3 != contact_uniqueid & !missing(contact_lag3) & year == year_lag3 + 3))
+				 
+			// get different CEO now than x years prior
+			gen byte diff_contact_from_two_years = (contact_lag1 != contact_uniqueid & !missing(contact_lag1) & year == year_lag1 + 1)
+			gen byte diff_contact_from_three_years = (contact_lag3 != contact_uniqueid & !missing(contact_lag3) & year == year_lag3 + 3)
 
 			rename entity_aha aha_id
-			keep aha_id year missing_ceo* contact_changed_prev2yrs contact_changed_prev3yrs ///
+			keep aha_id year missing_ceo* contact_changed* diff_contact* ///
 			contact_lag1 confirmed_lag1 contact_lag3
 			bys aha_id year: keep if _n == 1
 
