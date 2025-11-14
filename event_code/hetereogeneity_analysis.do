@@ -233,51 +233,7 @@ frame change default
 *----------------------------------------------------------
 * Get individual characteristics
 *----------------------------------------------------------
-frame create individual_char
-frame change individual_char
 
-	use "${dbdata}/derived/individuals_final.dta", clear
-	keep id aha_leader_flag all_leader_flag ceo_himss_title_exact ceo_himss_title_fuzzy
-	tempfile ceo_flags
-	save `ceo_flags'
-
-	use "${dbdata}/derived/temp/indiv_file_contextual.dta", clear
-	merge m:1 id using `ceo_flags'
-	
-	keep if _merge == 3 & aha_id != ""
-	keep contact_uniqueid char_female char_md year aha_id aha_leader_flag all_leader_flag ceo_himss_title_exact ceo_himss_title_fuzzy char_ceo title_standardized
-	keep if all_leader_flag
-
-	// confirm that ceo flag is unique
-	bys aha_id year: egen n_unique_contacts = nvals(contact_uniqueid)
-	gen multi_contact = n_unique_contacts > 1
-	count if multi_contact == 1
-	assert r(N) == 0
-	drop multi_contact
-	
-	// get lags
-	sort aha_id year
-	by aha_id: gen char_female_lag_1 = char_female[_n-1]
-	by aha_id: gen char_female_lag_2 = char_female[_n-2]
-	by aha_id: gen char_md_lag_1 = char_md[_n-1]
-	by aha_id: gen char_md_lag_2 = char_md[_n-2]
-	by aha_id: gen year_lag_1 = year[_n-1]
-	by aha_id: gen year_lag_2 = year[_n-2]
-	
-	keep aha_id year* char_female* char_md* 
-	bys aha_id year: keep if _n == 1
-	destring aha_id, replace
-
-	tempfile individual_characteristics
-	save `individual_characteristics'
-
-frame change default
-frame drop individual_char
-
-merge m:1 aha_id year using `individual_characteristics'
-keep if _merge == 3
-drop _merge
-	
 frame create prev_tar
 frame change prev_tar
 
@@ -366,13 +322,13 @@ local label2_1 "Female CEO 2 Years Before Acquisition"
 
 local binvar3 "char_md_lag_1"
 local binname3 "md1"
-local label3_0 "MD CEO Before Acquisition"
-local label3_1 "Non-MD CEO Before Acquisition"
+local label3_0 "Non-MD CEO Before Acquisition"
+local label3_1 "MD CEO Before Acquisition"
 
 local binvar4 "char_md_lag_2"
 local binname4 "md2"
-local label4_0 "MD CEO 2 Years Before Acquisition"
-local label4_1 "Non-MD CEO 2 Years Before Acquisition"
+local label4_0 "Non-MD CEO 2 Years Before Acquisition"
+local label4_1 "MD CEO 2 Years Before Acquisition"
 
 local binvar5 "lag_serial_tar"
 local binname5 "serial"
@@ -491,3 +447,7 @@ forvalues o = 1/`n_outcomes' {
         }
     }
 }
+
+frame change default
+frame drop indiv_splits
+
