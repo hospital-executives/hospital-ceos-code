@@ -361,7 +361,6 @@ restore
 * CEO Turnover by Acquisition Treatment Status
 preserve
 
-
 gen long obsid = _n
 gen byte g0 = never_m_and_a
 gen byte g1 = never_acq
@@ -382,13 +381,13 @@ label values group group
 twoway ///
 (line ceo_turnover1 year if group==0, lcolor(green) lpattern(longdash_dot)) ///
 (line ceo_turnover1 year if group==1, lcolor(black) lpattern(solid)) ///
-(line ceo_turnover1 year if group==2, lcolor(blue)  lpattern(dash)) ///
-// (line ceo_turnover1 year if group==3, lcolor(red)   lpattern(dot)) ///
-, legend(order(1 "Never M&A" 2 "Never treated" 3 "Ever treated" 4 "Sample") ring(0) pos(11)) ///
+(line ceo_turnover1 year if group==2, lcolor(blue)  lpattern(dash)), ///
+ legend(order(1 "Never M&A" 2 "Never treated" 3 "Ever treated") ring(0) pos(11)) ///
   ytitle("Mean CEO turnover") xtitle("Year") ///
   title("CEO Turnover by Treatment Group (Acquiring)") ///
   scheme(s1color)
 
+// (line ceo_turnover1 year if group==3, lcolor(red)   lpattern(dot))
 
     graph export "${overleaf}/notes/Event Study Setup/figures/turnover_by_acq_treatment.pdf", as(pdf) name("Graph") replace
 
@@ -574,13 +573,13 @@ forvalues o = 1/`n_outcomes' {
             default_look ///
             graph_opt(xtitle("Periods since the event") ///
                       ytitle("Average effect") ///
-                      xlabel(-4(1)4) ///
+                      xlabel(-3(1)3) ///
                       title("Effect Being Acquired on `outcome_label' - `spec`s'_name'" ///
                             "Average Effect: `avg_effect' (SE: `avg_se')", size(medium))) ///
             stub_lag(ev_lag#) ///
             stub_lead(ev_lead#) ///
-            trimlag(4) ///
-            trimlead(4) ///
+            trimlag(3) ///
+            trimlead(3) ///
             plottype(scatter) ///
             ciplottype(rcap)
         graph export "${overleaf}/notes/Event Study Setup/figures/`outcome'_spec`s'.pdf", as(pdf) name("Graph") replace
@@ -680,13 +679,13 @@ forvalues s = 1/`nspecs' {
         default_look ///
         graph_opt(xtitle("Periods since the event") ///
                   ytitle("Average effect") ///
-                  xlabel(-4(1)4) ///
+                  xlabel(-3(1)3) ///
                   title("Effect of Acquiring on CEO Turnover - `spec`s'_name'" ///
                         "Average Effect: `avg_effect' (SE: `avg_se')", size(medium))) ///
         stub_lag(ev_lag#) ///
         stub_lead(ev_lead#) ///
-        trimlag(4) ///
-        trimlead(4) ///
+        trimlag(3) ///
+        trimlead(3) ///
         plottype(scatter) ///
         ciplottype(rcap)
     graph export "${overleaf}/notes/Event Study Setup/figures/acq_spec`s'.pdf", as(pdf) name("Graph") replace
