@@ -121,11 +121,12 @@ Goal: 			Set globals for Hospital CEOs analysis
 * WRITE A PROGRAM TO RESTRICT TO GET CUMULATIVE OUTCOMES _______________________________ 
 
 	program make_outcome_vars
-
-		// merge in raw turnover measures
-        preserve
+	
+		// merge in turnover measure 1
+		 preserve
 			use "${dbdata}/derived/temp/indiv_file_contextual.dta", clear
 			 
+			keep if char_ceo == 1
 			collapse (max) ceo_turnover1, by(entity_uniqueid year)
 
 			keep entity_uniqueid year ceo_turnover1
@@ -143,8 +144,8 @@ Goal: 			Set globals for Hospital CEOs analysis
 		preserve
 		
 			use "${dbdata}/derived/individuals_final.dta", clear
-			keep if all_leader_flag & confirmed & entity_aha != .
-			keep entity_aha year contact_uniqueid firstname lastname title title_standardized
+			keep if all_leader_flag & entity_aha != .
+			keep entity_aha year contact_uniqueid firstname lastname title title_standardized confirmed
 
 			bys entity_aha year: egen n_unique_contacts = nvals(contact_uniqueid)
 			gen byte multi_contact = n_unique_contacts > 1
@@ -153,16 +154,23 @@ Goal: 			Set globals for Hospital CEOs analysis
 			drop if multi_contact == 1
 			bysort entity_aha year: keep if _n == 1
 
+			tostring contact_uniqueid, replace
+
 			sort entity_aha year
-			by entity_aha: gen contact_lag1 = contact_uniqueid[_n-1]
-			by entity_aha: gen contact_lag2 = contact_uniqueid[_n-2]
-			by entity_aha: gen contact_lag3 = contact_uniqueid[_n-3]
+			
 			by entity_aha: gen year_lag1    = year[_n-1]
 			by entity_aha: gen year_lag2    = year[_n-2]
 			by entity_aha: gen year_lag3    = year[_n-3]
+			
+			by entity_aha: gen contact_lag1 = contact_uniqueid[_n-1] if year_lag1 == year - 1
+			by entity_aha: gen contact_lag2 = contact_uniqueid[_n-2] if year_lag2 == year - 2
+			by entity_aha: gen contact_lag3 = contact_uniqueid[_n-3] if year_lag3 == year - 3
+			
+			by entity_aha: gen confirmed_lag1 = confirmed[_n-1] if year_lag1 == year - 1
 
-			keep if contact_lag1 != . & contact_lag2 != .
-
+			gen missing_ceo_lag1 = contact_lag1 == ""
+			gen missing_ceo_lag2 = contact_lag2 == ""
+			
 			gen byte contact_changed_prev2yrs = ///
 				((contact_lag1 != contact_uniqueid & !missing(contact_lag1) & year == year_lag1 + 1) | ///
 				 (contact_lag2 != contact_uniqueid & !missing(contact_lag2) & year == year_lag2 + 2))
@@ -172,7 +180,8 @@ Goal: 			Set globals for Hospital CEOs analysis
 				 (contact_lag3 != contact_uniqueid & !missing(contact_lag3) & year == year_lag3 + 3))
 
 			rename entity_aha aha_id
-			keep aha_id year contact_changed_prev2yrs contact_changed_prev3yrs contact_lag3
+			keep aha_id year missing_ceo* contact_changed_prev2yrs contact_changed_prev3yrs ///
+			contact_lag1 confirmed_lag1 contact_lag3
 			bys aha_id year: keep if _n == 1
 
 			tempfile prev_ceos
@@ -184,5 +193,55 @@ Goal: 			Set globals for Hospital CEOs analysis
 		merge m:1 aha_id year using `prev_ceos', gen(_merge_turnover)
 		keep if _merge_turnover == 3
 		drop _merge_turnover
+		
+		// merge in individual characteristics
+		
+		preserve 
+			use "${dbdata}/derived/individuals_final.dta", clear
+			keep id aha_leader_flag all_leader_flag ceo_himss_title_exact ceo_himss_title_fuzzy
+			tempfile ceo_flags
+			save `ceo_flags'
 
+			use "${dbdata}/derived/temp/indiv_file_contextual.dta", clear
+			merge m:1 id using `ceo_flags'
+			
+			keep if _merge == 3 & aha_id != ""
+			keep contact_uniqueid char_female char_md year aha_id aha_leader_flag all_leader_flag ceo_himss_title_exact ceo_himss_title_fuzzy char_ceo title_standardized
+			keep if all_leader_flag
+
+			// confirm that ceo flag is unique
+			bys aha_id year: egen n_unique_contacts = nvals(contact_uniqueid)
+			gen multi_contact = n_unique_contacts > 1
+			count if multi_contact == 1
+			assert r(N) == 0
+			drop multi_contact
+			
+			tostring char_female, replace
+			tostring char_md, replace
+			
+			// get lags
+			sort aha_id year
+			by aha_id: gen year_lag_1 = year[_n-1]
+			by aha_id: gen year_lag_2 = year[_n-2]
+			
+			by aha_id: gen char_female_lag_1 = char_female[_n-1] if year_lag_1 == year - 1
+			by aha_id: gen char_female_lag_2 = char_female[_n-2] if year_lag_2 == year - 2
+			by aha_id: gen char_md_lag_1 = char_md[_n-1] if year_lag_1 == year - 1
+			by aha_id: gen char_md_lag_2 = char_md[_n-2] if year_lag_2 == year - 2
+			
+			destring char_md*, replace
+			destring char_female*, replace
+			
+			keep aha_id year* char_female* char_md*
+			bys aha_id year: keep if _n == 1
+			destring aha_id, replace
+
+			tempfile individual_characteristics
+			save `individual_characteristics'
+		restore
+		
+		merge m:1 aha_id year using `individual_characteristics'
+		keep if _merge == 3
+		drop _merge
+			
     end

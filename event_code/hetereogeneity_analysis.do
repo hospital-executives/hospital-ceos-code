@@ -14,7 +14,7 @@ Goal: 			Generate event study plots where outcome variable is whether or
 *----------------------------------------------------------
 * Load data and restrict to correct sample
 *----------------------------------------------------------
-	use "${dbdata}/derived/temp/merged_ma_sysid_xwalk.dta", clearfram
+	use "${dbdata}/derived/temp/merged_ma_sysid_xwalk.dta", clear
 	
 * merge in type 
 preserve
@@ -29,10 +29,6 @@ merge 1:1 entity_uniqueid year using `himss_type_xwalk', nogen
 
 * restrict to hospital sample
 restrict_hosp_sample
-
-*----------------------------------------------------------
-* Create indicators and get relative times 
-*----------------------------------------------------------
 make_outcome_vars 
 make_target_sample
 
@@ -372,11 +368,6 @@ local binvar3 "char_md_lag_1"
 local binname3 "md1"
 local label3_0 "MD CEO Before Acquisition"
 local label3_1 "Non-MD CEO Before Acquisition"
-
-local binvar4 "char_md_lag_2"
-local binname4 "md2"
-local label4_0 "MD CEO 2 Years Before Acquisition"
-local label4_1 "Non-MD CEO 2 Years Before Acquisition"
 
 local binvar4 "char_md_lag_2"
 local binname4 "md2"

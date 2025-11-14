@@ -18,7 +18,7 @@ Goal: 			Generate preliminary statistics to inform event study set up
 * merge in type 
 preserve
 	use "${dbdata}/derived/temp/merged_ma_nonharmonized.dta", clear
-	keep entity_uniqueid year type
+	keep entity_uniqueid year type haentitytypeid
 	
 	tempfile himss_type_xwalk
 	save `himss_type_xwalk'
@@ -28,6 +28,8 @@ merge 1:1 entity_uniqueid year using `himss_type_xwalk', nogen
 
 * restrict to hospital sample
 restrict_hosp_sample
+make_outcome_vars
+make_target_sample
 
 *----------------------------------------------------------
 * Get basic summary statistics
@@ -54,45 +56,22 @@ file close out
 *----------------------------------------------------------
 sort entity_uniqueid year
 
-* get target vars
-bys entity_uniqueid (year): egen tar_event_year = min(cond(tar == 1, year, .))
-gen tar_reltime = year - tar_event_year
-gen tar_treated = year >= tar_event_year
-
 * get acq vars
 bys entity_uniqueid (year): egen acq_event_year = min(cond(acq == 1, year, .))
 gen acq_reltime = year - acq_event_year
 gen acq_treated = year >= acq_event_year
-
-* get never treated flags
-bys entity_uniqueid: egen ever_tar_1 = max(tar == 1)
-gen never_tar = (ever_tar_1 == 0)
-
-bys entity_uniqueid: egen ever_acq_1 = max(acq == 1)
-gen never_acq = (ever_acq_1 == 0)
-
-gen never_m_and_a = never_tar & never_acq
-
-* get flags for sample
-gen full_tar_sample_temp = ever_tar_1
-gen restricted_tar_sample_temp = ever_tar_1 & (tar_event_year >= 2011 & tar_event_year <= 2015)
-gen restricted_tar_sample_temp_2 = ever_tar_1 & (tar_event_year >= 2012 & tar_event_year <= 2014)
-
 gen full_acq_sample = ever_acq_1
-gen restricted_acq_sample = ever_acq_1 & (acq_event_year >= 2011 & acq_event_year <= 2015)
+gen balanced_2_year_acq = ever_acq_1 & (acq_event_year >= 2011 & acq_event_year <= 2015)
 
-* create flags for pre/post sample
+* get flags for 2nd occurrences
 bys entity_uniqueid: egen ever_second_tar = max(tar == 1 & tar_reltime > 0)
 bys entity_uniqueid: egen ever_second_acq = max(acq == 1 & acq_reltime > 0)
 
-gen full_treated_sample = full_tar_sample_temp & !ever_second_tar
-gen restricted_treated_sample = restricted_tar_sample_temp & !ever_second_tar
-gen balanced_3_year_sample = restricted_tar_sample_temp_2 & !ever_second_tar
-
+* get counts
 quietly distinct entity_uniqueid if never_m_and_a
 local clean_control = r(ndistinct)
 
-quietly distinct entity_uniqueid if full_tar_sample_temp
+quietly distinct entity_uniqueid if full_treated_sample
 local tar_sample_n = r(ndistinct)
 
 quietly distinct entity_uniqueid if full_acq_sample
@@ -107,18 +86,17 @@ local second_acq = r(ndistinct)
 quietly distinct entity_uniqueid if full_treated_sample
 local full_tar_final = r(ndistinct)
 
-quietly distinct entity_uniqueid if restricted_treated_sample
+quietly distinct entity_uniqueid if balanced_2_year_sample
 local restricted_tar_final = r(ndistinct)
 
 quietly distinct entity_uniqueid if balanced_3_year_sample
 local num_balanced_3_year_sample = r(ndistinct)
 
-quietly distinct entity_uniqueid if restricted_acq_sample
-local restricted_acq_final = r(ndistinct)
+quietly distinct entity_uniqueid if balanced_2_year_acq
+// local restricted_acq_final = r(ndistinct)
 
 file open out using "${overleaf}/notes/Event Study Setup/tables/prelim_sample_counts.tex", write append
-// file write out "\item There are `tar_sample_n' distinct entities that are ever acquired." _n
-// file write out "\item There are `acq_sample_n' distinct entities that ever acquire another hospital." _n
+
 file write out "\item There are `clean_control' distinct entities that never are acquired or are part of a system that acquires another hospital." _n
 
 file write out "\item There are `second_tar' distinct entities that experience a second acquisition in the two years following the initial acquisition." _n
@@ -128,29 +106,135 @@ file write out "\item This results in `full_tar_final' distinct entities that ar
 file write out "\item There are `restricted_tar_final' distinct entities that are ever acquired within our sample and have at least 2 years of pre-period observations and 2 years of post-period observations." _n
 file write out "\item There are `num_balanced_3_year_sample' distinct entities that are ever acquired within our sample and have at least 3 years of pre-period observations and 3 years of post-period observations." _n
 
-file write out "\item We treat acquiring another hospital as an absorbing state. There are `restricted_acq_final' distinct entities that ever conduct an acquisition within our sample and have at least 2 years of pre-period observations and 2 years of post-period observations." _n
+// file write out "\item We treat acquiring another hospital as an absorbing state. There are `restricted_acq_final' distinct entities that ever conduct an acquisition within our sample and have at least 2 years of pre-period observations and 2 years of post-period observations." _n
 
 file write out "\end{itemize}" _n
 file close out
 
 *----------------------------------------------------------
-* Merge in CEO Turnover Measure
+* Merge in Additional Individual Statistics
 *----------------------------------------------------------
-preserve
+
+// build data set of people who are CEOs in time t (leader_in_prev == 1)
+// and where they are in time t + 1
+frame create individual_char
+frame change individual_char
+
+	use "${dbdata}/derived/individuals_final.dta", clear
+	keep id aha_leader_flag all_leader_flag ceo_himss_title_exact ceo_himss_title_fuzzy
+	tempfile ceo_flags
+	save `ceo_flags'
+
 	use "${dbdata}/derived/temp/indiv_file_contextual.dta", clear
-	 
-	collapse (max) ceo_turnover1, by(entity_uniqueid year)
+	merge m:1 id using `ceo_flags'
+	
+	keep if entity_aha != . & _merge == 3
+	keep contact_uniqueid year all_leader_flag entity_aha haentitytypeid sysid entity_uniqueid
+	tostring contact_uniqueid, replace
 
-	keep entity_uniqueid year ceo_turnover1
+	rename ///
+	(contact_uniqueid entity_aha haentitytypeid all_leader_flag sysid entity_uniqueid) ///
+	(contact_lag1 prev_ceo_aha_id prev_ceo_haentitytypeid prev_ceo_all_leader_flag prev_ceo_sysid prev_ceo_entity_uniqueid)
+	
+	keep year contact_lag1 prev* 
+	bys contact_lag1 year: keep if _n == 1
 
-	tempfile ceo_turnover1_xwalk
-	save `ceo_turnover1_xwalk'
+	tempfile individual_characteristics
+	save `individual_characteristics'
 
-restore
+frame change default
+frame drop individual_char
 
-merge m:1 entity_uniqueid year using `ceo_turnover1_xwalk'
-keep if _merge == 3
-drop _merge
+destring aha_id, replace
+merge m:1 contact_lag1 year using `individual_characteristics', assert(master match using) keep (master match) gen(_prev_ceo_merge)
+
+
+frame create ceo_ids
+frame change ceo_ids
+
+	use "${dbdata}/derived/individuals_final.dta", clear
+	keep if entity_aha != . & all_leader_flag == 1
+	tostring contact_uniqueid, replace
+	
+	keep contact_uniqueid year entity_aha
+	
+	bys entity_aha year: egen n_unique_contacts = nvals(contact_uniqueid)
+	gen multi_contact = n_unique_contacts > 1	
+	drop if multi_contact == 1
+	bys entity_aha year: keep if _n == 1
+	
+	rename entity_aha aha_id
+	
+	tempfile current_ceo_ids
+	save `current_ceo_ids'
+
+frame change default
+frame drop ceo_ids
+
+merge m:1 aha_id year using `current_ceo_ids', assert(master match using) keep (match)
+
+cap gen ceo_turnover2 = contact_uniqueid != contact_lag1
+replace ceo_turnover2 = . if year == 2009
+
+gen prev_left = _prev_ceo_merge == 1 & ceo_turnover1 == 1
+
+// get additional ceo turnover measures
+gen prev_oth_hospital = prev_ceo_aha_id != aha_id & ceo_turnover1 == 1
+gen prev_oth_hospital_diff_sys = prev_ceo_sysid != sysid_ma & ceo_turnover1 == 1
+gen prev_oth_hospital_same_sys = prev_ceo_sysid == sysid_ma & ceo_turnover1 == 1
+gen prev_at_sys = prev_ceo_haentitytypeid == 8 & ceo_turnover1 == 1
+
+gen not_prev_3_temp = (prev_oth_hospital == 0 & prev_oth_hospital_same_sys == 0 & prev_at_sys == 0)
+gen prev_other = not_prev_3_temp == 1 & ceo_turnover1 == 1
+
+gen missing_trajectory = (not_prev_3_temp == 0 & prev_left == 0) & ceo_turnover1 == 1
+drop not_prev_3_temp
+
+sort aha_id year
+bys aha_id : gen prev_at_sys_lag = prev_at_sys[_n-1]
+count if (prev_at_sys | prev_at_sys_lag) & ceo_turnover1 == 1 & tar_reltime == 0
+count if ceo_turnover1 == 1 & tar_reltime == 0
+
+
+// write sum stats
+// Count each category when tar_reltime == 0
+count if prev_oth_hospital == 1 & tar_reltime == 0
+local n_prev_oth_hospital = r(N)
+
+count if prev_oth_hospital_same_sys == 1 & tar_reltime == 0
+local n_prev_oth_hospital_same_sys = r(N)
+
+count if prev_at_sys == 1 & tar_reltime == 0
+local n_prev_at_sys = r(N)
+
+count if prev_other == 1 & tar_reltime == 0
+local n_prev_other = r(N)
+
+count if prev_left == 1 & tar_reltime == 0
+local n_prev_left = r(N)
+
+// Optional: Get total turnovers for percentages
+count if ceo_turnover1 == 1 & tar_reltime == 0
+local n_total = r(N)
+
+// Write to tex file
+file open texfile using "${overleaf}/notes/Event Study Setup/tables/turnover_destinations.tex", write replace
+file write texfile "\begin{tabular}{lr}" _n
+file write texfile "\hline\hline" _n
+file write texfile "Destination & Count \\" _n
+file write texfile "\hline" _n
+file write texfile "Different Hospital (Any System) & `n_prev_oth_hospital' \\" _n
+file write texfile "Different Hospital (Same System) & `n_prev_oth_hospital_same_sys' \\" _n
+file write texfile "System (Any) & `n_prev_at_sys' \\" _n
+file write texfile "Other Position & `n_prev_other' \\" _n
+file write texfile "Left Sample & `n_prev_left' \\" _n
+file write texfile "\hline" _n
+file write texfile "Total & `n_total' \\" _n
+file write texfile "\hline\hline" _n
+file write texfile "\end{tabular}" _n
+file close texfile
+
+
 
 * GET TURNOVER AVERAGES BY TREATMENT STATUS_____________________________________
 
@@ -182,22 +266,21 @@ end
 summarize_turnover , cond("never_m_and_a")              prefix(clean_control)
 
 summarize_turnover , cond("never_tar")              prefix(never_tar0)
-summarize_turnover , cond("full_tar_sample") 		prefix(full_tar)
-summarize_turnover , cond("restricted_treated_sample") 	prefix(restricted_tar)
-summarize_turnover , cond("full_tar_sample & tar_reltime < 0") 			prefix(pre_full_tar)
-summarize_turnover , cond("restricted_treated_sample & tar_reltime < 0") 	prefix(pre_restricted_tar)
+summarize_turnover , cond("full_treated_sample") 		prefix(full_tar)
+summarize_turnover , cond("balanced_2_year_sample") 	prefix(restricted_tar)
+summarize_turnover , cond("full_treated_sample & tar_reltime < 0") 			prefix(pre_full_tar)
+summarize_turnover , cond("balanced_2_year_sample & tar_reltime < 0") 	prefix(pre_restricted_tar)
 
 summarize_turnover , cond("never_acq")              prefix(never_acq0)
 summarize_turnover , cond("full_acq_sample")        prefix(full_acq)
-summarize_turnover , cond("restricted_acq_sample")  prefix(restricted_acq)
+// summarize_turnover , cond("restricted_acq_sample")  prefix(restricted_acq)
 summarize_turnover , cond("full_acq_sample & acq_reltime < 0")        prefix(pre_full_acq)
-summarize_turnover , cond("restricted_acq_sample & acq_reltime < 0")  prefix(pre_restricted_acq)
+// summarize_turnover , cond("restricted_acq_sample & acq_reltime < 0")  prefix(pre_restricted_acq)
 
 *----------------------------------------------------------
 * Format all numbers for LaTeX
 *----------------------------------------------------------
-foreach v in clean_control never_tar0 full_tar restricted_tar pre_full_tar pre_restricted_tar ///
-	never_acq0 full_acq restricted_acq pre_full_acq pre_restricted_acq {
+foreach v in clean_control never_tar0 full_tar restricted_tar pre_full_tar pre_restricted_tar never_acq0 full_acq pre_full_acq {
     local val_mean = ``v'_mean'
     local val_se   = ``v'_se'
     local val_N    = ``v'_N'
@@ -230,13 +313,14 @@ file write out ///
 "Restricted treated sample : pre-period only (tar)& `pre_restricted_tar_mean_str' & `pre_restricted_tar_se_str' & `pre_restricted_tar_N_str' & `restricted_tar_nent_str'\\\\\n " ///
 "Never treated (acq) & `never_acq0_mean_str' & `never_acq0_se_str' & `never_acq0_N_str' & `never_acq0_nent_str'\\\\\n " ///
 "Full treated sample (acq) & `full_acq_mean_str' & `full_acq_se_str' & `full_acq_N_str' & `full_acq_nent_str'\\\\\n " ///
-"Restricted treated sample (acq) & `restricted_acq_mean_str' & `restricted_acq_se_str' & `restricted_acq_N_str' & `restricted_acq_nent_str'\\\\\n " ///
 "Full treated sample : pre-period only (acq) & `pre_full_acq_mean_str' & `pre_full_acq_se_str' & `pre_full_acq_N_str' & `pre_full_acq_nent_str'\\\\\n " ///
-"Restricted treated sample : pre-period only (acq) & `pre_restricted_acq_mean_str' & `pre_restricted_acq_se_str' & `pre_restricted_acq_N_str' & `restricted_acq_nent_str'\\\\\n " ///
-"\bottomrule\n" ///
 "\end{tabular}\n" ///
-"\end{table}\n"
+"\end{table}" _n
 file close out
+
+// "Restricted treated sample (acq) & `restricted_acq_mean_str' & `restricted_acq_se_str' & `restricted_acq_N_str' & `restricted_acq_nent_str'\\\\\n "
+// "Restricted treated sample : pre-period only (acq) & `pre_restricted_acq_mean_str' & `pre_restricted_acq_se_str' & `pre_restricted_acq_N_str' & `restricted_acq_nent_str'\\\\\n " ///
+
 
 *----------------------------------------------------------
 * Create Plots
@@ -248,13 +332,14 @@ preserve
 gen long obsid = _n
 gen byte g0 = never_m_and_a
 gen byte g1 = never_tar
-gen byte g2 = full_tar_sample
-gen byte g3 = restricted_treated_sample
+gen byte g2 = full_treated_sample
+gen byte g3 = balanced_2_year_sample
 
 reshape long g, i(obsid) j(group)
 keep if g == 1
 
 collapse (mean) ceo_turnover1, by(year group)
+drop if year == 2017 
 
 label define group 0 "Never M&A" 1 "Never treated (tar)" 2 "Ever treated (tar)" 3 "Sample (tar)", replace
 label values group group
@@ -276,19 +361,21 @@ restore
 * CEO Turnover by Acquisition Treatment Status
 preserve
 
+
 gen long obsid = _n
 gen byte g0 = never_m_and_a
 gen byte g1 = never_acq
 gen byte g2 = full_acq_sample
-gen byte g3 = restricted_acq_sample
+// gen byte g3 = restricted_acq_sample
 
 reshape long g, i(obsid) j(group)
 * Now each row is (obs, group). Keep only rows where the obs belongs to that group:
 keep if g == 1
 
 collapse (mean) ceo_turnover1, by(year group)
+drop if year == 2017 
 
-label define group 0 "Never M&A" 1 "Never treated (acq)" 2 "Ever treated (acq)" 3 "Sample (acq)", replace
+label define group 0 "Never M&A" 1 "Never treated (acq)" 2 "Ever treated (acq)", replace
 label values group group
 
 
@@ -296,7 +383,7 @@ twoway ///
 (line ceo_turnover1 year if group==0, lcolor(green) lpattern(longdash_dot)) ///
 (line ceo_turnover1 year if group==1, lcolor(black) lpattern(solid)) ///
 (line ceo_turnover1 year if group==2, lcolor(blue)  lpattern(dash)) ///
-(line ceo_turnover1 year if group==3, lcolor(red)   lpattern(dot)) ///
+// (line ceo_turnover1 year if group==3, lcolor(red)   lpattern(dot)) ///
 , legend(order(1 "Never M&A" 2 "Never treated" 3 "Ever treated" 4 "Sample") ring(0) pos(11)) ///
   ytitle("Mean CEO turnover") xtitle("Year") ///
   title("CEO Turnover by Treatment Group (Acquiring)") ///
@@ -309,9 +396,10 @@ restore
 
 * CEO Turnover by Acquisition Treatment Status and Cohort
 preserve
-keep if restricted_acq_sample == 1
+keep if full_acq_sample == 1
 
 collapse (mean) ceo_turnover1, by(year acq_event_year)
+drop if year == 2017 
 
 twoway ///
 (line ceo_turnover1 year if acq_event_year==2011, lcolor(red) lpattern(solid)) ///
@@ -332,9 +420,10 @@ restore
 
 * CEO Turnover by Target Treatment Status and Cohort
 preserve
-keep if restricted_treated_sample == 1
+keep if balanced_2_year_sample == 1
 
 collapse (mean) ceo_turnover1, by(year tar_event_year)
+drop if year == 2017 
 
 twoway ///
 (line ceo_turnover1 year if tar_event_year==2011, lcolor(red) lpattern(solid)) ///
@@ -384,88 +473,119 @@ replace ev_lead1 = 0
 gen last_treated = tar_event_year == 2017
 
 * Specify conditions
-local spec1_treated "full_tar_sample == 1"
+local spec1_treated "full_treated_sample == 1"
 local spec1_control "never_tar == 1"
 local spec1_cohort "never_tar"
 local spec1_name "Full Sample, Never Treated"
 
-local spec2_treated "restricted_treated_sample == 1"
+local spec2_treated "balanced_2_year_sample == 1"
 local spec2_control "never_tar == 1"
 local spec2_cohort "never_tar"
 local spec2_name "Restricted Sample, Never Treated"
 
-local spec3_treated "full_tar_sample == 1"
+local spec3_treated "full_treated_sample == 1"
 local spec3_control "never_m_and_a == 1"
 local spec3_cohort "never_m_and_a"
 local spec3_name "Full Sample, Never M&A"
 
-local spec4_treated "restricted_treated_sample == 1"
+local spec4_treated "balanced_2_year_sample == 1"
 local spec4_control "never_m_and_a == 1"
 local spec4_cohort "never_m_and_a"
 local spec4_name "Restricted Sample, Never M&A"
 
-local spec5_treated "full_tar_sample == 1 & year < 2017"
+local spec5_treated "full_treated_sample == 1 & year < 2017"
 local spec5_control "last_treated == 1 & year < 2017"
 local spec5_cohort "last_treated"
 local spec5_name "Full Sample, Last Treated"
 
-local spec6_treated "restricted_treated_sample == 1 & year < 2017"
+local spec6_treated "balanced_2_year_sample == 1 & year < 2017"
 local spec6_control "last_treated == 1 & year < 2017" 
 local spec6_cohort "last_treated"
 local spec6_name "Restricted Sample, Last Treated"
 
-local nspecs = 6
+local spec7_treated "balanced_3_year_sample == 1"
+local spec7_control "never_tar == 1"
+local spec7_cohort "never_tar"
+local spec7_name "Restricted 3 Year Sample, Never Treated"
 
-**** loop through specifications ****
-forvalues s = 1/`nspecs' {
+local spec8_treated "balanced_3_year_sample == 1"
+local spec8_control "never_m_and_a == 1"
+local spec8_cohort "never_m_and_a"
+local spec8_name "Restricted 3 Year Sample, Never M&A"
+
+local spec9_treated "balanced_3_year_sample == 1 & year < 2017"
+local spec9_control "last_treated == 1 & year < 2017" 
+local spec9_cohort "last_treated"
+local spec9_name "Restricted 3 Year Sample, Last Treated"
+
+local nspecs = 9
+
+// Define your outcome variables
+local outcomes "ceo_turnover1 prev_oth_hospital prev_oth_hospital_same_sys prev_oth_hospital_diff_sys prev_at_sys prev_other prev_left"
+local outcome_labels `" "CEO Turnover" "Other Hospital" "Other Hospital, Same System" "Other Hospital, Different System" "System Executive" "Other Outcome" "Left Sample" "'
+
+// Count outcomes
+local n_outcomes = 6
+
+// Loop through outcomes
+forvalues o = 1/`n_outcomes' {
+    local outcome : word `o' of `outcomes'
+    local outcome_label : word `o' of `outcome_labels'
     
-    display _newline(2) "{hline 60}"
-    display "Specification `s': `spec`s'_name'"
-    display "{hline 60}"
+    display _newline(3) "{hline 80}"
+    display "OUTCOME: `outcome_label'"
+    display "{hline 80}"
     
-    // First run: Calculate average effect
-    eventstudyinteract ceo_turnover1 ev_lead* ev_lag* ///
-        if (`spec`s'_treated'|`spec`s'_control'), ///
-        vce(cluster entity_uniqueid) ///
-        absorb(entity_uniqueid year) ///
-        cohort(tar_event_year) ///
-        control_cohort(`spec`s'_cohort')
-    
-    matrix b = e(b_iw)
-    matrix V = e(V_iw)
-    ereturn post b V
-    
-    display _newline "Average Treatment Effect (periods 0-2):"
-    lincom (ev_lag0 + ev_lag1 + ev_lag2)/3
-    
-    // Store the result rounded to 3 decimal places
-    local avg_effect = round(r(estimate), 0.001)
-    local avg_se = round(r(se), 0.001)
-    
-    // Second run: Event plot with average effect in title
-    eventstudyinteract ceo_turnover1 ev_lead* ev_lag* ///
-        if (`spec`s'_treated'|`spec`s'_control'), ///
-        vce(cluster entity_uniqueid) ///
-        absorb(entity_uniqueid year) ///
-        cohort(tar_event_year) ///
-        control_cohort(`spec`s'_cohort')
-    
-    event_plot e(b_iw)#e(V_iw), ///
-        default_look ///
-        graph_opt(xtitle("Periods since the event") ///
-                  ytitle("Average effect") ///
-                  xlabel(-4(1)4) ///
-                  title("Effect Being Acquired on CEO Turnover - `spec`s'_name'" ///
-                        "Average Effect: `avg_effect' (SE: `avg_se')", size(medium))) ///
-        stub_lag(ev_lag#) ///
-        stub_lead(ev_lead#) ///
-        trimlag(4) ///
-        trimlead(4) ///
-        plottype(scatter) ///
-        ciplottype(rcap)
-    graph export "${overleaf}/notes/Event Study Setup/figures/tar_spec`s'.pdf", as(pdf) name("Graph") replace
+    // Loop through specifications
+    forvalues s = 1/`nspecs' {
+        
+        display _newline(2) "{hline 60}"
+        display "Specification `s': `spec`s'_name'"
+        display "{hline 60}"
+        
+        // First run: Calculate average effect
+        eventstudyinteract `outcome' ev_lead* ev_lag* ///
+            if `spec`s'_treated' | `spec`s'_control', ///
+            vce(cluster entity_uniqueid) ///
+            absorb(entity_uniqueid year) ///
+            cohort(tar_event_year) ///
+            control_cohort(`spec`s'_cohort')
+        
+        matrix b = e(b_iw)
+        matrix V = e(V_iw)
+        ereturn post b V
+        
+        display _newline "Average Treatment Effect (periods 0-2):"
+        lincom (ev_lag0 + ev_lag1 + ev_lag2)/3
+        
+        // Store the result rounded to 3 decimal places
+        local avg_effect = round(r(estimate), 0.001)
+        local avg_se = round(r(se), 0.001)
+        
+        // Second run: Event plot with average effect in title
+        eventstudyinteract `outcome' ev_lead* ev_lag* ///
+            if `spec`s'_treated' | `spec`s'_control', ///
+            vce(cluster entity_uniqueid) ///
+            absorb(entity_uniqueid year) ///
+            cohort(tar_event_year) ///
+            control_cohort(`spec`s'_cohort')
+        
+        event_plot e(b_iw)#e(V_iw), ///
+            default_look ///
+            graph_opt(xtitle("Periods since the event") ///
+                      ytitle("Average effect") ///
+                      xlabel(-4(1)4) ///
+                      title("Effect Being Acquired on `outcome_label' - `spec`s'_name'" ///
+                            "Average Effect: `avg_effect' (SE: `avg_se')", size(medium))) ///
+            stub_lag(ev_lag#) ///
+            stub_lead(ev_lead#) ///
+            trimlag(4) ///
+            trimlead(4) ///
+            plottype(scatter) ///
+            ciplottype(rcap)
+        graph export "${overleaf}/notes/Event Study Setup/figures/`outcome'_spec`s'.pdf", as(pdf) name("Graph") replace
+    }
 }
-
 restore
 
 *----------------------------------------------------------
