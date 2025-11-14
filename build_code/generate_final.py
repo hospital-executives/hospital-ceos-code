@@ -6,7 +6,7 @@ import re
 from datetime import datetime
 import shutil
 
-user_path = "/Users/loaner/Dropbox/hospital_ceos/_data"
+user_path = "/Users/katherinepapen/Dropbox/hospital_ceos/_data"
 current_date = datetime.now().strftime("%m-%d")
 
 #### SET VARIABLES ####
