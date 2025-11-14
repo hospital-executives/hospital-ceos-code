@@ -1,11 +1,10 @@
-/* CUMULATIVE_TURNOVER *************************************************************
+/* HETEROGENEITY_ANALYSIS *************************************************************
 
-Program name: 	cumulative_turnover.do
+Program name: 	heterogeneity_analysis.do
 Programmer: 	Katherine Papen
 
-Goal: 			Generate event study plots where outcome variable is whether or
-				not the CEO has changed in the previous 2 years or 3 years. 
-
+Goal: 			Generate event study plots with heterogeneity by hospital characteristics
+				and CEO characteristics in baseline year.
 *******************************************************************************/
 
 * check setup
