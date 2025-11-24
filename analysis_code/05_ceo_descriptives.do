@@ -237,6 +237,16 @@ Goal: 			Compute descriptive stats for CEOs
 
 
 * most common jobs right before becoming hospital ceo?
+	gen title_collapsed = "CEO" if char_ceo == 1
+		replace title_collapsed = "COO" if regexm(title_standardized, "COO:")
+		replace title_collapsed = "CFO" if regexm(title_standardized, "CFO:")
+		replace title_collapsed = "CMO" if regexm(title_standardized, "Chief Medical Officer")
+		replace title_collapsed = "CNH" if regexm(title_standardized, "Chief Nursing Head|Pathology Chief")
+		replace title_collapsed = "Other C-Suite" if regexm(title_standardized, "Chief") &!regexm(title_standardized, "Medical Staff Chief") & missing(title_collapsed)
+		replace title_collapsed = "Director" if regexm(title_standardized, "Director") & missing(title_collapsed)
+		replace title_collapsed = "Head" if regexm(title_standardized, "Head|Medical Staff Chief|Pathology Chief") & !regexm(title_standardized, "Head of Facility") & missing(title_collapsed)
+		replace title_collapsed = "Head of Non-Hospital Facility" if regexm(title_standardized, "Head of Facility") & missing(title_collapsed)
+		
 	* by gender
 	preserve
 		gen yeargained = year if gained_hosp_ceo == 1
@@ -246,20 +256,20 @@ Goal: 			Compute descriptive stats for CEOs
 		tab title_standardized if year == yearbeforeceo
 		tab title_standardized if year == yearbeforeceo & char_female == 1 // far more likely to be CNO
 		tab title_standardized if year == yearbeforeceo & char_female == 0 // far more likely to be CFO
-		
+			
 		gen count = 1
-		collapse (count) count if year == yearbeforeceo, by(title_standardized char_female)
+		collapse (count) count if year == yearbeforeceo, by(title_collapsed char_female)
 		bysort char_female: egen total = total(count)
 		gen share = count/total
 		bysort char_female (share): egen rank = rank(-share)
 		gen keep = rank <= 10 
-		bysort title_standardized : egen keep_role = max(keep)
+		bysort title_collapsed : egen keep_role = max(keep)
 		keep if keep_role & !missing(char_female)
 		
 		* graph bar
 		gen share_pct = 100*share
 		graph hbar (mean) share_pct, ///
-			over(title_standardized, sort(1) descending label(labsize(small))) ///
+			over(title_collapsed, sort(1) descending label(labsize(small))) ///
 			by(char_female, cols(2) note("") title("Prior role before CEO")) ///
 			blabel(bar, format(%3.1f)) ///
 			ytitle("Share of CEOs (%)")
@@ -271,23 +281,23 @@ Goal: 			Compute descriptive stats for CEOs
 		gen yeargained_minus = yeargained -1
 		bysort contact_uniqueid: egen yearbeforeceo = max(yeargained_minus)
 		
-		tab title_standardized if year == yearbeforeceo
-		tab title_standardized if year == yearbeforeceo & forprofit == 0
-		tab title_standardized if year == yearbeforeceo & forprofit == 1
+		tab title_collapsed if year == yearbeforeceo
+		tab title_collapsed if year == yearbeforeceo & forprofit == 0
+		tab title_collapsed if year == yearbeforeceo & forprofit == 1
 		
 		gen count = 1
-		collapse (count) count if year == yearbeforeceo, by(title_standardized forprofit)
+		collapse (count) count if year == yearbeforeceo, by(title_collapsed forprofit)
 		bysort forprofit: egen total = total(count)
 		gen share = count/total
 		bysort forprofit (share): egen rank = rank(-share)
 		gen keep = rank <= 10 
-		bysort title_standardized : egen keep_role = max(keep)
+		bysort title_collapsed : egen keep_role = max(keep)
 		keep if keep_role & !missing(forprofit)
 		
 		* graph bar
 		gen share_pct = 100*share
 		graph hbar (mean) share_pct, ///
-			over(title_standardized, sort(1) descending label(labsize(small))) ///
+			over(title_collapsed, sort(1) descending label(labsize(small))) ///
 			by(forprofit, cols(2) note("") title("Prior role before CEO")) ///
 			blabel(bar, format(%3.1f)) ///
 			ytitle("Share of CEOs (%)")
@@ -300,24 +310,24 @@ Goal: 			Compute descriptive stats for CEOs
 		bysort contact_uniqueid: egen yearbeforeceo = max(yeargained_minus)
 		
 		gen count = 1
-		collapse (count) count if year == yearbeforeceo, by(title_standardized forprofit char_female)
+		collapse (count) count if year == yearbeforeceo, by(title_collapsed forprofit char_female)
 		bysort forprofit char_female: egen total = total(count)
 		gen share = count/total
 		bysort forprofit char_female (share): egen rank = rank(-share)
 		gen keep = rank <= 10 
-		bysort title_standardized : egen keep_role = max(keep)
+		bysort title_collapsed : egen keep_role = max(keep)
 		keep if keep_role & !missing(forprofit) & !missing(char_female)
 		
 		* graph bar
 		gen share_pct = 100*share
 		graph hbar (mean) share_pct if char_female == 1, ///
-			over(title_standardized, sort(1) descending label(labsize(small))) ///
+			over(title_collapsed, sort(1) descending label(labsize(small))) ///
 			by(forprofit char_female, cols(2) note("") title("Prior role before CEO")) ///
 			blabel(bar, format(%3.1f)) ///
 			ytitle("Share of CEOs (%)") 
 		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_rolebeforeceo_forprofit_female.pdf", as(pdf) name("Graph") replace
 		graph hbar (mean) share_pct if char_female == 0, ///
-			over(title_standardized, sort(1) descending label(labsize(small))) ///
+			over(title_collapsed, sort(1) descending label(labsize(small))) ///
 			by(forprofit char_female, cols(2) note("") title("Prior role before CEO")) ///
 			blabel(bar, format(%3.1f)) ///
 			ytitle("Share of CEOs (%)") 
@@ -893,6 +903,118 @@ Goal: 			Compute descriptive stats for CEOs
 	
 	restore
 	
+* share of CEO turnover episodes where one member of the c-suite comes with them
+* using c_suite flag
+* identify CEOs that switch jobs
+	preserve
+		restrict_hosp_sample
+		keep if char_ceo ==1 
+		
+		* make sure unique
+		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
+		egen total_dup = total(duplicates)
+// 		assert total_dup == 2 // 2 hosps that end up with two CEOs in the same year
+		drop if duplicates == 1
+		drop total_dup duplicates 
+		
+		* for each CEO, get the observation before turnover. Add the destination entity. 
+		bysort entity_uniqueid (year): gen pre_turnover = ceo_turnover1[_n+1]
+		gen turnover_year = year if ceo_turnover1 == 1
+		
+		tempfile orig
+		save `orig'
+		
+		* find destination(s)
+		keep if ceo_turnover1 == 1
+		keep added_hosp_ceo_entities contact_uniqueid year char_female
+		replace year = year-1
+		rename added_hosp_ceo_entities ceo_destination1
+		rename char_female ceo_char_female
+		* dedup
+		bysort contact_uniqueid year: keep if _n ==1
+		tempfile ceodestinations
+		save `ceodestinations'
+		
+		use `orig', clear
+		merge m:1 contact_uniqueid year using `ceodestinations', keep(1 3) gen(_merge_destination)
+		
+		* descriptives
+		* how many CEOs have turnover? 
+		tab ceo_turnover1 // we have already restricted to CEOs
+		tab pre_turnover
+		* how many have a destination as a hospital CEO? 
+		tab _merge_destination if pre_turnover == 1
+		count if pre_turnover == 1 & !missing(ceo_destination1)
+		
+		* cases when CEO leaves and then we see them as CEO at another hospital:
+			* pre_turnover == 1
+			* ceo_destination1 is not missing
+		
+		keep pre_turnover entity_uniqueid year contact_uniqueid turnover_year ceo_destination1 ceo_char_female
+		
+		keep if pre_turnover == 1
+		rename contact_uniqueid ceoturnover_contact_uniqueid  
+		
+		tempfile pre_turnover_data
+		save `pre_turnover_data'
+		
+	restore
+	*preserve
+		restrict_hosp_sample
+		
+		merge m:1 entity_uniqueid year using `pre_turnover_data', keep(1 3) nogen
+		
+		* identify members of c-suite before the CEO switches jobs
+		gen pre_turnover_csuite = (c_suite == 1) & (pre_turnover == 1) & char_ceo == 0
+		bysort contact_uniqueid: egen ever_pre_turnover_csuite = max(pre_turnover_csuite)
+		* each turnover event will have an observation with the turnover year, ceo ID, entity ID, and a list of the whole csuite IDs
+		* get list of their entities next year and year after
+		gen year1 = ceo_turnover1 == 1
+		
+		tempfile orig2
+		save `orig2'
+		
+		* get a list of all places each person works in each year
+		keep if ever_pre_turnover_csuite == 1
+		keep contact_uniqueid year entity_uniqueid 
+		bysort contact_uniqueid year entity_uniqueid: keep if _n == 1
+		bysort contact_uniqueid year: gen num = _n
+		rename entity_uniqueid entity_uniqueid_num
+		reshape wide entity_uniqueid_num, i(contact_uniqueid year) j(num)
+		gen year_prev = year-1 // so that I can merge next year's entities onto this year's
+			* these are the next-year obs
+		
+		tempfile rolesbyyear
+		save `rolesbyyear'
+		
+		* merge roles by year with main data on prior year
+		use `orig2', clear
+		gen year_prev = year
+		merge m:1 contact_uniqueid year_prev using `rolesbyyear', gen(_merge_roles) keep(1 3)
+		
+		* Check if destination matches
+		gen dest_match1 = 0
+		* Loop over all entity_uniqueid* variables
+		foreach v of varlist entity_uniqueid_num* {
+			replace dest_match1 = 1 if dest_match1 == 0 & strpos(ceo_destination1, string(`v'))>0
+		}
+		
+		* DESCRIPTIVES
+		tab pre_turnover if char_ceo == 1 // how many CEOs turn over?
+		tab pre_turnover
+		tab pre_turnover if !missing(ceo_destination1)
+		tab dest_match1 if !missing(ceo_destination1) & pre_turnover == 1
+		gen missing_ceo_dest = missing(ceo_destination1)
+		
+		* collapse to each turnover episode (can add descriptives)
+		keep if pre_turnover_csuite == 1
+		collapse pre_turnover dest_match1 missing_ceo_dest ceo_char_female forprofit, by(entity_uniqueid year)
+		tab dest_match1 if missing_ceo_dest == 0
+		tab ceo_char_female if missing_ceo_dest == 0, sum(dest_match1)
+		
+	
+	restore
+	
 * share of hospital SYSTEMS with CEO
 	preserve
 	
@@ -1256,7 +1378,7 @@ restore
 preserve
 	* keep CEOs only
 		keep if char_ceo == 1
-		keep if is_hospital ==1
+		restrict_hosp_sample
 		
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
@@ -1269,7 +1391,25 @@ preserve
 		sum forprofit 
 		gen nonprofit_ps = 1- forprofit
 		
+	* find the hospitals that joined the sample in 2012
+		bysort entity_uniqueid: egen firstyearinsample = min(year)
+		bysort entity_uniqueid: egen lastyearinsample = max(year)
+		
+		tab forprofit if firstyearinsample==2012, m 
+		
+		* save to come back to old data
+		tempfile before
+		save `before'
+		
+		* collapse list of new entities
+		keep entity_uniqueid entity_name year firstyearinsample entity_name_parent entity_uniqueid_parent forprofit 
+		bysort entity_uniqueid year: keep if _n ==1
+		keep if firstyearinsample == 2012
+		save "${dbdata}/derived/temp/newfacilities_2012.dta", replace
+		* this might be a slight overcount since they need to have a CEO to be included in this list, so maybe if they added their first CEO in 2012 then they would be here. But mostly these are facilities that are actually not in the individual file until 2012 (I checked separately in that file, but didn't use it since it doesn't have the parent info merged in as cleanly)
+		
 	* share of CEOs of each type
+	use `before', clear
 	gen count =1 
 	collapse forprofit (rawsum) count, by(year char_female)
 	
@@ -1287,134 +1427,269 @@ preserve
 	
 restore
 	
-* different CEO ecosystems?
-preserve
-	* keep CEOs only
-		keep if char_ceo == 1
-		keep if is_hospital == 1
-		
+* different CEO ecosystems? ____________________________________________________ 
+
+program define ceo_ecosystem
+
+	syntax, file_prefix(str) vsn(str)
+	
+	preserve
+	
+		* sample restrictions as necessary
+		if "`vsn'" == "base" {
+			* restrict sample 
+				restrict_hosp_sample
+			* keep CEOs only
+				keep if char_ceo == 1
+		}
+		else if "`vsn'" == "ceo_2017" {
+			* identify CEOs in 2017
+			restrict_hosp_sample
+			gen is_ceo_2017 = year == 2017 & char_ceo == 1
+			bysort contact_uniqueid: egen was_ceo_2017 = max(is_ceo_2017)
+			keep if was_ceo_2017
+			drop is_ceo_2017 was_ceo_2017
+			
+			keep if year >= 2013
+			
+			* keep CEOs only
+			keep if char_ceo == 1
+		}
+		else if "`vsn'" == "ceo_2017_switch" {
+			* identify CEOs in 2017
+			restrict_hosp_sample
+			gen is_ceo_2017 = year == 2017 & char_ceo == 1
+			bysort contact_uniqueid: egen was_ceo_2017 = max(is_ceo_2017)
+			keep if was_ceo_2017
+			drop is_ceo_2017 was_ceo_2017
+			
+			keep if year >= 2013
+			
+			* keep CEOs only
+			keep if char_ceo == 1
+			
+			* keep only CEOs who worked at multiple hospitals in the sample period and add at least one new one
+				* multiple hosps
+			bysort contact_uniqueid entity_uniqueid: gen count_ceo_fac = 1 if _n == 1
+			bysort contact_uniqueid: egen tot_ceo_fac = total(count_ceo_fac)
+				* added hosps
+			gen added_hosp = !missing(added_hosp_ceo_entities)
+			bysort contact_uniqueid: egen ever_added_hosp = max(added_hosp)
+			keep if tot_ceo_fac > 1 & added_hosp ==1 
+			* could do by tagging the first obs of an entity_uniqueid for the CEOs list that isn't in 2013
+			
+			
+		}
+
 		* make sure unique
 		bysort contact_uniqueid entity_uniqueid year: gen duplicates = 1 if _n > 1
 		egen total_dup = total(duplicates)
-		assert total_dup == 2 // 2 facilities that end up with two CEOs in the same year
+		tab total_dup
 		drop if duplicates == 1
 		drop total_dup duplicates 
+			
+		* make CEO fp/nfp variables
+		gen ceo_nfp = char_ceo == 1 & forprofit == 0
+			replace ceo_nfp = . if missing(forprofit)
+		gen ceo_forprofit = char_ceo == 1 & forprofit == 1
+			replace ceo_forprofit = . if missing(forprofit)
 		
-	* make CEO fp/nfp variables
-	gen ceo_nfp = char_ceo == 1 & forprofit == 0
-		replace ceo_nfp = . if missing(forprofit)
-	gen ceo_forprofit = char_ceo == 1 & forprofit == 1
-		replace ceo_forprofit = . if missing(forprofit)
-	
-	* make EVER variables
-	bysort contact_uniqueid: egen ever_ceo_nfp = max(ceo_nfp)
-	bysort contact_uniqueid: egen ever_ceo_forprofit = max(ceo_forprofit)
-	
-	* make years variable
-	gen roles = 1
-	
-	collapse *ceo_nfp *ceo_forprofit (rawsum) roles (max) char_md, by(contact_uniqueid char_female)
-	* TEMP: keep most common
-	bysort contact_uniqueid (roles): keep if _n == _N
-	
-	sum ever_ceo_forprofit if ever_ceo_nfp == 1
-	sum ever_ceo_nfp if ever_ceo_forprofit ==1
-	
-	sum ever_ceo_forprofit if ever_ceo_nfp == 1 & char_female ==1
-	sum ever_ceo_forprofit if ever_ceo_nfp == 1 & char_female ==0
-	sum ever_ceo_nfp if ever_ceo_forprofit ==1 & char_female ==1
-	sum ever_ceo_nfp if ever_ceo_forprofit ==1 & char_female ==0
-	
-	* make variables for graphing
-	gen only_nonprofit_ceo = ever_ceo_forprofit == 0 & ever_ceo_nfp == 1
-		replace only_nonprofit_ceo = . if missing(ever_ceo_forprofit) | missing(ever_ceo_nfp) 
-	gen only_forprofit_ceo = ever_ceo_forprofit == 1 & ever_ceo_nfp == 0
-		replace only_forprofit_ceo = . if missing(ever_ceo_forprofit) | missing(ever_ceo_nfp) 
-	gen ever_both_ceo = ever_ceo_forprofit == 1 & ever_ceo_nfp == 1
-		replace ever_both_ceo = . if missing(ever_ceo_forprofit) | missing(ever_ceo_nfp) 
+		* make EVER variables
+		bysort contact_uniqueid: egen ever_ceo_nfp = max(ceo_nfp)
+		bysort contact_uniqueid: egen ever_ceo_forprofit = max(ceo_forprofit)
 		
-	tempfile base
-	save `base'
-	
-	* ALL
-	collapse only_nonprofit_ceo only_forprofit_ceo ever_both_ceo if ever_ceo_nfp
-	gen type = "NFP"
-	tempfile nfp
-	save `nfp'
-	
-	use `base', clear
-	collapse only_nonprofit_ceo only_forprofit_ceo ever_both_ceo if ever_ceo_forprofit
-	gen type = "For-Profit"
-	tempfile forprofit 
-	save `forprofit'
-
-	use `base', clear
-	collapse only_nonprofit_ceo only_forprofit_ceo ever_both_ceo
-	gen type = "All"
-	append using `nfp'
-	append using `forprofit'
-	
-	graph bar only_nonprofit_ceo only_forprofit_ceo ever_both_ceo, over(type) stack ///
-		ytitle("Share") ///
-		title("Has the CEO Ever Worked in Each Ownership Type?") ///
-		legend(order(1 "Only Non-Profit" 2 "Only For-Profit" 3 "Both")) ///
-		blabel(bar, format(%3.2f))
-		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_everceo_forprofit.pdf", as(pdf) name("Graph") replace
-	
-	* BY GENDER
-	use `base', clear
-	collapse only_nonprofit_ceo only_forprofit_ceo ever_both_ceo if ever_ceo_nfp, by(char_female)
-	gen type = "NFP"
-	tempfile nfp_female
-	save `nfp_female'
-	
-	use `base', clear
-	collapse only_nonprofit_ceo only_forprofit_ceo ever_both_ceo if ever_ceo_forprofit, by(char_female)
-	gen type = "For-Profit"
-	tempfile forprofit_female 
-	save `forprofit_female'
-
-	use `base', clear
-	collapse only_nonprofit_ceo only_forprofit_ceo ever_both_ceo, by(char_female)
-	gen type = "All"
-	append using `nfp_female'
-	append using `forprofit_female'
-	
-	graph bar only_nonprofit_ceo only_forprofit_ceo ever_both_ceo, over(char_female) over(type) stack ///
-		ytitle("Share") ///
-		title("Has the CEO Ever Worked in Each Ownership Type, by Gender") ///
-		legend(order(1 "Only Non-Profit" 2 "Only For-Profit" 3 "Both")) ///
-		blabel(bar, format(%3.2f))
-		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_everceo_forprofit_bygender.pdf", as(pdf) name("Graph") replace
+		* make years variable
+		gen roles = 1
 		
-	* BY MD
-	use `base', clear
-	collapse only_nonprofit_ceo only_forprofit_ceo ever_both_ceo if ever_ceo_nfp, by(char_md)
-	gen type = "NFP"
-	tempfile nfp_md
-	save `nfp_md'
-	
-	use `base', clear
-	collapse only_nonprofit_ceo only_forprofit_ceo ever_both_ceo if ever_ceo_forprofit, by(char_md)
-	gen type = "For-Profit"
-	tempfile forprofit_md 
-	save `forprofit_md'
+		collapse *ceo_nfp *ceo_forprofit (rawsum) roles (max) char_md, by(contact_uniqueid char_female)
+		* TEMP: keep most common
+		bysort contact_uniqueid (roles): keep if _n == _N
+		
+		sum ever_ceo_forprofit if ever_ceo_nfp == 1
+		sum ever_ceo_nfp if ever_ceo_forprofit ==1
+		
+		sum ever_ceo_forprofit if ever_ceo_nfp == 1 & char_female ==1
+		sum ever_ceo_forprofit if ever_ceo_nfp == 1 & char_female ==0
+		sum ever_ceo_nfp if ever_ceo_forprofit ==1 & char_female ==1
+		sum ever_ceo_nfp if ever_ceo_forprofit ==1 & char_female ==0
+		
+		* make variables for graphing
+		gen only_nonprofit_ceo = ever_ceo_forprofit == 0 & ever_ceo_nfp == 1
+			replace only_nonprofit_ceo = . if missing(ever_ceo_forprofit) | missing(ever_ceo_nfp) 
+		gen only_forprofit_ceo = ever_ceo_forprofit == 1 & ever_ceo_nfp == 0
+			replace only_forprofit_ceo = . if missing(ever_ceo_forprofit) | missing(ever_ceo_nfp) 
+		gen ever_both_ceo = ever_ceo_forprofit == 1 & ever_ceo_nfp == 1
+			replace ever_both_ceo = . if missing(ever_ceo_forprofit) | missing(ever_ceo_nfp) 
+			
+		tempfile base
+		save `base'
+		
+		* ALL
+		collapse only_nonprofit_ceo only_forprofit_ceo ever_both_ceo if ever_ceo_nfp
+		gen type = "NFP"
+		tempfile nfp
+		save `nfp'
+		
+		use `base', clear
+		collapse only_nonprofit_ceo only_forprofit_ceo ever_both_ceo if ever_ceo_forprofit
+		gen type = "For-Profit"
+		tempfile forprofit 
+		save `forprofit'
 
-	use `base', clear
-	collapse only_nonprofit_ceo only_forprofit_ceo ever_both_ceo, by(char_md)
-	gen type = "All"
-	append using `nfp_md'
-	append using `forprofit_md'
+		use `base', clear
+		collapse only_nonprofit_ceo only_forprofit_ceo ever_both_ceo
+		gen type = "All"
+		append using `nfp'
+		append using `forprofit'
+		
+		graph bar only_nonprofit_ceo only_forprofit_ceo ever_both_ceo, over(type) stack ///
+			ytitle("Share") ///
+			title("Has the CEO Ever Worked in Each Ownership Type?") ///
+			legend(order(1 "Only Non-Profit" 2 "Only For-Profit" 3 "Both")) ///
+			blabel(bar, format(%3.2f))
+			graph export "${overleaf}/notes/CEO Descriptives/figures/`file_prefix'.pdf", as(pdf) name("Graph") replace
+		
+		* BY GENDER
+		use `base', clear
+		collapse only_nonprofit_ceo only_forprofit_ceo ever_both_ceo if ever_ceo_nfp, by(char_female)
+		gen type = "NFP"
+		tempfile nfp_female
+		save `nfp_female'
+		
+		use `base', clear
+		collapse only_nonprofit_ceo only_forprofit_ceo ever_both_ceo if ever_ceo_forprofit, by(char_female)
+		gen type = "For-Profit"
+		tempfile forprofit_female 
+		save `forprofit_female'
+
+		use `base', clear
+		collapse only_nonprofit_ceo only_forprofit_ceo ever_both_ceo, by(char_female)
+		gen type = "All"
+		append using `nfp_female'
+		append using `forprofit_female'
+		
+		graph bar only_nonprofit_ceo only_forprofit_ceo ever_both_ceo, over(char_female) over(type) stack ///
+			ytitle("Share") ///
+			title("Has the CEO Ever Worked in Each Ownership Type, by Gender") ///
+			legend(order(1 "Only Non-Profit" 2 "Only For-Profit" 3 "Both")) ///
+			blabel(bar, format(%3.2f))
+			graph export "${overleaf}/notes/CEO Descriptives/figures/`file_prefix'_bygender.pdf", as(pdf) name("Graph") replace
+			
+		* BY MD
+		use `base', clear
+		collapse only_nonprofit_ceo only_forprofit_ceo ever_both_ceo if ever_ceo_nfp, by(char_md)
+		gen type = "NFP"
+		tempfile nfp_md
+		save `nfp_md'
+		
+		use `base', clear
+		collapse only_nonprofit_ceo only_forprofit_ceo ever_both_ceo if ever_ceo_forprofit, by(char_md)
+		gen type = "For-Profit"
+		tempfile forprofit_md 
+		save `forprofit_md'
+
+		use `base', clear
+		collapse only_nonprofit_ceo only_forprofit_ceo ever_both_ceo, by(char_md)
+		gen type = "All"
+		append using `nfp_md'
+		append using `forprofit_md'
+		
+		cap label define degree_md 0 "No MD" 1 "Has MD"
+		cap label values char_md degree_md
+		
+		graph bar only_nonprofit_ceo only_forprofit_ceo ever_both_ceo, over(char_md) over(type) stack ///
+			ytitle("Share") ///
+			title("Has the CEO Ever Worked in Each Ownership Type, by CEO MD") ///
+			legend(order(1 "Only Non-Profit" 2 "Only For-Profit" 3 "Both")) ///
+			blabel(bar, format(%3.2f))
+			graph export "${overleaf}/notes/CEO Descriptives/figures/`file_prefix'_bymd.pdf", as(pdf) name("Graph") replace
+		
+	restore
+end
+
+* run CEO ecosystem descriptives 
+	* for all CEOs
+	ceo_ecosystem, vsn(base) file_prefix(descr_everceo_forprofit)
 	
-	cap label define degree_md 0 "No MD" 1 "Has MD"
-	cap label values char_md degree_md
+	* for all people who were CEOs in 2017, 5-year lookback
+	ceo_ecosystem, vsn(ceo_2017) file_prefix(descr_ceo_2017_forprofit)
+		
+	* for all people who were CEOs in 2017, 5-year lookback, who switched CEO roles
+		* look at people who have been CEOs at two or more facilities in the window
+		* optionally can look at people who also have added a CEO job in the window using added_hosp_ceo_entities
+	ceo_ecosystem, vsn(ceo_2017_switch) file_prefix(descr_ceo_2017_switch_forprofit)
 	
-	graph bar only_nonprofit_ceo only_forprofit_ceo ever_both_ceo, over(char_md) over(type) stack ///
-		ytitle("Share") ///
-		title("Has the CEO Ever Worked in Each Ownership Type, by CEO MD") ///
-		legend(order(1 "Only Non-Profit" 2 "Only For-Profit" 3 "Both")) ///
-		blabel(bar, format(%3.2f))
-		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_everceo_forprofit_bymd.pdf", as(pdf) name("Graph") replace
+
+* TESTING HOSP ECOSYSTEM SUFF. STAT
+	* get the shares of FP/NFP for each year
+	preserve
+		restrict_hosp_sample
+		keep if char_ceo == 1
+		collapse mean_forprofit=forprofit, by(year)
+		tempfile annual_profitshares
+		save `annual_profitshares'
+	restore
+	*preserve
+		restrict_hosp_sample
+		
+		gen is_ceo_2017 = year == 2017 & char_ceo == 1
+		bysort contact_uniqueid: egen was_ceo_2017 = max(is_ceo_2017)
+		keep if was_ceo_2017
+		drop is_ceo_2017 was_ceo_2017
+			
+		* keep CEOs only
+		keep if char_ceo == 1
+		
+		* 5 year lookback + 1 for lag
+		keep if year >= 2012
+		
+		* identify added observations
+		* could do by tagging the first obs of an entity_uniqueid for the CEOs list that isn't in 2013
+		bysort contact_uniqueid entity_uniqueid (year): gen added_ceo = (_n == 1 & year > 2012)
+		
+		* 5 year lookback
+		keep if year >= 2013
+		
+		* keep only CEOs who worked at multiple hospitals in the sample period and add at least one new one
+			* multiple hosps
+		bysort contact_uniqueid entity_uniqueid: gen count_ceo_fac = 1 if _n == 1
+		bysort contact_uniqueid: egen tot_ceo_fac = total(count_ceo_fac)
+			* added hosps
+		gen added_hosp = !missing(added_hosp_ceo_entities)
+		bysort contact_uniqueid: egen ever_added_hosp = max(added_hosp)
+		keep if tot_ceo_fac > 1 & added_hosp ==1 
+		
+		* pull in annual profit shares
+		merge m:1 year using `annual_profitshares', keep(1 3) nogen
+		
+		* collapse to n moves and average profit shares 
+		collapse forprofit mean_forprofit (rawsum) added_ceo, by(contact_uniqueid)
+		
+		* make indicator for having worked in both
+		gen both = (forprofit > 0 & forprofit < 1) if !missing(forprofit)
+		
+		sum both 
+		
+		* gen simulated outcome 
+		* = (share currently in FP) * (1 - prob. their previous hospitals were all FP) + (share currently in NFP) * (1 - prob. their previous hospitals were all NFP)
+		gen churn = mean_forprofit * (1 - mean_forprofit^(added_ceo)) + (1-mean_forprofit)*(1 - (1-mean_forprofit)^(added_ceo))
+		egen all_N = total(added_ceo)
+		gen weight = added_ceo / all_N
+		gen weighted_churn = churn*weight
+		
+		sum churn [iw=added_ceo]
+		
+		collapse both (rawsum) weighted_churn
+		
+		label var both "Observed"
+		label var weighted_churn "Random Churn"
+		
+		xpose , clear varname
+		gen category = "Observed" if _varname == "both"
+		replace category = "Random Churn" if _varname == "weighted_churn"
+		
+		graph bar v1, over(category) title("Share of CEOs with Experience at FP and NFP") subtitle("2017 5-year lookback") blabel(bar) ytitle("Percent of 2017 CEOs")
+		
 	
-restore	
+	restore
 	

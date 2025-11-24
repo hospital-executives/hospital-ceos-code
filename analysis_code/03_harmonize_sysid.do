@@ -26,7 +26,7 @@ Goal: 			Clean system ID variable from Cooper et al data
 	
 * creating our own variable
 
-* ion each year, find the modal entity_uniqueid_parent for each sysid, and vice versa
+* in each year, find the modal entity_uniqueid_parent for each sysid, and vice versa
 * then check if they agree on the specific system for different observations. 	
 
 * FIND MODAL OBS
@@ -134,7 +134,7 @@ Goal: 			Clean system ID variable from Cooper et al data
 		keep if is_hospital ==1 & _merge_entity_aha == 3
 		collapse (rawsum) syschng* tar, by(year)
 		graph bar syschng_system_id syschng_sysid tar, over(year) ///
-			legend(position(bottom) label(1 "HIMSS Data - Sytem ID Change") label(2 "M&A Data - Sytem ID Change") label(3 "M&A Data Target")) ///
+			legend(position(bottom) label(1 "HIMSS Data - System ID Change") label(2 "M&A Data - System ID Change") label(3 "M&A Data Target")) ///
 			title("Count of System M&A Events by Year") ///
 			blabel(bar, size(vsmall))
 		graph export "${overleaf}/notes/M&A Merge/figures/counts_syschng_byyear.pdf", as(pdf) name("Graph") replace
@@ -144,7 +144,7 @@ Goal: 			Clean system ID variable from Cooper et al data
 		keep if is_hospital ==1 & _merge_entity_aha == 3
 		collapse syschng* tar, by(year)
 		graph bar syschng_system_id syschng_sysid tar, over(year) ///
-			legend(position(bottom) label(1 "HIMSS Data - Sytem ID Change") label(2 "M&A Data - Sytem ID Change") label(3 "M&A Data Target")) ///
+			legend(position(bottom) label(1 "HIMSS Data - System ID Change") label(2 "M&A Data - System ID Change") label(3 "M&A Data Target")) ///
 			title("Share of Facilities With System M&A Events by Year") ///
 			blabel(bar, size(vsmall) format(%4.3f))
 		graph export "${overleaf}/notes/M&A Merge/figures/shares_syschng_byyear.pdf", as(pdf) name("Graph") replace
@@ -186,7 +186,7 @@ Goal: 			Clean system ID variable from Cooper et al data
 	restore
 	
 	* create example file for RA
-// 	preserve
+ 	preserve
 		* reduce sample 
 		restrict_hosp_sample
 		
@@ -208,6 +208,22 @@ Goal: 			Clean system ID variable from Cooper et al data
 		gen aha_misschange = tar == 0 & syschng_system_id == 1
 		bysort entity_uniqueid: egen ever_entity_misschange = max(entity_misschange)
 		bysort entity_uniqueid: egen ever_aha_misschange = max(aha_misschange)
+		
+		* make a list of unique sysids ever observed at that facility
+		bysort entity_uniqueid (year sysid): gen sysid_list = ""
+		bysort entity_uniqueid (year): replace sysid_list = sysid if _n == 1
+		bysort entity_uniqueid (year sysid): replace sysid_list = ///
+			 cond(_n == 1, sysid, ///
+				 cond(!strpos(sysid_list[_n-1], sysid) & _n > 1, ///
+					  sysid_list[_n-1] + " " + sysid, ///
+					  sysid_list[_n-1]))
+		bysort entity_uniqueid (year): replace sysid_list = sysid if _n == 1
+		bysort entity_uniqueid (year): replace sysid_list = sysid_list[_N]
+		replace sysid_list = "" if sysid_list == " "
+
+		* sort by most observed to get an order variable
+		bysort sysid_list: gen num_sys_obs = _N if sysid_list != ""
+		gsort -num_sys_obs entity_uniqueid year 
 		
 		* save a version for RA
 		save "${dbdata}/derived/temp/merge_checks_RA.dta", replace
@@ -240,8 +256,55 @@ Goal: 			Clean system ID variable from Cooper et al data
 				& entity_type_parent[_n-1] == "IDS/RHA" // only apply to former system-owned
 			bysort entity_uniqueid: egen ever_v2_tar_sys = max(v2_tar_sys)
 			
+			* make separate M&A variables for system and facility
+			egen sys_ma = rowmax(v1_tar_sys v2_tar_sys)
+			gen fac_ma = tar == 1 & sys_ma != 1
+			
+			keep entity_uniqueid year sys_ma fac_ma
+			tempfile separate_ma
+			save `separate_ma'
 	
 	restore
+	
+	merge m:1 entity_uniqueid year using `separate_ma', generate(_merge_sep)
+	
+* make a count of each one by year 
+	preserve
+		keep if is_hospital ==1 & _merge_entity_aha == 3
+		collapse (rawsum) sys_ma fac_ma, by(year)
+		graph bar sys_ma fac_ma, over(year) ///
+			legend(position(bottom) label(1 "System M&A") label(2 "Facility M&A")) ///
+			title("Count of M&A Events by Year and Type") ///
+			blabel(bar, size(vsmall))
+		graph export "${overleaf}/notes/M&A Merge/figures/counts_ma_type.pdf", as(pdf) name("Graph") replace
+	restore
+	
+* remake M&A tables with separate acquisition types
+	preserve
+		keep if is_hospital ==1 & _merge_entity_aha == 3
+		gen ma_type = "System" if sys_ma == 1
+		replace ma_type = "Facility" if fac_ma == 1
+		collapse (rawsum) syschng* tar, by(year ma_type)
+		* system 
+		graph bar syschng_system_id syschng_sysid tar if ma_type == "System", over(year) ///
+			legend(position(bottom) label(1 "HIMSS Data - System ID Change") label(2 "M&A Data - System ID Change") label(3 "M&A Data Target")) ///
+			title("Count of System M&A Events by Year: System M&A") ///
+			blabel(bar, size(vsmall))
+		graph export "${overleaf}/notes/M&A Merge/figures/counts_syschng_byyear_sys_ma.pdf", as(pdf) name("Graph") replace
+		* facility 
+		graph bar syschng_system_id syschng_sysid tar if ma_type == "Facility", over(year) ///
+			legend(position(bottom) label(1 "HIMSS Data - System ID Change") label(2 "M&A Data - System ID Change") label(3 "M&A Data Target")) ///
+			title("Count of System M&A Events by Year: Facility M&A") ///
+			blabel(bar, size(vsmall))
+		graph export "${overleaf}/notes/M&A Merge/figures/counts_syschng_byyear_fac_ma.pdf", as(pdf) name("Graph") replace
+		* facility 
+		graph bar syschng_system_id syschng_sysid tar if ma_type == "", over(year) ///
+			legend(position(bottom) label(1 "HIMSS Data - System ID Change") label(2 "M&A Data - System ID Change") label(3 "M&A Data Target")) ///
+			title("Count of System M&A Events by Year: No Recorded M&A") ///
+			blabel(bar, size(vsmall))
+		graph export "${overleaf}/notes/M&A Merge/figures/counts_syschng_byyear_no_ma.pdf", as(pdf) name("Graph") replace
+	restore
+	
 	
 	
 * reduce sample to info needed for crosswalking to indiv. file _________________

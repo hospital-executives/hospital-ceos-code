@@ -48,4 +48,8 @@ Goal: 			Master do-file for Hospital CEOs analysis.
 * M&A descriptives
 	do "${github}/analysis_code/06_mergers_acq_descriptives.do"
 
-
+* Make files for TraMineR
+	do "${github}/analysis_code/07_make_wide_traminer_files.do"
+	
+* Event studies
+// 	do "${github}/analysis_code/event_study_stats.do"

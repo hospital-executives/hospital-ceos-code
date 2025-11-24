@@ -17,8 +17,7 @@ Goal: 			Look at CEO trends around M&A events
 	
 * make status variable _________________________________________________________
 
-/*
-Notes to think about: 
+/* Notes to think about: 
 
 *	What about hospitals that aren't in our sample, but they're "hosps"?
 	I'm going to call them non-hospital facilities I think

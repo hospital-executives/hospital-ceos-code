@@ -78,7 +78,7 @@ Goal: 			Set globals for Hospital CEOs analysis
 		gen partofsample = 1 if inlist(type,"General Medical","General Medical & Surgical","Critical Access")
 		bysort entity_uniqueid: egen ever_partofsample = max(partofsample)
 		keep if ever_partofsample == 1
-		drop ever_partofsample
+		drop ever_partofsample partofsample
 	
 
 
