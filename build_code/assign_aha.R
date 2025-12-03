@@ -100,7 +100,7 @@ update_titles <- himss %>%
   group_by(contact_uniqueid, year) %>%
   mutate(num_titles = n_distinct(title_standardized)) %>%
   ungroup() %>%
-  filter(!(title_standardized == "CIO Reports to" & num_titles > 1 & ceo_himss_title_general == FALSE)) %>%
+  filter(!(title_standardized == "CIO Reports to" & ceo_himss_title_general == FALSE)) %>%
   select(-num_titles) 
 
 himss_mini <- update_titles %>% # confirmed

@@ -1,22 +1,8 @@
 
-import subprocess
 import sys
 import os
+import pandas as pd
 # import pkg_resources
-
-# Automate package installation
-def install(package):
-    try:
-        # Try installing using pip
-        subprocess.check_call([sys.executable, "-m", "pip", "install", package])
-    except subprocess.CalledProcessError as e:
-        print(f"Failed to install {package} using pip. Trying with pip3...")
-        try:
-            # If pip is not found, try with pip3
-            subprocess.check_call([sys.executable, "-m", "pip3", "install", package])
-        except subprocess.CalledProcessError as e:
-            print(f"Failed to install {package} using both pip and pip3. Please check your Python and pip installation.")
-
 
 # specify data path 
 data_path = "/Users/katherinepapen/Library/CloudStorage/Dropbox/hospital_ceos/_data"
@@ -44,20 +30,6 @@ else:
     remaining_1 = os.path.join(data_path, "derived/auxiliary/remaining_1.csv")
     himss_1 = os.path.join(data_path, "derived/auxiliary/himss_1.csv")
     nicknames_path = os.path.join(data_path, "derived/auxiliary/himss_nicknames.csv")
-
-# install packages
-required_path = os.path.join(code_dir, "helper_scripts/py_requirements.txt")
-with open(required_path, 'r') as f:
-    required = {pkg.strip() for pkg in f if pkg.strip() and not pkg.startswith('#')}
-
-# import packages
-for package in required:
-    try:
-        __import__(package)  # Try to import the package
-    except ImportError:
-        install(package)
-
-import pandas as pd
 
 cleaned_r_path = str(confirmed_r)
 remaining_r_path = str(remaining_r)
