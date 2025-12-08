@@ -1010,7 +1010,9 @@ Goal: 			Compute descriptive stats for CEOs
 		keep if pre_turnover_csuite == 1
 		collapse pre_turnover dest_match1 missing_ceo_dest ceo_char_female forprofit, by(entity_uniqueid year)
 		tab dest_match1 if missing_ceo_dest == 0
-		tab ceo_char_female if missing_ceo_dest == 0, sum(dest_match1)
+		gen matches = dest_match1 > 0 if !missing(dest_match1)
+		tab ceo_char_female if missing_ceo_dest == 0, sum(matches)
+		tab forprofit if missing_ceo_dest == 0, sum(matches)
 		
 	
 	restore
@@ -1625,20 +1627,49 @@ end
 	preserve
 		restrict_hosp_sample
 		keep if char_ceo == 1
-		collapse mean_forprofit=forprofit, by(year)
+		
+		* number of HRRs by year
+		bysort contact_uniqueid year hrrnum: gen dup = _n == 1
+		by contact_uniqueid year: egen n_unique_hrr = total(dup)
+ 		gen multiple_hrr = n_unique_hrr > 1
+
+		* Bed count: above or below median 
+		destring bdtot, replace
+		bysort year: egen med_bed = median(bdtot)
+		gen bed_high = bdtot > med_bed
+		
+		* System owned 
+		gen sys_owned = entity_type_parent == "IDS/RHA" // no missing values
+		
+		* collapse 
+		collapse mean_forprofit=forprofit mean_sys_owned=sys_owned mean_bed_high=bed_high mean_multiple_hrr=multiple_hrr, by(year)
 		tempfile annual_profitshares
 		save `annual_profitshares'
 	restore
 	*preserve
 		restrict_hosp_sample
+		* keep CEOs only
+		keep if char_ceo == 1
 		
+		* keep only people who were CEOs in 2017
 		gen is_ceo_2017 = year == 2017 & char_ceo == 1
 		bysort contact_uniqueid: egen was_ceo_2017 = max(is_ceo_2017)
 		keep if was_ceo_2017
 		drop is_ceo_2017 was_ceo_2017
-			
-		* keep CEOs only
-		keep if char_ceo == 1
+		
+		* number of HRRs by year
+		bysort contact_uniqueid year hrrnum: gen dup = _n == 1
+		by contact_uniqueid year: egen n_unique_hrr = total(dup)
+ 		gen multiple_hrr = n_unique_hrr > 1
+
+		* Bed count: above or below median 
+		destring bdtot, replace
+		bysort year: egen med_bed = median(bdtot)
+		gen bed_high = bdtot > med_bed
+		
+		* system ownership variable
+		gen sys_owned = entity_type_parent == "IDS/RHA"
+		tab sys_owned
 		
 		* 5 year lookback + 1 for lag
 		keep if year >= 2012
@@ -1659,37 +1690,79 @@ end
 		bysort contact_uniqueid: egen ever_added_hosp = max(added_hosp)
 		keep if tot_ceo_fac > 1 & added_hosp ==1 
 		
-		* pull in annual profit shares
+		* pull in annual profit shares and system ownership
 		merge m:1 year using `annual_profitshares', keep(1 3) nogen
 		
 		* collapse to n moves and average profit shares 
-		collapse forprofit mean_forprofit (rawsum) added_ceo, by(contact_uniqueid)
+		collapse forprofit sys_owned mean_forprofit mean_sys_owned bed_high mean_bed_high multiple_hrr mean_multiple_hrr (rawsum) added_ceo, by(contact_uniqueid)
 		
 		* make indicator for having worked in both
-		gen both = (forprofit > 0 & forprofit < 1) if !missing(forprofit)
+		gen both_fp = (forprofit > 0 & forprofit < 1) if !missing(forprofit)
+		gen both_sys = (sys_owned > 0 & sys_owned <1) if !missing(sys_owned)
+		gen both_bed = (bed_high > 0 & bed_high < 1) if !missing(bed_high)
+		gen both_hrr = (multiple_hrr > 0) if !missing(multiple_hrr)
 		
-		sum both 
+		sum both_fp
+		sum both_sys 
 		
 		* gen simulated outcome 
-		* = (share currently in FP) * (1 - prob. their previous hospitals were all FP) + (share currently in NFP) * (1 - prob. their previous hospitals were all NFP)
-		gen churn = mean_forprofit * (1 - mean_forprofit^(added_ceo)) + (1-mean_forprofit)*(1 - (1-mean_forprofit)^(added_ceo))
 		egen all_N = total(added_ceo)
 		gen weight = added_ceo / all_N
-		gen weighted_churn = churn*weight
 		
-		sum churn [iw=added_ceo]
+		* = (share currently in FP) * (1 - prob. their previous hospitals were all FP) + (share currently in NFP) * (1 - prob. their previous hospitals were all NFP)
+		gen churn_fp = mean_forprofit * (1 - mean_forprofit^(added_ceo)) + (1-mean_forprofit)*(1 - (1-mean_forprofit)^(added_ceo))
+		gen weighted_churn_fp = churn_fp*weight
+		sum churn_fp [iw=added_ceo]
 		
-		collapse both (rawsum) weighted_churn
+		* for systems
+		gen churn_sys = mean_sys_owned * (1 - mean_sys_owned^(added_ceo)) + (1-mean_sys_owned)*(1 - (1-mean_sys_owned)^(added_ceo))
+		gen weighted_churn_sys = churn_sys*weight
+		sum churn_sys [iw=added_ceo]
 		
-		label var both "Observed"
-		label var weighted_churn "Random Churn"
+		* for beds
+		gen churn_bed = mean_bed_high * (1 - mean_bed_high^(added_ceo)) + (1-mean_bed_high)*(1 - (1-mean_bed_high)^(added_ceo))
+		gen weighted_churn_bed = churn_bed*weight
+		sum churn_bed [iw=added_ceo]
+		
+		* for multiple HRRs
+		gen churn_hrr = mean_multiple_hrr * (1 - mean_multiple_hrr^(added_ceo)) + (1-mean_multiple_hrr)*(1 - (1-mean_multiple_hrr)^(added_ceo))
+		gen weighted_churn_hrr = churn_hrr*weight
+		sum churn_hrr [iw=added_ceo]
+		
+		* collapse
+		collapse both_fp both_sys both_bed both_hrr (rawsum) weighted_churn_fp weighted_churn_sys weighted_churn_bed weighted_churn_hrr
+		
+		label var both_fp "Observed"
+		label var weighted_churn_fp "Random Churn"
 		
 		xpose , clear varname
-		gen category = "Observed" if _varname == "both"
-		replace category = "Random Churn" if _varname == "weighted_churn"
+		gen category = "Observed" if _varname == "both_fp"
+		replace category = "Random Churn" if _varname == "weighted_churn_fp"
 		
-		graph bar v1, over(category) title("Share of CEOs with Experience at FP and NFP") subtitle("2017 5-year lookback") blabel(bar) ytitle("Percent of 2017 CEOs")
+		graph bar v1 if !missing(category), over(category) title("Share of CEOs with Experience at FP and NFP") subtitle("2017 5-year lookback") blabel(bar) ytitle("Percent of 2017 CEOs")
+		graph export "${overleaf}/notes/CEO Descriptives/figures/ceomarkets_fp.pdf", as(pdf) name("Graph") replace
 		
-	
+		replace category = ""
+		replace category = "Observed" if _varname == "both_sys"
+		replace category = "Random Churn" if _varname == "weighted_churn_sys"
+		
+		graph bar v1 if !missing(category), over(category) title("% CEOs with Experience at System-Owned & Independent Hosps") subtitle("2017 5-year lookback") blabel(bar) ytitle("Percent of 2017 CEOs")
+		graph export "${overleaf}/notes/CEO Descriptives/figures/ceomarkets_sys.pdf", as(pdf) name("Graph") replace
+		
+		replace category = ""
+		replace category = "Observed" if _varname == "both_bed"
+		replace category = "Random Churn" if _varname == "weighted_churn_bed"
+		
+		graph bar v1 if !missing(category), over(category) title("% CEOs with Experience at Large and Small Hosps") subtitle("2017 5-year lookback") blabel(bar) ytitle("Percent of 2017 CEOs")
+		graph export "${overleaf}/notes/CEO Descriptives/figures/ceomarkets_bed.pdf", as(pdf) name("Graph") replace
+
+		replace category = ""
+		replace category = "Observed" if _varname == "both_hrr"
+		replace category = "Random Churn" if _varname == "weighted_churn_hrr"
+		
+		graph bar v1 if !missing(category), over(category) title("% CEOs with Experience at Multiple HRRs") subtitle("2017 5-year lookback") blabel(bar) ytitle("Percent of 2017 CEOs")
+		graph export "${overleaf}/notes/CEO Descriptives/figures/ceomarkets_hrr.pdf", as(pdf) name("Graph") replace
+
+		
 	restore
 	
