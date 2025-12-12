@@ -13,8 +13,21 @@ Goal: 			Generate event study plots with heterogeneity by where CEOs in the
 *----------------------------------------------------------
 * Load data and restrict to correct sample
 *----------------------------------------------------------
+use "${dbdata}/derived/temp/updated_trajectories.dta", clear
+
+preserve 
 	use "${dbdata}/derived/temp/merged_ma_sysid_xwalk.dta", clear
+	duplicates tag entity_uniqueid year tar, gen(dup_tag)
+	assert dup_tag == 0
+	drop dup_tag
 	
+	duplicates drop entity_uniqueid tar year, force
+
+	tempfile tar_file
+	save `tar_file'
+restore 
+merge 1:1 entity_uniqueid year using `tar_file', assert(master using matched) keep(master matched) gen(_merge_1)
+
 * merge in type 
 preserve
 	use "${dbdata}/derived/temp/merged_ma_nonharmonized.dta", clear
@@ -22,71 +35,46 @@ preserve
 	
 	tempfile himss_type_xwalk
 	save `himss_type_xwalk'
+	
+	* Create entity-level crosswalk for entities with unique type
+	keep entity_uniqueid type
+	duplicates drop
+	duplicates tag entity_uniqueid, gen(dup)
+	keep if dup == 0  // keep only entities with one unique type
+	drop dup
+	rename type type_entity
+	
+	tempfile himss_type_entity
+	save `himss_type_entity'
 restore
 
-merge 1:1 entity_uniqueid year using `himss_type_xwalk', assert(master match) keep(match) nogen
+* First merge on year
+merge 1:1 entity_uniqueid year using `himss_type_xwalk', keep(master matched) gen(_merge_year)
+merge m:1 entity_uniqueid using `himss_type_entity', keep(master matched) gen(_merge_entity)
+replace type = type_entity if _merge_year == 1 & _merge_entity == 3
+replace is_hospital = 1 if _merge_1 == 1
 
 * restrict to hospital sample
 restrict_hosp_sample
 make_outcome_vars 
 make_target_sample
 
-// build data set of people who are CEOs in time t (leader_in_prev == 1)
-// and where they are in time t + 1
-frame create individual_char
-frame change individual_char
+preserve
+use "/Users/katherinepapen/Dropbox/hospital_ceos/turnover_export.dta", clear
+rename ceo_turnover1 old_ceo_turnover1
+tempfile turnover_data
+save `turnover_data'
+restore
 
-	use "${dbdata}/derived/individuals_final.dta", clear
+merge m:1 entity_uniqueid year using `turnover_data'
 
-	keep contact_uniqueid year all_leader_flag entity_aha haentitytypeid sysid entity_uniqueid bdtot
-	tostring contact_uniqueid, replace
-
-	rename ///
-	(contact_uniqueid entity_aha haentitytypeid all_leader_flag sysid entity_uniqueid bdtot) ///
-	(contact_lag1 prev_ceo_aha_id prev_ceo_haentitytypeid prev_ceo_all_leader_flag prev_ceo_sysid prev_ceo_entity_uniqueid prev_ceo_bdtot)
-	
-	keep year contact_lag1 prev* 
-	bys contact_lag1 year: keep if _n == 1
-
-	tempfile individual_characteristics
-	save `individual_characteristics'
-
-frame change default
-frame drop individual_char
-
-destring aha_id, replace
-merge m:1 contact_lag1 year using `individual_characteristics', assert(master match using) keep (master match) gen(_prev_ceo_merge)
-
-frame create ceo_ids
-frame change ceo_ids
-
-	use "${dbdata}/derived/individuals_final.dta", clear
-	keep if entity_aha != . & all_leader_flag == 1
-	tostring contact_uniqueid, replace
-	
-	keep contact_uniqueid year entity_aha
-	
-	bys entity_aha year: egen n_unique_contacts = nvals(contact_uniqueid)
-	gen multi_contact = n_unique_contacts > 1	
-	drop if multi_contact == 1
-	bys entity_aha year: keep if _n == 1
-	
-	rename entity_aha aha_id
-	
-	tempfile current_ceo_ids
-	save `current_ceo_ids'
-
-frame change default
-frame drop ceo_ids
-
-merge m:1 aha_id year using `current_ceo_ids', assert(master match using) keep (match)
 
 // get missing
-gen prev_left = _prev_ceo_merge == 1 & ceo_turnover1 == 1
-gen prev_oth_hospital =  !missing(contact_lag1) & ceo_turnover1 == 1 & prev_left == 0 & prev_ceo_aha_id != aha_id
-gen prev_same_hospital = !missing(contact_lag1) & ceo_turnover1 == 1 & prev_left == 0 & prev_ceo_aha_id == aha_id
+gen prev_left = exists_future == 0 & ceo_turnover1 == 1 // 1,141  / 4219
+gen prev_oth_hospital =  !missing(contact_lag1) & ceo_turnover1 == 1 & exists_future == 1 & future_at_same_hospital == 0 // 225
+gen prev_same_hospital = !missing(contact_lag1) & ceo_turnover1 == 1 & exists_future == 1 & future_at_same_hospital == 1 // 2759
 
-save "${dbdata}/derived/temp/event_data.dta", replace
+// save "${dbdata}/derived/temp/event_data.dta", replace
 
 // get additional ceo turnover measures
 gen prev_oth_hospital_diff_sys = prev_ceo_sysid != sysid_ma & ceo_turnover1 == 1 & prev_oth_hospital == 1

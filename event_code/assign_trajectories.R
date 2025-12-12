@@ -104,7 +104,7 @@ mini_with_flags <- mini %>%
 
 # prepare export
 export <- mini_with_flags %>%
-  distinct(entity_uniqueid, entity_aha, year, 
+  distinct(entity_uniqueid, entity_aha, sysid, year, 
            contact_uniqueid, confirmed, char_ceo, std_ceo,
            exists_future, sys_future, hosp_future, non_hosp_future, leader_future,
            future_at_same_hospital, future_at_same_sys,
@@ -200,7 +200,7 @@ merged <- backfilled_obs %>%
   ungroup()
   
 missing_export <- merged %>%
-  distinct(entity_uniqueid, entity_aha, year, 
+  distinct(entity_uniqueid, entity_aha, sysid, year, 
            contact_uniqueid, 
            exists_future, sys_future, hosp_future, non_hosp_future, leader_future,
            future_at_same_hospital, future_at_same_sys,
@@ -222,15 +222,12 @@ missing_export <- merged %>%
     (distinct_next_sys == 1 & !is.na(next_year_sys)) |
     (outliers & sysid != next_year_sys)
   ) %>%
-  select(-num_obs, -distinct_next_sys, -outliers, -sysid)
+  select(-num_obs, -distinct_next_sys, -outliers)
 
+updated_export <- export %>% mutate(imputed = FALSE) %>% 
+  anti_join(missing_export %>% distinct(entity_uniqueid, entity_aha, year, contact_uniqueid))
 
-combined_export <- rbind(missing_export, 
-                         export %>% mutate(imputed = FALSE) %>% 
-                          anti_join(
-                            missing_export %>% 
-                            distinct(entity_uniqueid, entity_aha, year, contact_uniqueid)
-                          ))
+combined_export <- rbind(missing_export, updated_export)
 
 final_export <- filled_indiv %>% 
   left_join(combined_export, by = c("entity_uniqueid", "year", "contact_uniqueid")) %>% 
@@ -240,12 +237,56 @@ final_export <- filled_indiv %>%
   group_by(entity_uniqueid, year) %>%
   mutate(mult_contacts = n_distinct(contact_uniqueid) > 1,
          mult_obs = n() > 1) %>% 
+  ungroup() 
+
+cleaned <- final_export %>% 
+  mutate(
+    aha_id = ifelse(is.na(aha_id), entity_aha, aha_id),
+    sysid = case_when(
+      !is.na(sysid.x) ~ sysid.x,
+      !is.na(sysid.y) ~ sysid.y,
+      TRUE ~ NA
+    )) %>% select(-sysid.x, -sysid.y) %>%
+  group_by(contact_uniqueid) %>%
+  mutate(confirmed = all(confirmed, na.rm = TRUE) & any(confirmed, na.rm = TRUE)) %>%
   ungroup()
 
-mults <- final_export %>% filter(mult_obs) %>% distinct() %>% arrange(entity_uniqueid, year)
-cat(sum(final_export$mult_obs))
+mults <- cleaned %>% filter(mult_obs) %>% distinct() %>% arrange(entity_uniqueid, year)
+cat(sum(cleaned$mult_obs))
 
-write_dta(final_export %>% select(-mult_obs), paste0(derived_data, "/temp/updated_trajectories.dta"))
+write_dta(cleaned %>% select(-mult_obs), paste0(derived_data, "/temp/updated_trajectories.dta"))
+
+# create individual level df
+future_indiv <- individuals %>% filter(contact_uniqueid %in% backfilled_obs$contact_uniqueid) %>%
+  distinct(contact_uniqueid, year, entity_uniqueid, 
+           title, title_standardized, ceo_himss_title_exact,ceo_himss_title_fuzzy, all_leader_flag)
+
+new_obs <- cleaned %>% filter(imputed) %>%
+  left_join(future_indiv, by = c("entity_uniqueid", "contact_uniqueid")) %>%
+  filter(year.x == year.y + 1 | year.x == year.y - 1) %>%
+  filter(title_standardized == "CEO:  Chief Executive Officer") %>%
+  mutate(std_ceo = title_standardized == "CEO:  Chief Executive Officer",
+         prev_ceo = std_ceo & year.x == year.y + 1 , 
+         post_ceo = std_ceo & year.x == year.y - 1) %>%
+  group_by(entity_uniqueid, contact_uniqueid) %>%
+  mutate(
+   final_title = any(prev_ceo) & any(post_ceo)
+  ) %>%
+  ungroup() %>%
+  distinct(contact_uniqueid, entity_aha, entity_uniqueid, year.x,
+           final_title) %>%
+  mutate(title_standardized = "CEO:  Chief Executive Officer",
+         ceo_himss_title_exact = TRUE,
+         ceo_himss_title_fuzzy = TRUE,
+         all_leader_flag = TRUE) %>%
+  rename(year = year.x) %>% select(-final_title)
+
+old_obs <- individuals %>% 
+  select(contact_uniqueid, entity_aha, entity_uniqueid, year,
+         title_standardized, ceo_himss_title_exact, ceo_himss_title_fuzzy, all_leader_flag)
+
+individuals_for_event <- rbind(new_obs, old_obs)
+write_dta(individuals_for_event, paste0(derived_data, "/temp/updated_individual_titles.dta"))
 
 ## test future at same hosp
 test <- mini %>%

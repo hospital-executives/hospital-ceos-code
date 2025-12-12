@@ -121,36 +121,18 @@ Goal: 			Set globals for Hospital CEOs analysis
 * WRITE A PROGRAM TO RESTRICT TO GET CUMULATIVE OUTCOMES _______________________________ 
 
 	program make_outcome_vars
-	
-		// merge in turnover measure 1
-		 preserve
-			use "${dbdata}/derived/temp/indiv_file_contextual.dta", clear
-			 
-			keep if char_ceo == 1
-			collapse (max) ceo_turnover1, by(entity_uniqueid year)
-
-			keep entity_uniqueid year ceo_turnover1
-
-			tempfile ceo_turnover1_xwalk
-			save `ceo_turnover1_xwalk'
-
-		restore
-
-		merge m:1 entity_uniqueid year using `ceo_turnover1_xwalk'
-		keep if _merge == 3
-		drop _merge
 		
 		// merge in cumulative turnover measures
 		preserve
 		
-			use "${dbdata}/derived/individuals_final.dta", clear
+			use "${dbdata}/derived/temp/updated_individual_titles.dta", clear
 			keep if all_leader_flag & entity_aha != .
-			keep entity_aha year contact_uniqueid firstname lastname title title_standardized confirmed
+			keep entity_aha year contact_uniqueid title_standardized confirmed
 
 			bys entity_aha year: egen n_unique_contacts = nvals(contact_uniqueid)
 			gen byte multi_contact = n_unique_contacts > 1
 			count if multi_contact == 1
-			assert r(N) == 2
+			assert r(N) == 4
 			drop if multi_contact == 1
 			bysort entity_aha year: keep if _n == 1
 
@@ -198,26 +180,45 @@ Goal: 			Set globals for Hospital CEOs analysis
 		keep if _merge_turnover == 3
 		drop _merge_turnover
 		
+		tostring contact_uniqueid, replace
+		gen ceo_turnover1 = (contact_lag1) != contact_uniqueid
+		replace ceo_turnover1 = 1 if real(contact_lag1) > 0 & real(contact_uniqueid) < 0	
+		replace ceo_turnover1 = . if year == 2009
+		replace ceo_turnover1 = . if missing(confirmed_lag1) | missing(confirmed) | confirmed_lag1 == 0 | confirmed == 0
+		
 		// merge in individual characteristics
 		
 		preserve 
-			use "${dbdata}/derived/individuals_final.dta", clear
-			keep id aha_leader_flag all_leader_flag ceo_himss_title_exact ceo_himss_title_fuzzy
-			tempfile ceo_flags
-			save `ceo_flags'
-
+		
+		* Merge in female + md indicators
 			use "${dbdata}/derived/temp/indiv_file_contextual.dta", clear
-			merge m:1 id using `ceo_flags'
+			keep contact_uniqueid year char_female char_md
+
+			egen mode_female = mode(char_female), by(contact_uniqueid)
+			egen mode_md = mode(char_md), by(contact_uniqueid)
+
+			replace char_female = mode_female
+			replace char_md = mode_md
+
+			drop mode_female mode_md year
+			duplicates drop
 			
-			keep if _merge == 3 & aha_id != ""
-			keep contact_uniqueid char_female char_md year aha_id aha_leader_flag all_leader_flag ceo_himss_title_exact ceo_himss_title_fuzzy char_ceo title_standardized
-			keep if all_leader_flag
+			tempfile indiv_traits
+			save `indiv_traits'
+
+		* Get world of contact_uniqueid that are CEOs
+		use "${dbdata}/derived/temp/updated_individual_titles.dta", clear
+		rename entity_aha aha_id
+		keep aha_id year contact_uniqueid all_leader_flag ceo_himss_title_exact ceo_himss_title_fuzzy confirmed
+		merge m:1 contact_uniqueid using `indiv_traits', gen(_char_merge)
 
 			// confirm that ceo flag is unique
+			keep if all_leader_flag == 1 & !missing(aha_id)
 			bys aha_id year: egen n_unique_contacts = nvals(contact_uniqueid)
 			gen multi_contact = n_unique_contacts > 1
 			count if multi_contact == 1
-			assert r(N) == 0
+			display r(N)
+			assert r(N) == 4
 			drop multi_contact
 			
 			tostring char_female, replace
