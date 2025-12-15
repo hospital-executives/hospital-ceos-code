@@ -122,17 +122,19 @@ Goal: 			Set globals for Hospital CEOs analysis
 
 	program make_outcome_vars
 		
-		// merge in cumulative turnover measures
+		// merge in previous year's CEO info
 		preserve
 		
-			use "${dbdata}/derived/temp/updated_individual_titles.dta", clear
-			keep if all_leader_flag & entity_aha != .
-			keep entity_aha year contact_uniqueid title_standardized confirmed
+			use "${dbdata}/derived/temp/updated_trajectories.dta", clear
+			drop entity_aha
+			rename aha_id entity_aha
+			keep entity_uniqueid entity_aha year contact_uniqueid confirmed
+			keep if !missing(entity_aha)
 
 			bys entity_aha year: egen n_unique_contacts = nvals(contact_uniqueid)
 			gen byte multi_contact = n_unique_contacts > 1
 			count if multi_contact == 1
-			assert r(N) == 4
+			assert r(N) == 0
 			drop if multi_contact == 1
 			bysort entity_aha year: keep if _n == 1
 
@@ -169,7 +171,8 @@ Goal: 			Set globals for Hospital CEOs analysis
 			keep aha_id year missing_ceo* contact_changed* diff_contact* ///
 			contact_lag1 confirmed_lag1 contact_lag3
 			bys aha_id year: keep if _n == 1
-
+			
+			destring aha_id, replace
 			tempfile prev_ceos
 			save `prev_ceos', replace
 
@@ -177,17 +180,43 @@ Goal: 			Set globals for Hospital CEOs analysis
 		
 		destring aha_id, replace
 		merge m:1 aha_id year using `prev_ceos', gen(_merge_turnover)
-		keep if _merge_turnover == 3
-		drop _merge_turnover
 		
 		tostring contact_uniqueid, replace
 		gen ceo_turnover1 = (contact_lag1) != contact_uniqueid
 		replace ceo_turnover1 = 1 if real(contact_lag1) > 0 & real(contact_uniqueid) < 0	
+		replace ceo_turnover1 = 1 if real(contact_lag1) < 0 & real(contact_uniqueid) > 0	
 		replace ceo_turnover1 = . if year == 2009
 		replace ceo_turnover1 = . if missing(confirmed_lag1) | missing(confirmed) | confirmed_lag1 == 0 | confirmed == 0
+		// need to ceo_turnover = 1 if real(contact_lag1) < 0 & real(contact_uniqueid) > 0
+		// but not showing up
+		
+		keep if _merge_turnover == 3
+		drop _merge_turnover
+		
+		// merge in trajectories
+		preserve
+		
+			use "${dbdata}/derived/temp/updated_trajectories.dta", clear
+			keep contact_uniqueid aha_id next_year *_future  future_* max_bdtot_* year_of_max_bdtot has_match_next_year
+			rename (contact_uniqueid next_year) (contact_lag1 year)
+			tostring contact_lag1, replace
+			destring aha_id, replace
+			
+			duplicates tag contact_lag1 year, gen(dup)
+			tab dup
+			keep if dup == 0
+						
+			tempfile trajectories
+			save `trajectories'
+		restore
+		merge m:1 contact_lag1 aha_id year using `trajectories', gen(_merge_trajectories)
+
+		gen temp_prev_left = 1 if _merge_trajectories == 1
+		replace temp_prev_left = 1 if exists_future == 0
+		drop if _merge_trajectories == 2
+		drop _merge_trajectories
 		
 		// merge in individual characteristics
-		
 		preserve 
 		
 		* Merge in female + md indicators

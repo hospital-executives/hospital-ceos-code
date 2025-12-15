@@ -14,6 +14,7 @@ Goal: 			Generate event study plots with heterogeneity by where CEOs in the
 * Load data and restrict to correct sample
 *----------------------------------------------------------
 use "${dbdata}/derived/temp/updated_trajectories.dta", clear
+keep entity_uniqueid year aha_id contact_uniqueid haentitytypeid entity_aha
 
 preserve 
 	use "${dbdata}/derived/temp/merged_ma_sysid_xwalk.dta", clear
@@ -56,8 +57,6 @@ replace is_hospital = 1 if _merge_1 == 1
 
 * restrict to hospital sample
 restrict_hosp_sample
-make_outcome_vars 
-make_target_sample
 
 preserve
 use "/Users/katherinepapen/Dropbox/hospital_ceos/turnover_export.dta", clear
@@ -66,11 +65,13 @@ tempfile turnover_data
 save `turnover_data'
 restore
 
-merge m:1 entity_uniqueid year using `turnover_data'
+merge m:1 entity_uniqueid year using `turnover_data', gen(turnover_merge)
 
+make_outcome_vars 
+make_target_sample
 
 // get missing
-gen prev_left = exists_future == 0 & ceo_turnover1 == 1 // 1,141  / 4219
+gen prev_left = temp_prev_left == 1 & ceo_turnover1 == 1 // 1,141  / 4219
 gen prev_oth_hospital =  !missing(contact_lag1) & ceo_turnover1 == 1 & exists_future == 1 & future_at_same_hospital == 0 // 225
 gen prev_same_hospital = !missing(contact_lag1) & ceo_turnover1 == 1 & exists_future == 1 & future_at_same_hospital == 1 // 2759
 

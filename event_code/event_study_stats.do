@@ -18,17 +18,21 @@ Goal: 			Generate preliminary statistics to inform event study set up
 * merge in type 
 preserve
 	use "${dbdata}/derived/temp/merged_ma_nonharmonized.dta", clear
-	keep entity_uniqueid year type haentitytypeid
+	keep entity_uniqueid year type
 	
 	tempfile himss_type_xwalk
 	save `himss_type_xwalk'
 restore
 
-merge 1:1 entity_uniqueid year using `himss_type_xwalk', nogen
+merge 1:1 entity_uniqueid year using `himss_type_xwalk', assert(master match) keep(match) nogen
 
 * restrict to hospital sample
 restrict_hosp_sample
-make_outcome_vars
+
+* will need to revisit for the cases where we're dropping observations still
+merge 1:1 entity_uniqueid year using "${dbdata}/derived/temp/updated_trajectories.dta", keep(match) nogen
+
+make_outcome_vars 
 make_target_sample
 
 *----------------------------------------------------------
@@ -68,10 +72,10 @@ bys entity_uniqueid: egen ever_second_tar = max(tar == 1 & tar_reltime > 0)
 bys entity_uniqueid: egen ever_second_acq = max(acq == 1 & acq_reltime > 0)
 
 * get counts
-quietly distinct entity_uniqueid if never_m_and_a
+quietly distinct aha_id if never_m_and_a
 local clean_control = r(ndistinct)
 
-quietly distinct entity_uniqueid if full_treated_sample
+quietly distinct aha_id if full_treated_sample
 local tar_sample_n = r(ndistinct)
 
 quietly distinct entity_uniqueid if full_acq_sample
@@ -89,8 +93,22 @@ local full_tar_final = r(ndistinct)
 quietly distinct entity_uniqueid if balanced_2_year_sample
 local restricted_tar_final = r(ndistinct)
 
+egen has_ceo_turnover_2yrs_post = max(ceo_turnover1 * (tar_reltime >= 0)), by(entity_uniqueid)
+distinct entity_uniqueid if balanced_2_year_sample & has_ceo_turnover_2yrs_post
+egen has_ceo_turnover_2yrs = max(ceo_turnover1 * inlist(tar_reltime, 0, 1, 2)), by(entity_uniqueid)
+quietly distinct entity_uniqueid if balanced_2_year_sample & has_ceo_turnover_2yrs
+local any_turnover_2_yrs = r(ndistinct)
+quietly distinct entity_uniqueid if balanced_2_year_sample & !has_ceo_turnover_2yrs
+local no_turnover_2_yrs = r(ndistinct)
+
 quietly distinct entity_uniqueid if balanced_3_year_sample
 local num_balanced_3_year_sample = r(ndistinct)
+
+egen has_ceo_turnover_3yrs = max(ceo_turnover1 * inlist(tar_reltime, 0, 1, 2, 3)), by(entity_uniqueid)
+quietly distinct entity_uniqueid if balanced_3_year_sample & has_ceo_turnover_3yrs
+local any_turnover_3_yrs = r(ndistinct)
+quietly distinct entity_uniqueid if balanced_3_year_sample & !has_ceo_turnover_3yrs
+local no_turnover_3_yrs = r(ndistinct)
 
 quietly distinct entity_uniqueid if balanced_2_year_acq
 // local restricted_acq_final = r(ndistinct)
@@ -103,8 +121,8 @@ file write out "\item There are `second_tar' distinct entities that experience a
 file write out "\item There are `second_acq' distinct entities that conduct another acquisition in the two years following their initial acquisition." _n
 
 file write out "\item This results in `full_tar_final' distinct entities that are ever acquired once within our sample." _n
-file write out "\item There are `restricted_tar_final' distinct entities that are ever acquired within our sample and have at least 2 years of pre-period observations and 2 years of post-period observations." _n
-file write out "\item There are `num_balanced_3_year_sample' distinct entities that are ever acquired within our sample and have at least 3 years of pre-period observations and 3 years of post-period observations." _n
+file write out "\item There are `restricted_tar_final' distinct entities that are ever acquired within our sample and have at least 2 years of pre-period observations and 2 years of post-period observations.  Of these, `any_turnover_2_yrs' ever have CEO turnover, while `no_turnover_2_yrs' never have CEO turnover." _n
+file write out "\item There are `num_balanced_3_year_sample' distinct entities that are ever acquired within our sample and have at least 3 years of pre-period observations and 3 years of post-period observations.  Of these, `any_turnover_3_yrs' ever have CEO turnover, while `no_turnover_3_yrs' never have CEO turnover." _n
 
 // file write out "\item We treat acquiring another hospital as an absorbing state. There are `restricted_acq_final' distinct entities that ever conduct an acquisition within our sample and have at least 2 years of pre-period observations and 2 years of post-period observations." _n
 
@@ -115,85 +133,16 @@ file close out
 * Merge in Additional Individual Statistics
 *----------------------------------------------------------
 
-// build data set of people who are CEOs in time t (leader_in_prev == 1)
-// and where they are in time t + 1
-frame create individual_char
-frame change individual_char
+// cap gen ceo_turnover2 = contact_uniqueid != contact_lag1
+// replace ceo_turnover2 = . if year == 2009
 
-	use "${dbdata}/derived/individuals_final.dta", clear
-	keep id aha_leader_flag all_leader_flag ceo_himss_title_exact ceo_himss_title_fuzzy
-	tempfile ceo_flags
-	save `ceo_flags'
-
-	use "${dbdata}/derived/temp/indiv_file_contextual.dta", clear
-	merge m:1 id using `ceo_flags'
-	
-	keep if entity_aha != . & _merge == 3
-	keep contact_uniqueid year all_leader_flag entity_aha haentitytypeid sysid entity_uniqueid
-	tostring contact_uniqueid, replace
-
-	rename ///
-	(contact_uniqueid entity_aha haentitytypeid all_leader_flag sysid entity_uniqueid) ///
-	(contact_lag1 prev_ceo_aha_id prev_ceo_haentitytypeid prev_ceo_all_leader_flag prev_ceo_sysid prev_ceo_entity_uniqueid)
-	
-	keep year contact_lag1 prev* 
-	bys contact_lag1 year: keep if _n == 1
-
-	tempfile individual_characteristics
-	save `individual_characteristics'
-
-frame change default
-frame drop individual_char
-
-destring aha_id, replace
-merge m:1 contact_lag1 year using `individual_characteristics', assert(master match using) keep (master match) gen(_prev_ceo_merge)
-
-
-frame create ceo_ids
-frame change ceo_ids
-
-	use "${dbdata}/derived/individuals_final.dta", clear
-	keep if entity_aha != . & all_leader_flag == 1
-	tostring contact_uniqueid, replace
-	
-	keep contact_uniqueid year entity_aha
-	
-	bys entity_aha year: egen n_unique_contacts = nvals(contact_uniqueid)
-	gen multi_contact = n_unique_contacts > 1	
-	drop if multi_contact == 1
-	bys entity_aha year: keep if _n == 1
-	
-	rename entity_aha aha_id
-	
-	tempfile current_ceo_ids
-	save `current_ceo_ids'
-
-frame change default
-frame drop ceo_ids
-
-merge m:1 aha_id year using `current_ceo_ids', assert(master match using) keep (match)
-
-cap gen ceo_turnover2 = contact_uniqueid != contact_lag1
-replace ceo_turnover2 = . if year == 2009
-
-gen prev_left = _prev_ceo_merge == 1 & ceo_turnover1 == 1
+gen prev_left = exists_future == 0 & ceo_turnover1 == 1
 
 // get additional ceo turnover measures
-gen prev_oth_hospital = prev_ceo_aha_id != aha_id & ceo_turnover1 == 1
-gen prev_oth_hospital_diff_sys = prev_ceo_sysid != sysid_ma & ceo_turnover1 == 1
-gen prev_oth_hospital_same_sys = prev_ceo_sysid == sysid_ma & ceo_turnover1 == 1
-gen prev_at_sys = prev_ceo_haentitytypeid == 8 & ceo_turnover1 == 1
-
-gen not_prev_3_temp = (prev_oth_hospital == 0 & prev_oth_hospital_same_sys == 0 & prev_at_sys == 0)
-gen prev_other = not_prev_3_temp == 1 & ceo_turnover1 == 1
-
-gen missing_trajectory = (not_prev_3_temp == 0 & prev_left == 0) & ceo_turnover1 == 1
-drop not_prev_3_temp
-
-sort aha_id year
-bys aha_id : gen prev_at_sys_lag = prev_at_sys[_n-1]
-count if (prev_at_sys | prev_at_sys_lag) & ceo_turnover1 == 1 & tar_reltime == 0
-count if ceo_turnover1 == 1 & tar_reltime == 0
+gen prev_oth_hospital = future_at_same_hospital == 0 & ceo_turnover1 == 1
+gen prev_oth_hospital_diff_sys = future_at_same_hospital == 0 & future_at_same_sys == 0 & ceo_turnover1 == 1
+gen prev_oth_hospital_same_sys = future_at_same_hospital == 0 & future_at_same_sys == 1 & ceo_turnover1 == 1
+gen prev_at_sys = sys_future == 1 & ceo_turnover1 == 1
 
 
 // write sum stats
@@ -206,9 +155,6 @@ local n_prev_oth_hospital_same_sys = r(N)
 
 count if prev_at_sys == 1 & tar_reltime == 0
 local n_prev_at_sys = r(N)
-
-count if prev_other == 1 & tar_reltime == 0
-local n_prev_other = r(N)
 
 count if prev_left == 1 & tar_reltime == 0
 local n_prev_left = r(N)
@@ -226,7 +172,6 @@ file write texfile "\hline" _n
 file write texfile "Different Hospital (Any System) & `n_prev_oth_hospital' \\" _n
 file write texfile "Different Hospital (Same System) & `n_prev_oth_hospital_same_sys' \\" _n
 file write texfile "System (Any) & `n_prev_at_sys' \\" _n
-file write texfile "Other Position & `n_prev_other' \\" _n
 file write texfile "Left Sample & `n_prev_left' \\" _n
 file write texfile "\hline" _n
 file write texfile "Total & `n_total' \\" _n
@@ -614,32 +559,13 @@ local spec1_control "never_acq == 1"
 local spec1_cohort "never_acq"
 local spec1_name "Full Sample, Never Treated"
 
-local spec2_treated "restricted_acq_sample == 1"
-local spec2_control "never_acq == 1"
-local spec2_cohort "never_acq"
-local spec2_name "Restricted Sample, Never Treated"
+local spec2_treated "full_acq_sample == 1"
+local spec2_control "never_m_and_a == 1"
+local spec2_cohort "never_m_and_a"
+local spec2_name "Full Sample, Never M&A"
 
-local spec3_treated "full_acq_sample == 1"
-local spec3_control "never_m_and_a == 1"
-local spec3_cohort "never_m_and_a"
-local spec3_name "Full Sample, Never M&A"
 
-local spec4_treated "restricted_acq_sample == 1"
-local spec4_control "never_m_and_a == 1"
-local spec4_cohort "never_m_and_a"
-local spec4_name "Restricted Sample, Never M&A"
-
-local spec5_treated "full_acq_sample == 1 & year < 2017"
-local spec5_control "last_treated == 1 & year < 2017"
-local spec5_cohort "last_treated"
-local spec5_name "Full Sample, Last Treated"
-
-local spec6_treated "restricted_acq_sample == 1 & year < 2017"
-local spec6_control "last_treated == 1 & year < 2017" 
-local spec6_cohort "last_treated"
-local spec6_name "Restricted Sample, Last Treated"
-
-local nspecs = 6
+local nspecs = 2
 
 **** loop through specifications ****
 forvalues s = 1/`nspecs' {

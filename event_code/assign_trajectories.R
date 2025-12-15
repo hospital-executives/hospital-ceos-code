@@ -249,7 +249,8 @@ cleaned <- final_export %>%
     )) %>% select(-sysid.x, -sysid.y) %>%
   group_by(contact_uniqueid) %>%
   mutate(confirmed = all(confirmed, na.rm = TRUE) & any(confirmed, na.rm = TRUE)) %>%
-  ungroup()
+  ungroup() %>%
+  mutate(next_year = year + 1)
 
 mults <- cleaned %>% filter(mult_obs) %>% distinct() %>% arrange(entity_uniqueid, year)
 cat(sum(cleaned$mult_obs))
@@ -274,7 +275,7 @@ new_obs <- cleaned %>% filter(imputed) %>%
   ) %>%
   ungroup() %>%
   distinct(contact_uniqueid, entity_aha, entity_uniqueid, year.x,
-           final_title) %>%
+           final_title, confirmed) %>%
   mutate(title_standardized = "CEO:  Chief Executive Officer",
          ceo_himss_title_exact = TRUE,
          ceo_himss_title_fuzzy = TRUE,
@@ -282,11 +283,14 @@ new_obs <- cleaned %>% filter(imputed) %>%
   rename(year = year.x) %>% select(-final_title)
 
 old_obs <- individuals %>% 
-  select(contact_uniqueid, entity_aha, entity_uniqueid, year,
+  select(contact_uniqueid, entity_aha, entity_uniqueid, year,confirmed,
          title_standardized, ceo_himss_title_exact, ceo_himss_title_fuzzy, all_leader_flag)
 
 individuals_for_event <- rbind(new_obs, old_obs)
+
 write_dta(individuals_for_event, paste0(derived_data, "/temp/updated_individual_titles.dta"))
+
+
 
 ## test future at same hosp
 test <- mini %>%
