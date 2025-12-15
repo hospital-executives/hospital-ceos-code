@@ -182,13 +182,15 @@ Goal: 			Set globals for Hospital CEOs analysis
 		merge m:1 aha_id year using `prev_ceos', gen(_merge_turnover)
 		
 		tostring contact_uniqueid, replace
+		
 		gen ceo_turnover1 = (contact_lag1) != contact_uniqueid
-		replace ceo_turnover1 = 1 if real(contact_lag1) > 0 & real(contact_uniqueid) < 0	
-		replace ceo_turnover1 = 1 if real(contact_lag1) < 0 & real(contact_uniqueid) > 0	
 		replace ceo_turnover1 = . if year == 2009
 		replace ceo_turnover1 = . if missing(confirmed_lag1) | missing(confirmed) | confirmed_lag1 == 0 | confirmed == 0
-		// need to ceo_turnover = 1 if real(contact_lag1) < 0 & real(contact_uniqueid) > 0
-		// but not showing up
+		
+		gen vacancy_turnover = (real(contact_lag1) > 0 & real(contact_uniqueid) < 0) | ///
+                       (real(contact_lag1) < 0 & real(contact_uniqueid) > 0) ///
+                       if !missing(real(contact_lag1)) & !missing(real(contact_uniqueid))		
+		replace ceo_turnover1 = 1 if vacancy_turnover == 1
 		
 		keep if _merge_turnover == 3
 		drop _merge_turnover
@@ -275,7 +277,7 @@ Goal: 			Set globals for Hospital CEOs analysis
 		restore
 		
 		merge m:1 aha_id year using `individual_characteristics'
-		keep if _merge == 3
+		keep if _merge == 3 | vacancy_turnover == 1
 		drop _merge
 			
     end

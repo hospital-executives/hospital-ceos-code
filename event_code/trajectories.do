@@ -71,9 +71,11 @@ make_outcome_vars
 make_target_sample
 
 // get missing
-gen prev_left = temp_prev_left == 1 & ceo_turnover1 == 1 // 1,141  / 4219
-gen prev_oth_hospital =  !missing(contact_lag1) & ceo_turnover1 == 1 & exists_future == 1 & future_at_same_hospital == 0 // 225
-gen prev_same_hospital = !missing(contact_lag1) & ceo_turnover1 == 1 & exists_future == 1 & future_at_same_hospital == 1 // 2759
+gen turnover_and_nonmissing_lag = ceo_turnover1 == 1 & real(contact_lag1) > 0
+gen prev_left = temp_prev_left == 1 & turnover_and_nonmissing_lag == 1 
+gen prev_oth_hospital =  !missing(contact_lag1) & turnover_and_nonmissing_lag == 1 & exists_future == 1 & future_at_same_hospital == 0 
+gen prev_same_hospital = !missing(contact_lag1) & turnover_and_nonmissing_lag == 1 & exists_future == 1 & future_at_same_hospital == 1 
+gen prev_vacant = ceo_turnover1 == 1 & real(contact_lag1) < 0
 
 // save "${dbdata}/derived/temp/event_data.dta", replace
 
@@ -358,167 +360,195 @@ frame copy default main_spec
 frame change main_spec
 
 	drop if missing(ceo_turnover1)
+sum tar_reltime, meanonly
+local rmin = r(min)
+local rmax = r(max)
 
-	sum tar_reltime, meanonly
-	local rmin = r(min)
-	local rmax = r(max)
-	
-	forvalues h = 0/`rmax' {
-		cap gen byte ev_lag`h' = (tar_reltime == `h')
-		cap gen byte left_ev_lag`h' = (tar_reltime == `h' & prev_left)
-		cap gen byte oth_ev_lag`h' = (tar_reltime == `h' & prev_oth_hospital)
-		cap gen byte same_ev_lag`h' = (tar_reltime == `h' & prev_same_hospital)
-	}
-	forvalues h = 1/`=abs(`rmin')' {
-		cap gen byte ev_lead`h' = (tar_reltime == -`h')
-		cap gen byte left_ev_lead`h' = (tar_reltime == -`h' & prev_left)
-		cap gen byte oth_ev_lead`h' = (tar_reltime == -`h' & prev_oth_hospital)
-		cap gen byte same_ev_lead`h' = (tar_reltime == -`h' & prev_same_hospital)
+forvalues h = 0/`rmax' {
+    cap gen byte ev_lag`h' = (tar_reltime == `h')
+    cap gen byte left_ev_lag`h' = (tar_reltime == `h' & prev_left)
+    cap gen byte oth_ev_lag`h' = (tar_reltime == `h' & prev_oth_hospital)
+    cap gen byte same_ev_lag`h' = (tar_reltime == `h' & prev_same_hospital)
+    cap gen byte vacant_ev_lag`h' = (tar_reltime == `h' & prev_vacant)
+}
+forvalues h = 1/`=abs(`rmin')' {
+    cap gen byte ev_lead`h' = (tar_reltime == -`h')
+    cap gen byte left_ev_lead`h' = (tar_reltime == -`h' & prev_left)
+    cap gen byte oth_ev_lead`h' = (tar_reltime == -`h' & prev_oth_hospital)
+    cap gen byte same_ev_lead`h' = (tar_reltime == -`h' & prev_same_hospital)
+    cap gen byte vacant_ev_lead`h' = (tar_reltime == -`h' & prev_vacant)
+}
 
-	}
-	replace ev_lead1 = 0
-	replace left_ev_lead1 = 0
-	replace oth_ev_lead1 = 0
-	replace same_ev_lead1 = 0
+replace ev_lead1 = 0
+replace left_ev_lead1 = 0
+replace oth_ev_lead1 = 0
+replace same_ev_lead1 = 0
+replace vacant_ev_lead1 = 0
 
-	eventstudyinteract ceo_turnover1 ev_lead* ev_lag*  ///
-	if (balanced_2_year_sample|never_m_and_a), ///
-	vce(cluster entity_uniqueid) ///
-	absorb(entity_uniqueid year) ///
-	cohort(tar_event_year) ///
-	control_cohort(never_m_and_a)
-	matrix b_turnover = e(b_iw)
-	matrix V_turnover = e(V_iw)
+// Run event studies
+eventstudyinteract ceo_turnover1 ev_lead* ev_lag* ///
+    if (balanced_2_year_sample|never_m_and_a), ///
+    vce(cluster entity_uniqueid) ///
+    absorb(entity_uniqueid year) ///
+    cohort(tar_event_year) ///
+    control_cohort(never_m_and_a)
+matrix b_turnover = e(b_iw)
+matrix V_turnover = e(V_iw)
 
-	eventstudyinteract prev_left ev_lead* ev_lag*  ///
-		if (balanced_2_year_sample|never_m_and_a), ///
-		vce(cluster entity_uniqueid) ///
-		absorb(entity_uniqueid year) ///
-		cohort(tar_event_year) ///
-		control_cohort(never_m_and_a)
-	matrix b_left = e(b_iw)
-	matrix V_left = e(V_iw)
+eventstudyinteract prev_left ev_lead* ev_lag* ///
+    if (balanced_2_year_sample|never_m_and_a), ///
+    vce(cluster entity_uniqueid) ///
+    absorb(entity_uniqueid year) ///
+    cohort(tar_event_year) ///
+    control_cohort(never_m_and_a)
+matrix b_left = e(b_iw)
+matrix V_left = e(V_iw)
 
-	eventstudyinteract prev_oth_hospital ev_lead* ev_lag*  ///
-		if (balanced_2_year_sample|never_m_and_a), ///
-		vce(cluster entity_uniqueid) ///
-		absorb(entity_uniqueid year) ///
-		cohort(tar_event_year) ///
-		control_cohort(never_m_and_a)
-	estimates store oth_hospital
-	matrix b_oth = e(b_iw)
-	matrix V_oth = e(V_iw)
+eventstudyinteract prev_oth_hospital ev_lead* ev_lag* ///
+    if (balanced_2_year_sample|never_m_and_a), ///
+    vce(cluster entity_uniqueid) ///
+    absorb(entity_uniqueid year) ///
+    cohort(tar_event_year) ///
+    control_cohort(never_m_and_a)
+estimates store oth_hospital
+matrix b_oth = e(b_iw)
+matrix V_oth = e(V_iw)
 
-	eventstudyinteract prev_same_hospital ev_lead* ev_lag*  ///
-		if (balanced_2_year_sample|never_m_and_a), ///
-		vce(cluster entity_uniqueid) ///
-		absorb(entity_uniqueid year) ///
-		cohort(tar_event_year) ///
-		control_cohort(never_m_and_a)
-	estimates store same_hospital
-	matrix b_same = e(b_iw)
-	matrix V_same = e(V_iw)
+eventstudyinteract prev_same_hospital ev_lead* ev_lag* ///
+    if (balanced_2_year_sample|never_m_and_a), ///
+    vce(cluster entity_uniqueid) ///
+    absorb(entity_uniqueid year) ///
+    cohort(tar_event_year) ///
+    control_cohort(never_m_and_a)
+estimates store same_hospital
+matrix b_same = e(b_iw)
+matrix V_same = e(V_iw)
 
-	** Export to Figure **
-	
-	// Plot total with components
-	matrix b_same_stacked = b_same + b_oth
-	matrix V_same_stacked = V_same + V_oth
+eventstudyinteract prev_vacant ev_lead* ev_lag* ///
+    if (balanced_2_year_sample|never_m_and_a), ///
+    vce(cluster entity_uniqueid) ///
+    absorb(entity_uniqueid year) ///
+    cohort(tar_event_year) ///
+    control_cohort(never_m_and_a)
+estimates store vacant
+matrix b_vacant = e(b_iw)
+matrix V_vacant = e(V_iw)
 
-	// Extract SE for turnover
-	mata: V = st_matrix("V_turnover"); se = sqrt(diagonal(V))'; st_matrix("se_turnover", se)
-	matrix colnames se_turnover = `: colnames b_turnover'
-	mata: V = st_matrix("V_oth"); se = sqrt(diagonal(V))'; st_matrix("se_oth", se)
-	mata: V = st_matrix("V_same_stacked"); se = sqrt(diagonal(V))'; st_matrix("se_same_stacked", se)
-	
-	coefplot ///
-	(matrix(b_turnover), se(se_turnover) label("Left Sample + Same Hospital + Other Hospital") mcolor(black) ciopts(lcolor(black) lwidth(medium)) msymbol(O)) ///
-	(matrix(b_same_stacked), se(se_same_stacked) label("Same Hospital + Other Hospital") mcolor(green) ciopts(lcolor(green) lwidth(medium)) msymbol(S)) ///
-	(matrix(b_oth), se(se_oth) label("Other Hospital") mcolor(blue) ciopts(lcolor(blue) lwidth(medium)) msymbol(D)), ///
-	keep(ev_lead3 ev_lead2 ev_lead1 ev_lag0 ev_lag1 ev_lag2 ev_lag3) ///
-	vertical ///
-	recast(bar) ///
+** Export to Figure **
+
+// Create stacked matrices (cumulative from bottom up: vacant -> oth -> same -> left)
+matrix b_vacant_only = b_vacant
+matrix V_vacant_only = V_vacant
+
+matrix b_oth_stacked = b_oth + b_vacant
+matrix V_oth_stacked = V_oth + V_vacant
+
+matrix b_same_stacked = b_same + b_oth + b_vacant
+matrix V_same_stacked = V_same + V_oth + V_vacant
+
+// Extract SEs
+mata: V = st_matrix("V_turnover"); se = sqrt(diagonal(V))'; st_matrix("se_turnover", se)
+matrix colnames se_turnover = `: colnames b_turnover'
+
+mata: V = st_matrix("V_vacant_only"); se = sqrt(diagonal(V))'; st_matrix("se_vacant", se)
+matrix colnames se_vacant = `: colnames b_vacant'
+
+mata: V = st_matrix("V_oth_stacked"); se = sqrt(diagonal(V))'; st_matrix("se_oth_stacked", se)
+matrix colnames se_oth_stacked = `: colnames b_oth'
+
+mata: V = st_matrix("V_same_stacked"); se = sqrt(diagonal(V))'; st_matrix("se_same_stacked", se)
+matrix colnames se_same_stacked = `: colnames b_same'
+
+coefplot ///
+    (matrix(b_turnover), se(se_turnover) label("Total: Left + Same + Other + Vacant") mcolor(black) ciopts(lcolor(black) lwidth(medium)) msymbol(O)) ///
+    (matrix(b_same_stacked), se(se_same_stacked) label("Same + Other + Vacant") mcolor(green) ciopts(lcolor(green) lwidth(medium)) msymbol(S)) ///
+    (matrix(b_oth_stacked), se(se_oth_stacked) label("Other + Vacant") mcolor(blue) ciopts(lcolor(blue) lwidth(medium)) msymbol(D)) ///
+    (matrix(b_vacant_only), se(se_vacant) label("Vacant") mcolor(orange) ciopts(lcolor(orange) lwidth(medium)) msymbol(T)), ///
+    keep(ev_lead3 ev_lead2 ev_lead1 ev_lag0 ev_lag1 ev_lag2 ev_lag3) ///
+    vertical ///
+    recast(bar) ///
     yline(0, lcolor(gs8)) ///
     xline(4, lcolor(gs8) lpattern(dash)) ///
-	legend(position(6) rows(3)) ///
-	order(ev_lead3 ev_lead2 ev_lead1 ev_lag0 ev_lag1 ev_lag2 ev_lag3) ///
-	coeflabels(ev_lead3="-3" ev_lead2="-2" ev_lead1="-1" ev_lag0="0" ev_lag1="1" ev_lag2="2" ev_lag3="3") ///
-	nooffset ///
-	noci ///
-	graphregion(color(white))
-	
-	graph export "${overleaf}/notes/Event Study Setup/figures/outcome_decomposition.pdf", as(pdf) replace
+    legend(position(6) rows(4)) ///
+    order(ev_lead3 ev_lead2 ev_lead1 ev_lag0 ev_lag1 ev_lag2 ev_lag3) ///
+    coeflabels(ev_lead3="-3" ev_lead2="-2" ev_lead1="-1" ev_lag0="0" ev_lag1="1" ev_lag2="2" ev_lag3="3") ///
+    nooffset ///
+    noci ///
+    graphregion(color(white))
 
+graph export "${overleaf}/notes/Event Study Setup/figures/outcome_decomposition.pdf", as(pdf) replace
 
-	** Export to LaTeX **
-	local events "ev_lead3 ev_lead2 ev_lead1 ev_lag0 ev_lag1 ev_lag2 ev_lag3"
+** Export to LaTeX **
+local events "ev_lead3 ev_lead2 ev_lead1 ev_lag0 ev_lag1 ev_lag2 ev_lag3"
 
-	// Create empty matrices to store results
-	matrix results = J(7, 9, .)
-	matrix colnames results = event_time b_total se_total b_left b_oth b_same pct_left pct_oth pct_same
-	local row = 1
+// Create empty matrices to store results (now 12 columns instead of 9)
+matrix results = J(7, 12, .)
+matrix colnames results = event_time b_total se_total b_left b_oth b_same b_vacant pct_left pct_oth pct_same pct_vacant
 
-	foreach event in `events' {
-		// Get column position for this coefficient
-		local colnum : list posof "`event'" in events
-		
-		// Extract coefficients
-		scalar b_tot = b_turnover[1, colnumb(b_turnover, "`event'")]
-		scalar se_tot = se_turnover[1, colnumb(se_turnover, "`event'")]
-		scalar b_l = b_left[1, colnumb(b_left, "`event'")]
-		scalar b_o = b_oth[1, colnumb(b_oth, "`event'")]
-		scalar b_s = b_same[1, colnumb(b_same, "`event'")]
-		
-		// Calculate percentages
-		scalar pct_l = (b_l / b_tot) * 100
-		scalar pct_o = (b_o / b_tot) * 100
-		scalar pct_s = (b_s / b_tot) * 100
-		
-		// Store in results matrix
-		matrix results[`row', 1] = `row' - 4  // Event time (-3 to 3)
-		matrix results[`row', 2] = b_tot
-		matrix results[`row', 3] = se_tot
-		matrix results[`row', 4] = b_l
-		matrix results[`row', 5] = b_o
-		matrix results[`row', 6] = b_s
-		matrix results[`row', 7] = pct_l
-		matrix results[`row', 8] = pct_o
-		matrix results[`row', 9] = pct_s
-		
-		local row = `row' + 1
-	}
+local row = 1
+foreach event in `events' {
+    // Extract coefficients
+    scalar b_tot = b_turnover[1, colnumb(b_turnover, "`event'")]
+    scalar se_tot = se_turnover[1, colnumb(se_turnover, "`event'")]
+    scalar b_l = b_left[1, colnumb(b_left, "`event'")]
+    scalar b_o = b_oth[1, colnumb(b_oth, "`event'")]
+    scalar b_s = b_same[1, colnumb(b_same, "`event'")]
+    scalar b_v = b_vacant[1, colnumb(b_vacant, "`event'")]
+    
+    // Calculate percentages
+    scalar pct_l = (b_l / b_tot) * 100
+    scalar pct_o = (b_o / b_tot) * 100
+    scalar pct_s = (b_s / b_tot) * 100
+    scalar pct_v = (b_v / b_tot) * 100
+    
+    // Store in results matrix
+    matrix results[`row', 1] = `row' - 4  // Event time (-3 to 3)
+    matrix results[`row', 2] = b_tot
+    matrix results[`row', 3] = se_tot
+    matrix results[`row', 4] = b_l
+    matrix results[`row', 5] = b_o
+    matrix results[`row', 6] = b_s
+    matrix results[`row', 7] = b_v
+    matrix results[`row', 8] = pct_l
+    matrix results[`row', 9] = pct_o
+    matrix results[`row', 10] = pct_s
+    matrix results[`row', 11] = pct_v
+    
+    local row = `row' + 1
+}
 
-	// Display the matrix
-	matrix list results
+// Display the matrix
+matrix list results
 
-	// Or convert to dataset and export
-	clear
-	svmat results, names(col)
-	format b_* se_* %9.3f
-	format pct_* %9.1f
+// Convert to dataset and export
+clear
+svmat results, names(col)
+format b_* se_* %9.3f
+format pct_* %9.1f
 
-	// Create nice labels
-	label var event_time "Event Time"
-	label var b_total "Total Turnover"
-	label var se_total "SE"
-	label var b_left "Left Sample"
-	label var b_oth "Other Hospital"
-	label var b_same "Same Hospital"
-	label var pct_left "% Left"
-	label var pct_oth "% Other"
-	label var pct_same "% Same"
+// Create nice labels
+label var event_time "Event Time"
+label var b_total "Total Turnover"
+label var se_total "SE"
+label var b_left "Left Sample"
+label var b_oth "Other Hospital"
+label var b_same "Same Hospital"
+label var b_vacant "Vacant"
+label var pct_left "% Left"
+label var pct_oth "% Other"
+label var pct_same "% Same"
+label var pct_vacant "% Vacant"
 
-	// Display
-	list, separator(0) noobs
-	
-	listtex using "${overleaf}/notes/Event Study Setup/tables/decomposition_table.tex", replace ///
-	rstyle(tabular) ///
-	head("\begin{tabular}{lcccccccc}" ///
-		 "\hline" ///
-		 "Event Time & Total & SE & Left & Other & Same & \% Left & \% Other & \% Same \\" ///
-		 "\hline") ///
-	foot("\hline" ///
-		 "\end{tabular}")
+// Display
+list, separator(0) noobs
 
+listtex using "${overleaf}/notes/Event Study Setup/tables/decomposition_table.tex", replace ///
+    rstyle(tabular) ///
+    head("\begin{tabular}{lccccccccccc}" ///
+         "\hline" ///
+         "Event Time & Total & SE & Left & Other & Same & Vacant & \% Left & \% Other & \% Same & \% Vacant \\" ///
+         "\hline") ///
+    foot("\hline" ///
+         "\end{tabular}")
 frame change default
 frame drop main_spec
