@@ -390,15 +390,15 @@ def clean_results_pt2(remaining, G, dropped_sets, new_himss):
     #dropped3 = remaining_updated[condition3 & ~condition1 & ~condition2]
 
     # Combine conditions for remaining rows
-    remaining = remaining_updated[~(condition1 | condition2)]
-    remaining.loc[:, 'contact_id1'] = remaining['contact_id1'].astype(str)
-    remaining.loc[:, 'contact_id2'] = remaining['contact_id2'].astype(str)
+    #remaining = remaining_updated[~(condition1 | condition2)]
+    #remaining.loc[:, 'contact_id1'] = remaining['contact_id1'].astype(str)
+    #remaining.loc[:, 'contact_id2'] = remaining['contact_id2'].astype(str)
 
     # Update dropped_sets with dropped pairs
-    for df in [dropped1, dropped2]:
-        dropped_sets.update(zip(df['contact_id1'], df['contact_id2']))
+    #for df in [dropped1, dropped2]:
+        #dropped_sets.update(zip(df['contact_id1'], df['contact_id2']))
 
-    return remaining, dropped_sets
+    return remaining_updated, dropped_sets
 
 def clean_results_pt3(remaining, dropped_sets, user_path, new_himss):
     # CREATE STATE DF
@@ -820,10 +820,10 @@ def clean_results_pt6(remaining, dropped_sets, confirmed_graph,
         ((cleaned_remaining7['firstname_jw_distance'] >= .925) |
         (cleaned_remaining7['name_in_same_row_firstname'])))]
     comp_remaining5 = comp_remaining4[~(
-        ((cleaned_remaining7['shared_zips_flag'] == 1) |
-        (cleaned_remaining7['shared_names_flag'] == 1) |
-        (cleaned_remaining7['shared_addresses_flag'] == 1) |
-        (cleaned_remaining7['shared_entity_ids_flag'] == 1)) &
+        ((comp_remaining4['shared_zips_flag'] == 1) |
+        (comp_remaining4['shared_names_flag'] == 1) |
+        (comp_remaining4['shared_addresses_flag'] == 1) |
+        (comp_remaining4['shared_entity_ids_flag'] == 1)) &
         (comp_remaining4['lastname_lev_distance'] == 0) &
         (comp_remaining4['firstname_jw_distance'] >= 0.5))] 
     comp_remaining6 = comp_remaining5[
@@ -839,17 +839,17 @@ def clean_results_pt6(remaining, dropped_sets, confirmed_graph,
         ((cleaned_remaining7['firstname_jw_distance'] >= .925) |
         (cleaned_remaining7['name_in_same_row_firstname'])))]
     cleaned5 = comp_remaining4[(
-        ((cleaned_remaining7['shared_zips_flag'] == 1) |
-        (cleaned_remaining7['shared_names_flag'] == 1) |
-        (cleaned_remaining7['shared_addresses_flag'] == 1) |
-        (cleaned_remaining7['shared_entity_ids_flag'] == 1)) &
+        ((comp_remaining4['shared_zips_flag'] == 1) |
+        (comp_remaining4['shared_names_flag'] == 1) |
+        (comp_remaining4['shared_addresses_flag'] == 1) |
+        (comp_remaining4['shared_entity_ids_flag'] == 1)) &
         (comp_remaining4['lastname_lev_distance'] == 0) &
         (comp_remaining4['firstname_jw_distance'] >= 0.5))] 
     cleaned6 = comp_remaining5[
     ((comp_remaining5['firstname_lev_distance'] == 0) &
     (comp_remaining5['lastname_lev_distance'] == 0) & 
-    ~(comp_remaining5['contact_id1'].astype(int).isin(cleaned_remaining_ids)) & 
-    ~(comp_remaining5['contact_id2'].astype(int).isin(cleaned_remaining_ids)))]
+    ~(comp_remaining5['contact_id1'].isin(cleaned_remaining_ids)) & 
+    ~(comp_remaining5['contact_id2']).isin(cleaned_remaining_ids))]
 
     add_to_graph_from_df(confirmed_graph, cleaned_a)
     add_to_graph_from_df(confirmed_graph, cleaned4)

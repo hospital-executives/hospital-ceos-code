@@ -46,11 +46,11 @@ else: # FILE PATHS FOR DEBUGGING
                                   "derived/auxiliary/meta_cleaned.json")
 
     final_cleaned_path =  os.path.join(user_path, 
-                                       "derived/py_confirmed.csv")
+                                       "derived/auxiliary/py_confirmed.csv")
     final_remaining_path =  os.path.join(user_path, 
-                                         "derived/py_remaining.csv")
+                                         "derived/auxiliary/py_remaining.csv")
     components_path =  os.path.join(user_path, 
-                                    "derived/py_graph_components.json")
+                                    "derived/auxiliary/py_graph_components.json")
     code_path = os.getcwd()
 
 # LOAD HELPER SCRIPTS

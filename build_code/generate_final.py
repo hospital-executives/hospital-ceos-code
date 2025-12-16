@@ -5,6 +5,7 @@ import pandas as pd
 import re
 from datetime import datetime
 import shutil
+import networkx as nx
 
 user_path = "/Users/katherinepapen/Dropbox/hospital_ceos/_data"
 current_date = datetime.now().strftime("%m-%d")
@@ -42,19 +43,22 @@ with open(json_path, 'r') as json_file:
     components_dict = json.load(json_file)  
 
 #### REASSIGN IDS ####
-converted_dict = {key: [int(item) for item in value] 
-                  for key, value in components_dict.items() 
-                  if len(value) > 0}
+G = nx.Graph()
+for node, neighbors in components_dict.items():
+    for neighbor in neighbors:
+        G.add_edge(int(node), int(neighbor))
 
-precomputed_max = {
-    key: key if int(key) > max(value_list) else max(value_list)
-    for key, value_list in converted_dict.items()
-}
+# Map every node in a component to that component's max
+precomputed_max = {}
+for component in nx.connected_components(G):
+    max_id = max(component)
+    for node in component:
+        precomputed_max[node] = max_id
 
 def map_to_max(id_value):
     return precomputed_max.get(id_value, id_value)
 
-new_himss['new_contact_uniqueid'] = new_himss['contact_uniqueid'].astype(str).map(map_to_max)
+new_himss['new_contact_uniqueid'] = new_himss['contact_uniqueid'].astype(int).map(map_to_max)
 
 #### ASSIGN FINAL BLOCKS ####
 new_himss['first_component'] = new_himss['first_component'].astype(int)
