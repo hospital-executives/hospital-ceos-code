@@ -126,10 +126,11 @@ Goal: 			Set globals for Hospital CEOs analysis
 		preserve
 		
 			use "${dbdata}/derived/temp/updated_trajectories.dta", clear
-			drop entity_aha
+			drop entity_aha entity_uniqueid
 			rename aha_id entity_aha
-			keep entity_uniqueid entity_aha year contact_uniqueid confirmed
+			keep entity_aha year contact_uniqueid confirmed
 			keep if !missing(entity_aha)
+			duplicates drop 
 
 			bys entity_aha year: egen n_unique_contacts = nvals(contact_uniqueid)
 			gen byte multi_contact = n_unique_contacts > 1
@@ -201,13 +202,17 @@ Goal: 			Set globals for Hospital CEOs analysis
 			use "${dbdata}/derived/temp/updated_trajectories.dta", clear
 			keep contact_uniqueid aha_id next_year *_future  future_* max_bdtot_* year_of_max_bdtot has_match_next_year
 			rename (contact_uniqueid next_year) (contact_lag1 year)
+
+			destring max_bdtot_next_year max_bdtot_ever, replace 
+			collapse (max) exists_future sys_future hosp_future non_hosp_future ///
+				leader_future future_at_same_hospital future_at_same_sys ///
+				max_bdtot_next_year max_bdtot_ever ///
+				(firstnm) year_of_max_bdtot has_match_next_year, ///
+				by(contact_lag1 aha_id year)
+	
 			tostring contact_lag1, replace
 			destring aha_id, replace
-			
-			duplicates tag contact_lag1 year, gen(dup)
-			tab dup
-			keep if dup == 0
-						
+									
 			tempfile trajectories
 			save `trajectories'
 		restore

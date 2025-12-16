@@ -252,7 +252,7 @@ cleaned <- final_export %>%
   ungroup() %>%
   mutate(next_year = year + 1)
 
-mults <- cleaned %>% filter(mult_obs) %>% distinct() %>% arrange(entity_uniqueid, year)
+mults <- cleaned %>% filter(mult_obs) %>% distinct() %>% arrange(aha_id, year)
 cat(sum(cleaned$mult_obs))
 
 write_dta(cleaned %>% select(-mult_obs), paste0(derived_data, "/temp/updated_trajectories.dta"))
