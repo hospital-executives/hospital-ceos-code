@@ -7,12 +7,15 @@ import pandas as pd
 from shapely.geometry import Point
 import zipfile
 from pathlib import Path
+import requests
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from helper_scripts import xwalk_helper as hlp
 
-if len(sys.argv) == 2:
-    data_path = sys.argv[1]
+cli_args = [arg for arg in sys.argv[1:] if not arg.startswith("-")]
+
+if cli_args:
+    data_path = cli_args[0]
 else: 
     data_path = "/Users/katherinepapen/Library/CloudStorage/Dropbox/hospital_ceos/_data"
     print('WARNING: not using Makefile inputs')
@@ -102,4 +105,49 @@ merged_df["cbsa_geoid"] = merged_df["GEOID"].combine_first(merged_df["GEOID10"])
 merged_df["cbsa_name"]  = merged_df["NAME"].combine_first(merged_df["NAME10"])
 merged_df = merged_df.drop(columns=["CBSAFP","CBSAFP10","GEOID","GEOID10","NAME","NAME10"], errors="ignore")
 
-merged_df.to_csv(output_path)
+#### add zip to ruca xwalk ####
+## helper function to standardize zips
+def clean_zip(series):
+    # Convert to pandas string dtype (handles NaN nicely)
+    s = series.astype("string")
+
+    # Strip spaces
+    s = s.str.strip()
+
+    # Keep only digits
+    s = s.str.replace(r"[^\d]", "", regex=True)
+
+    # If there are more than 5 digits (e.g., 9-digit zips or "010101"), take first 5
+    s = s.str[:5]
+
+    # Turn empty strings back into NA
+    s = s.replace("", pd.NA)
+
+    # Zero-pad to 5 digits where not NA
+    s = s.where(s.isna(), s.str.zfill(5))
+
+    return s
+
+## download xwalk
+url = "https://ers.usda.gov/sites/default/files/_laserfiche/DataFiles/53241/RUCA2010zipcode.csv?v=14791"   # replace with your download link
+ruca_xwalk = pd.read_csv(url)
+
+## format xwalk for merge
+ruca_xwalk.columns = ruca_xwalk.columns.str.replace("'", "")
+ruca_mini = ruca_xwalk[['ZIP_CODE', "RUCA1", "RUCA2", "STATE"]]
+
+ruca_mini["zip_key"] = clean_zip(ruca_mini["ZIP_CODE"])
+merged_df["zip_key"] = clean_zip(merged_df["entity_zip"])
+
+# there are cases where:
+# a) there is no zip xwalk or 
+# b) cases where state from xwalk doesnt line up (mostly due to borders)
+# but these are rare, particularly for our primary sample
+final = merged_df.merge(
+    ruca_mini[["RUCA1", "RUCA2", "zip_key"]],
+    how="left",
+    left_on="zip_key",
+    right_on="zip_key"
+)
+
+final.to_csv(output_path)
