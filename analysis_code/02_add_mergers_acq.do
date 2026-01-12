@@ -183,6 +183,19 @@ Goal: 			Merge M&A data into hospital-level dataset
 
 	* remove trailing zeroes and sort by sysid?
 
+	
+* ADD PE DATA __________________________________________________________________ 
+
+	preserve
+		use "${dbdata}/supplemental/private_equity/Clean-Cut-Full-Year-PE-ShortTerm-Hospital-Level-Deal-List.dta", clear
+		rename pn medicarenumber
+		rename id_aha aha_id	
+		tempfile pe_data
+		save `pe_data'
+	restore
+	
+	merge m:1 medicarenumber year using `pe_data', gen(_merge_pe)	
+	
 
 * MISC DATA CLEANING ___________________________________________________________
 

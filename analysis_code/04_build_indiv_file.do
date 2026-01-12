@@ -40,8 +40,12 @@ Goal: 			Merge the facility-level M&A data onto individual-level data
 	
 * pull in contextual data for parents - specifically want profit data
 	merge m:1 entity_uniqueid year using "${dbdata}/derived/temp/systems_nonharmonized_withprofit.dta", keep(1 3) gen(_merge_newprofit) keepusing(forprofit_imputed)
-	replace forprofit = forprofit_imputed if _merge_newprofit == 3
+	replace forprofit = forprofit_imputed if _merge_newprofit == 3 & !missing(forprofit_imputed) // this only changes things for parents
 	drop _merge_newprofit
+	
+* NEW: replacing facility forprofit info with parent info. 
+	replace forprofit = forprofit_parent if missing(forprofit) & !missing(forprofit_parent)
+	* forprofit share of general/CAH tracks stats here: https://www.kff.org/health-costs/key-facts-about-hospitals/
 	
 * MAKE A SYSTEM-LEVEL VARIABLE USING HIMSS PARENT
 	gen parent_system = entity_uniqueid_parent 

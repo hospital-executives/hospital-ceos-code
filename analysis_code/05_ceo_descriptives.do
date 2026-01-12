@@ -17,6 +17,406 @@ Goal: 			Compute descriptive stats for CEOs
 	
 * calculate CEO descriptive statistics _________________________________________
 
+
+* descriptives table 1 (Table of hospital-level cross-sectional descriptive stats in 2017)
+	
+//  	preserve
+		
+	* ------- keep hospitals only -------
+		keep if is_hospital == 1 & entity_type == "Hospital"
+		restrict_hosp_sample // will keep only general and CAH
+		
+	* ------- sort observations into categories for the columns -------
+		/* Columns
+			– Overall (column 1)
+			– For-profit vs. non-profit (column 2-3)
+			– System vs. independent hospitals (for now, define system as N hospitals ≥ 3) (column 4-5)
+			– PE vs. not (column 6-7)
+		*/
+		
+		* For-profit vs. non-profit (column 2-3)
+		tab forprofit, m // can use this for profit status (IMPUTED FROM PARENTS WHEN MISSING)
+		 
+		* System vs independent: 
+		bysort parent_system entity_uniqueid year: gen system_counter = 1 if _n == 1
+		bysort parent_system year: egen system_N = total(system_counter)
+			* final
+		gen system_ind_cleaned_3min = entity_type_parent == "IDS/RHA" & system_N >= 3
+		
+		tempfile base
+		save `base'
+		
+	* ------- make panel A variables for rows -------
+		
+		* for CEO, can use hosp_has_ceo indicator
+		
+		* Define roles 
+			* COO
+			local role_coo_suffix        "coo"
+			local role_coo_stdpattern    "COO:"
+			local role_coo_titlepatterns ///
+				`" "COO" "Chief Operating Officer" "chief operating officer" "'
+				
+			* CFO 
+			local role_cfo_suffix        "cfo"
+			local role_cfo_stdpattern    "CFO:"
+			local role_cfo_titlepatterns ///
+				`" "CFO" "Chief Financial Officer" "chief financial officer" "'
+
+// 			* CMO - not really used for hospitals in HIMSS
+// 			local role_cmo_suffix        "cmo"
+// 			local role_cmo_stdpattern    "CMO:"
+// 			local role_cmo_titlepatterns ///
+// 				`" "CMO" "Chief Medical Officer" "chief medical officer" "'	
+				
+			* CNH	
+			local role_cnh_suffix        "cnh"
+			local role_cnh_stdpattern    "Chief Nursing Head"
+			local role_cnh_titlepatterns ///
+				`" "CNH" "Chief Nursing Head" "chief nursing head" "'	
+				
+		* Loop over roles
+			foreach role in coo cfo /* cmo */ cnh {
+
+				local suffix        "`role_`role'_suffix'"
+				local stdpattern    "`role_`role'_stdpattern'"
+				local titlepatterns "`role_`role'_titlepatterns'"
+
+				* Initial flag from title_standardized
+				gen char_`suffix' = regexm(title_standardized, "`stdpattern'")
+
+				* Check whether hospital already has role that year
+				bysort entity_uniqueid year: egen temp_hosp_has_`suffix' = max(char_`suffix')
+
+				* Fallback: search raw title only if none found yet
+				foreach pat of local titlepatterns {
+					replace char_`suffix' = 1 ///
+						if regexm(title, "`pat'") & temp_hosp_has_`suffix' == 0
+				}
+
+				drop temp_hosp_has_`suffix'
+
+				* Final hospital-year indicator
+				bysort entity_uniqueid year: egen hosp_has_`suffix' = max(char_`suffix')
+			}
+			
+		* custom for CIO/CTO
+		* CIO/CTO
+		gen char_cio = regexm(title_standardized, "CIO:  Chief Information Officer")
+		bysort entity_uniqueid year: egen temp_hosp_has_cio = max(char_cio)
+			* add other title_standardized
+		replace char_cio = 1 if regexm(title_standardized, "CNIS:") & temp_hosp_has_cio == 0
+		replace char_cio = 1 if regexm(title_standardized, "CSIO/IT Security Officer") & temp_hosp_has_cio == 0
+		replace char_cio = 1 if regexm(title_standardized, "Chief Medical Information Officer") & temp_hosp_has_cio == 0
+			* add other title
+		drop temp_hosp_has_cio
+		bysort entity_uniqueid year: egen temp_hosp_has_cio = max(char_cio)
+		replace char_cio = 1 if regexm(title, "CTO|Chief Technology Officer|chief technology officer|Chief Information Officer") & temp_hosp_has_cio == 0
+			* final version
+		drop temp_hosp_has_cio
+		bysort entity_uniqueid year: egen hosp_has_cio = max(char_cio)
+		
+		* make a combined variable for COO and CFO
+		gen temp_hosp_has_coo_cfo = hosp_has_coo*hosp_has_cfo
+		bysort entity_uniqueid year: egen hosp_has_coo_cfo = max(temp_hosp_has_coo_cfo)
+		
+		* make a combined "technical" csuite variable (excluding CMO)
+		gen temp_hosp_has_technical = hosp_has_cnh*hosp_has_cio
+		bysort entity_uniqueid year: egen hosp_has_technical = max(temp_hosp_has_technical)
+		
+		* number of distinct roles at hospital
+			* ndistinct_std: number of unique values of title_standardized
+			bysort entity_uniqueid year title_standardized: gen temp_ndistinct_std = 1 if _n == 1
+			bysort entity_uniqueid year: egen ndistinct_std = total(temp_ndistinct_std)
+			* ndistinct_raw: number of unique job role observations in the hospital-year
+			bysort entity_uniqueid year: gen ndistinct_raw = _N
+	
+		* make a variable for a shared CEO
+		bysort contact_uniqueid year: egen count_char_ceo = total(char_ceo)
+		gen shared_ceo = (count_char_ceo > 1 & char_ceo == 1)
+		bysort entity_uniqueid year: egen hosp_has_shared_ceo = max(shared_ceo)
+		
+		tempfile base_withvars
+		save `base_withvars'
+		
+	* ------- keep 2017 only -------
+		keep if year == 2017
+		
+	* ------- make panel A -------	
+		
+		bysort entity_uniqueid year: keep if _n ==1 // make unique by hospital	
+		tempfile hosp_2017
+		save `hosp_2017'
+		
+		local collapsevarsA "hosp_has_ceo hosp_has_coo hosp_has_cfo hosp_has_coo_cfo hosp_has_cnh hosp_has_cio hosp_has_technical hosp_has_shared_ceo ndistinct_raw ndistinct_std"
+		
+		* ALL
+		collapse `collapsevarsA', by(year)
+		gen type = "All"
+		tempfile panelA_all
+		save `panelA_all'
+		
+		use `hosp_2017', clear
+		
+		* FP/NFP
+		collapse `collapsevarsA', by(year forprofit)
+		drop if missing(forprofit)
+		gen type = "For-Profit" if forprofit == 1
+		replace type = "Non-Profit" if forprofit == 0
+		tempfile panelA_fp_nfp
+		save `panelA_fp_nfp'
+		
+		use `hosp_2017', clear
+		
+		* SYS/NON-SYS
+		collapse `collapsevarsA', by(year system_ind_cleaned_3min)
+		drop if missing(system_ind_cleaned_3min)
+		gen type = "System" if system_ind_cleaned_3min == 1
+		replace type = "Non-System" if system_ind_cleaned_3min == 0
+		tempfile panelA_sys
+		save `panelA_sys'
+		
+		* APPEND
+		use `panelA_all', clear
+		append using `panelA_fp_nfp'
+		append using `panelA_sys'
+		encode type, gen(type_id)
+		drop type
+		
+		xpose, clear varname
+		
+		* clean
+		rename v1 all
+		rename v2 nfp
+		rename v3 fp 
+		rename v4 nonsys
+		rename v5 sys
+		drop if _varname == "forprofit" |  _varname == "system_ind_cleaned_3min" |  _varname == "type_id" | _varname == "year" |  _varname == "ndistinct_std"
+		order _varname all fp nfp sys nonsys
+		
+	* ------- export panel A -------	
+		
+		gen str60 rowlabel = _varname
+		replace rowlabel = "CEO present (\%)"                    if _varname == "hosp_has_ceo"
+		replace rowlabel = "COO present (\%)"                    if _varname == "hosp_has_coo"
+		replace rowlabel = "CFO present (\%)"                    if _varname == "hosp_has_cfo"
+		replace rowlabel = "COO and CFO present (\%)"             if _varname == "hosp_has_coo_cfo"
+		replace rowlabel = "CNH present (\%)"     				if _varname == "hosp_has_cnh"
+		replace rowlabel = "CIO present (\%)"                    if _varname == "hosp_has_cio"
+		replace rowlabel = "All technical execs present (\%)"         if _varname == "hosp_has_technical"
+		replace rowlabel = "Shared CEO (\%)"             if _varname == "hosp_has_shared_ceo"
+		replace rowlabel = "Distinct roles (count)"          if _varname == "ndistinct_raw"
+
+		local fmt "%9.2f"
+		
+		foreach v in all fp nfp sys nonsys {
+			replace `v' = 100*`v' if inlist(_varname, ///
+				"hosp_has_ceo","hosp_has_coo","hosp_has_cfo","hosp_has_coo_cfo", ///
+				"hosp_has_cnh","hosp_has_cio","hosp_has_technical","hosp_has_shared_ceo")
+		}
+		
+		local outfile "${overleaf}/tables/outline_descriptives_table1_panelA.tex"
+		cap file close fh
+		file open fh using "`outfile'", write replace text
+
+		file write fh "\begin{table}[!htbp]" _n
+		file write fh "\centering" _n
+		file write fh "\caption{Hospital Leadership Roles, 2017 (Panel A)}" _n
+		file write fh "\label{tab:outline_descriptives_table1_panelA}" _n
+		file write fh "\begin{tabular}{lccccc}" _n
+		file write fh "\toprule" _n
+
+		* Group header row
+		file write fh " & \multicolumn{1}{c}{} & \multicolumn{2}{c}{Profit Status} & \multicolumn{2}{c}{System Affiliation} \\" _n
+		file write fh "\cmidrule(lr){3-4}\cmidrule(lr){5-6}" _n
+		file write fh " & \multicolumn{1}{c}{All} & \multicolumn{1}{c}{For-Profit} & \multicolumn{1}{c}{Non-Profit} & \multicolumn{1}{c}{System} & \multicolumn{1}{c}{Non-System} \\" _n
+		file write fh "\midrule" _n
+
+		* Body rows
+		quietly {
+			forvalues i = 1/`=_N' {
+				local r = rowlabel[`i']
+
+				local a  : display `fmt' all[`i']
+				local fp : display `fmt' fp[`i']
+				local nf : display `fmt' nfp[`i']
+				local sy : display `fmt' sys[`i']
+				local ns : display `fmt' nonsys[`i']
+
+				* trim leading spaces from :display output
+				local a  = strtrim("`a'")
+				local fp = strtrim("`fp'")
+				local nf = strtrim("`nf'")
+				local sy = strtrim("`sy'")
+				local ns = strtrim("`ns'")
+
+				file write fh "`r' & `a' & `fp' & `nf' & `sy' & `ns' \\" _n
+			}
+		}
+
+		file write fh "\bottomrule" _n
+		file write fh "\end{tabular}" _n
+		file write fh "\vspace{0.25em} \\" _n
+		file write fh "\footnotesize Notes: Entries are means by subgroup." _n
+		file write fh "\end{table}" _n
+
+		file close fh
+
+		di as result "Wrote LaTeX table to: `outfile'"
+		
+	* ------- make panel B variables -------	
+	
+		use `base_withvars', clear
+		
+		* make a previously CNH variable
+		bysort contact_uniqueid year: egen char_cnh_yr = max(char_cnh)
+		bysort contact_uniqueid (year): gen prev_cnh = char_cnh_yr if _n == 1
+		bysort contact_uniqueid (year): replace prev_cnh = max(char_cnh_yr, prev_cnh[_n-1])
+		
+		* char_female
+		* char_md 
+		
+		* clinical degree variable 
+		gen char_clinical = char_md
+		replace char_clinical = regexm(credentials,"MD|md|DO|PharmD|RN|PhD|PsyD")
+		
+		* for person-hospital combinations, count total number of years between 2009 and 2017
+		bysort contact_uniqueid entity_uniqueid year: gen year_at_hosp_0917 = 1 if _n == 1
+		bysort contact_uniqueid entity_uniqueid: egen total_years_at_hosp_0917 = total(year_at_hosp_0917)
+		
+		* reduce sample to hospital CEOs only
+		keep if hospital_ceo == 1 // same as char_ceo in this sample
+		
+		* count number of years per person (# CEO years)
+		bysort contact_uniqueid year: gen year_as_ceo_0917 = 1 if _n == 1
+		bysort contact_uniqueid: egen total_years_as_ceo_0917 = total(year_as_ceo_0917)
+		
+		* keep 2017 only
+		keep if year == 2017
+		
+	* ------- make panel B -------	
+		
+		tempfile hosp_2017
+		save `hosp_2017'
+		
+		local collapsevarsB "char_female char_clinical total_years_at_hosp_0917 total_years_as_ceo_0917"
+		
+		* ALL
+		collapse `collapsevarsB', by(year)
+		gen type = "All"
+		tempfile panelB_all
+		save `panelB_all'
+		
+		use `hosp_2017', clear
+		
+		* FP/NFP
+		collapse `collapsevarsB', by(year forprofit)
+		drop if missing(forprofit)
+		gen type = "For-Profit" if forprofit == 1
+		replace type = "Non-Profit" if forprofit == 0
+		tempfile panelB_fp_nfp
+		save `panelB_fp_nfp'
+		
+		use `hosp_2017', clear
+		
+		* SYS/NON-SYS
+		collapse `collapsevarsB', by(year system_ind_cleaned_3min)
+		drop if missing(system_ind_cleaned_3min)
+		gen type = "System" if system_ind_cleaned_3min == 1
+		replace type = "Non-System" if system_ind_cleaned_3min == 0
+		tempfile panelB_sys
+		save `panelB_sys'
+		
+		* APPEND
+		use `panelB_all', clear
+		append using `panelB_fp_nfp'
+		append using `panelB_sys'
+		encode type, gen(type_id)
+		drop type
+		
+		xpose, clear varname
+		
+		* clean
+		rename v1 all
+		rename v2 nfp
+		rename v3 fp 
+		rename v4 nonsys
+		rename v5 sys
+		drop if _varname == "forprofit" |  _varname == "system_ind_cleaned_3min" |  _varname == "type_id" | _varname == "year" |  _varname == "ndistinct_std"
+		order _varname all fp nfp sys nonsys
+		
+	* ------- export panel B -------	
+		
+		gen str60 rowlabel = _varname
+		replace rowlabel = "Female (\%)"                    if _varname == "char_female"
+		replace rowlabel = "Clinical Degree (\%)"                    if _varname == "char_clinical"
+		replace rowlabel = "Years at Hospital (Any Role)"                    if _varname == "total_years_at_hosp_0917"
+		replace rowlabel = "Years as CEO (Any Hospital)"             if _varname == "total_years_as_ceo_0917"
+
+		local fmt "%9.2f"
+		
+		foreach v in all fp nfp sys nonsys {
+			replace `v' = 100*`v' if inlist(_varname, ///
+				"char_female","char_clinical")
+		}
+		
+		local outfile "${overleaf}/tables/outline_descriptives_table1_panelB.tex"
+		cap file close fh
+		file open fh using "`outfile'", write replace text
+
+		file write fh "\begin{table}[!htbp]" _n
+		file write fh "\centering" _n
+		file write fh "\caption{Hospital CEO Characteristics, 2017 (Panel B)}" _n
+		file write fh "\label{tab:outline_descriptives_table1_panelA}" _n
+		file write fh "\begin{tabular}{lccccc}" _n
+		file write fh "\toprule" _n
+
+		* Group header row
+		file write fh " & \multicolumn{1}{c}{} & \multicolumn{2}{c}{Profit Status} & \multicolumn{2}{c}{System Affiliation} \\" _n
+		file write fh "\cmidrule(lr){3-4}\cmidrule(lr){5-6}" _n
+		file write fh " & \multicolumn{1}{c}{All} & \multicolumn{1}{c}{For-Profit} & \multicolumn{1}{c}{Non-Profit} & \multicolumn{1}{c}{System} & \multicolumn{1}{c}{Non-System} \\" _n
+		file write fh "\midrule" _n
+
+		* Body rows
+		quietly {
+			forvalues i = 1/`=_N' {
+				local r = rowlabel[`i']
+
+				local a  : display `fmt' all[`i']
+				local fp : display `fmt' fp[`i']
+				local nf : display `fmt' nfp[`i']
+				local sy : display `fmt' sys[`i']
+				local ns : display `fmt' nonsys[`i']
+
+				* trim leading spaces from :display output
+				local a  = strtrim("`a'")
+				local fp = strtrim("`fp'")
+				local nf = strtrim("`nf'")
+				local sy = strtrim("`sy'")
+				local ns = strtrim("`ns'")
+
+				file write fh "`r' & `a' & `fp' & `nf' & `sy' & `ns' \\" _n
+			}
+		}
+
+		file write fh "\bottomrule" _n
+		file write fh "\end{tabular}" _n
+		file write fh "\vspace{0.25em} \\" _n
+		file write fh "\footnotesize Notes: Entries are means by subgroup." _n
+		file write fh "\end{table}" _n
+
+		file close fh
+
+		di as result "Wrote LaTeX table to: `outfile'"
+		
+	* ------- make panel C variables -------	
+	
+		use `base_withvars', clear
+		
+	
+	restore
+
+
 * step-up graphs? EXPERIMENTING
 
 	* distinguish between system roles at a SHHS or IDS/RHA
@@ -241,7 +641,7 @@ Goal: 			Compute descriptive stats for CEOs
 		replace title_collapsed = "COO" if regexm(title_standardized, "COO:")
 		replace title_collapsed = "CFO" if regexm(title_standardized, "CFO:")
 		replace title_collapsed = "CMO" if regexm(title_standardized, "Chief Medical Officer")
-		replace title_collapsed = "CNH" if regexm(title_standardized, "Chief Nursing Head|Pathology Chief")
+		replace title_collapsed = "CNH" if regexm(title_standardized, "Chief Nursing Head")
 		replace title_collapsed = "Other C-Suite" if regexm(title_standardized, "Chief") &!regexm(title_standardized, "Medical Staff Chief") & missing(title_collapsed)
 		replace title_collapsed = "Director" if regexm(title_standardized, "Director") & missing(title_collapsed)
 		replace title_collapsed = "Head" if regexm(title_standardized, "Head|Medical Staff Chief|Pathology Chief") & !regexm(title_standardized, "Head of Facility") & missing(title_collapsed)
@@ -334,7 +734,6 @@ Goal: 			Compute descriptive stats for CEOs
 		graph export "${overleaf}/notes/CEO Descriptives/figures/descr_rolebeforeceo_forprofit_male.pdf", as(pdf) name("Graph") replace
 	restore
 
-	
 
 * CEO MD and female shares (ownership variable: gov_priv_type)
 	preserve
