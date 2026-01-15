@@ -87,8 +87,9 @@ comp_remaining_ids = set(input_df['contact_uniqueid']) - comp_cleaned_ids
 filtered_df = input_df[input_df['contact_uniqueid'].isin(comp_remaining_ids)]
 name_pairs_set, meta_pairs_set = cc.gen_name_meta_pairs(user_path)
 
-
 component_pairs = cc.update_results(component_pairs)
+component_pairs = cc.add_pair_c_suite_flag(component_pairs, input_df)
+
 contact_dict, comp_contact_count_dict = cc.generate_pair_dicts(component_pairs)
 
 # determine matches and mismatches by id
@@ -116,11 +117,13 @@ comp_dropped3, cleaned_remaining3 = cc.clean_results_pt3(
 cc.update_confirmed_from_dropped(confirmed_graph, comp_dropped,
                                                     comp_contact_count_dict)
 
+graph_backup = copy.deepcopy(confirmed_graph)
+
 confirmed_graph, cleaned_remaining4 = cc.clean_results_pt4(confirmed_graph, 
 cleaned_remaining3,
 new_himss)
 
-cleaned_remaining_ids = set(cleaned_remaining['contact_uniqueid'])
+cleaned_remaining_ids = set(cleaned_remaining['contact_uniqueid'].astype(str))
 
 comp_remaining, comp_dropped = cc.clean_results_pt6(cleaned_remaining4, 
                                                     comp_dropped3,
@@ -162,6 +165,8 @@ meta_pairs_1 = all_meta_pairs[
     (all_meta_pairs['contact_id2'].isin(component_ids_clean))]
 
 meta_pairs_1 = cc.update_results(meta_pairs_1)
+meta_pairs_1 = cc.add_pair_c_suite_flag(meta_pairs_1, input_df)
+
 contact_dict, meta_1_contact_count_dict = cc.generate_pair_dicts(meta_pairs_1)
 
 ## need to determine which cases are clear 
@@ -329,6 +334,7 @@ meta_pairs_2 = all_meta_pairs[
     (all_meta_pairs['contact_id2'].isin(comp_confirmed_ids_final))]
 
 meta_pairs_2 = cc.update_results(meta_pairs_2)
+meta_pairs_2 = cc.add_pair_c_suite_flag(meta_pairs_2, input_df)
 
 contact_dict, meta_2_contact_count_dict = cc.generate_pair_dicts(meta_pairs_2)
 
