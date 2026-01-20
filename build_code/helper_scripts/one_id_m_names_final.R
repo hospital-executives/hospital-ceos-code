@@ -342,12 +342,54 @@ matching_one_id_m_names <- function(df, confirmed, remaining) {
     mutate(num_name = n_distinct(full_name)) %>%
     ungroup()
   
+  ########### PT 3: MANUALLY UPDATE CEOS ###########
+  manually_confirmed <- c("106250","1310316","1319558","132492","1326565",
+                          "1352443","1354991", "1392906","183481","333580",
+                          "352663", "99438","95764","794646", "75251",
+                          "107744","1328071", "1348893", "1354569", "343688",
+                          "408838","453379", "673184", "679624", "681959", "84136", 
+                          "84326", "1359001", "155405", "511663", "553093", "658739",
+                          "654043", "2326650", "630032", "1346154")
+  
+  ids <- unique(as.numeric(df$contact_uniqueid))
+  max_id <- max(ids, na.rm = TRUE)
+  
+  unique3 <- remaining3 %>%
+    group_by(contact_uniqueid) %>%
+    filter(any(title_standardized == "CEO:  Chief Executive Officer")) %>%
+    ungroup() %>%
+    select(id, contact_uniqueid, year, firstname, lastname, full_name, title_standardized, 
+           entity_name, entity_city, entity_state,num_name, num_ids) %>%
+    mutate(
+      new_contact_uniqueid = case_when(
+        full_name == "jerrykennedy" ~ "495327",
+        full_name == "lorettaschmidt" ~ "792388",
+        full_name == "bubbaarnold" | full_name == "lesliearnold" ~ "107744",
+        full_name == "nickiklein" ~ "354973",
+        full_name == "fredmeis" ~ "86217",
+        full_name == "sanitaprahbakar" ~ "684206",
+        full_name == "blairhenson" ~ as.character(max_id + 1),
+        full_name == "robertdaverja" ~ as.character(max_id + 2),
+        full_name == "joanmcgruder"~ as.character(max_id + 3),
+        full_name == "ricardoescobar"~ as.character(max_id + 4),
+        full_name == "iyentarmalini"~ as.character(max_id + 5),
+        full_name == "timkollars"~ as.character(max_id + 6),
+        full_name == "conniemahon"~ as.character(max_id + 7),
+        full_name == "samdaugherty" | full_name == "thomasdaugherty" ~ as.character(max_id + 8),
+        
+        TRUE ~ contact_uniqueid
+      )) %>%
+    group_by(contact_uniqueid) %>%
+    filter(any(contact_uniqueid != new_contact_uniqueid) | contact_uniqueid %in% manually_confirmed) %>%
+    ungroup() %>%
+    mutate(contact_uniqueid = new_contact_uniqueid)
   
   ########### PT 3: FORMAT RETURN ###########
-  new_confirmed_ids <- bind_rows(unique1, unique2)
-
+  new_confirmed_ids <- bind_rows(unique1, unique2,unique3)
+  remaining4 <- remaining3 %>%
+    anti_join(unique3, by = "id") 
   
-  return(list(remaining = remaining3, updated_ids = new_confirmed_ids))
+  return(list(remaining = remaining4, updated_ids = new_confirmed_ids))
   
   
 }
