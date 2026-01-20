@@ -20,7 +20,8 @@ rm(script_directory, config_path)
 temp_export <- read_feather(paste0(derived_data,'/himss_aha_xwalk.feather'))
 export_xwalk <- temp_export %>% 
   distinct(himss_entityid, himss_sysid, campus_aha, entity_aha, latitude, longitude, 
-           campus_fuzzy_flag, entity_fuzzy_flag, py_fuzzy_flag, unfiltered_campus_aha) %>%
+           campus_fuzzy_flag, entity_fuzzy_flag, py_fuzzy_flag, unfiltered_campus_aha,
+           RUCA1, RUCA2) %>%
   group_by(himss_entityid) %>%
   slice(1) %>% 
   ungroup() %>%
@@ -113,7 +114,7 @@ himss_mini <- update_titles %>% # confirmed
 
 himss_to_aha_xwalk <- temp_export %>%
   distinct(himss_entityid, entity_uniqueid, year, entity_aha, campus_aha, 
-           py_fuzzy_flag, latitude, longitude, unfiltered_campus_aha) %>%
+           py_fuzzy_flag, latitude, longitude, unfiltered_campus_aha, RUCA1, RUCA2) %>%
   group_by(himss_entityid) %>%
   slice(1) %>% ungroup() %>%
   mutate(ahanumber = case_when(

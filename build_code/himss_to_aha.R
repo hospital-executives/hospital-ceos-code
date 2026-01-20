@@ -760,7 +760,8 @@ hospital_df <- step15 %>%
            haentitytypeid, system_id, sysid,
            entity_name, mname, entity_address, mlocaddr,
            entity_zip, mloczip_five, latitude, longitude, geocoded,
-           ccn_himss, ccn_aha,entity_fuzzy_flag,campus_fuzzy_flag, py_fuzzy_flag) 
+           ccn_himss, ccn_aha,entity_fuzzy_flag,campus_fuzzy_flag, py_fuzzy_flag,
+           RUCA1, RUCA2) 
 
 # create var for "true" system id 
 hospital_df <- hospital_df %>% 
@@ -916,7 +917,7 @@ xwalk_export <- hospital_df %>%
            entity_uniqueid, entity_name, mname, entity_address, mlocaddr,
            entity_zip, mloczip_five, latitude, longitude,
            ccn_himss, ccn_aha,entity_fuzzy_flag,campus_fuzzy_flag, py_fuzzy_flag,
-           haentitytypeid) %>%
+           haentitytypeid, RUCA1, RUCA2) %>%
   rename(
          name_himss = entity_name,
          name_aha = mname,
