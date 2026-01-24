@@ -96,32 +96,33 @@ vacancies_wide <- vacancies_df %>%
 
 cleaned_vacancies <- vacancies_wide %>%
   mutate(
-    ceo_flag = rowSums(!is.na(select(., matches("ceo", perl = TRUE)))) > 0,
-    cfo_flag = rowSums(!is.na(select(., matches("cfo", perl = TRUE)))) > 0,
-    coo_flag = rowSums(!is.na(select(., matches("coo", perl = TRUE)))) > 0,
-    cio_flag = rowSums(!is.na(select(., matches("cio", perl = TRUE)))) > 0
+    ceo_flag = rowSums(!is.na(select(., matches("ceo")))) > 0,
+    cfo_flag = rowSums(!is.na(select(., matches("cfo")))) > 0,
+    coo_flag = rowSums(!is.na(select(., matches("coo")))) > 0,
+    cio_flag = rowSums(!is.na(select(., matches("cio")))) > 0,
+    cno_flag = rowSums(!is.na(select(., matches("nursing_head")))) > 0,
+    cmo_flag = rowSums(!is.na(select(., matches("medical_staff_chief")))) > 0,
+    cco_flag = rowSums(!is.na(select(., matches("chief_compliance_officer")))) > 0
   ) %>%
   rowwise() %>%
   mutate(
-    all_ceo = if (ceo_flag) list(na.omit(c_across(matches("ceo(?!_flag$)", perl = TRUE)))) else list(NA),
-    all_cfo = if (cfo_flag) list(na.omit(c_across(matches("cfo(?!_flag$)", perl = TRUE)))) else list(NA),
-    all_coo = if (coo_flag) list(na.omit(c_across(matches("\\bcoo\\b|coo_chief", perl = TRUE)))) else list(NA),
-    all_cio = if (cio_flag) list(na.omit(c_across(matches("cio(?!_flag$)", perl = TRUE)))) else list(NA)
+    all_ceo = if (ceo_flag) list(na.omit(c_across(matches("ceo") & !ends_with("_flag")))) else list(NA_character_),
+    all_cfo = if (cfo_flag) list(na.omit(c_across(matches("cfo") & !ends_with("_flag")))) else list(NA_character_),
+    all_coo = if (coo_flag) list(na.omit(c_across(matches("coo") & !ends_with("_flag")))) else list(NA_character_),
+    all_cio = if (cio_flag) list(na.omit(c_across(matches("cio") & !ends_with("_flag")))) else list(NA_character_),
+    all_cno = if (cno_flag) list(na.omit(c_across(matches("nursing_head")))) else list(NA_character_),
+    all_cmo = if (cmo_flag) list(na.omit(c_across(matches("medical_staff_chief")))) else list(NA_character_),
+    all_cco = if (cco_flag) list(na.omit(c_across(matches("chief_compliance_officer")))) else list(NA_character_)
   ) %>%
   ungroup() %>%
   select(-ends_with("_flag")) %>%
   mutate(
-    all_ceo = map(all_ceo, unique),
-    all_cfo = map(all_cfo, unique),
-    all_coo = map(all_coo, unique),
-    all_cio = map(all_cio, unique)
+    across(starts_with("all_"), ~map(.x, unique))
   ) %>%
-  # Remove "Position does not exist" if there are other observations
   mutate(
-    all_ceo = map(all_ceo, ~if(length(.x) > 1) .x[.x != "Position does not exist"] else .x),
-    all_cfo = map(all_cfo, ~if(length(.x) > 1) .x[.x != "Position does not exist"] else .x),
-    all_coo = map(all_coo, ~if(length(.x) > 1) .x[.x != "Position does not exist"] else .x),
-    all_cio = map(all_cio, ~if(length(.x) > 1) .x[.x != "Position does not exist"] else .x)
+    across(starts_with("all_"), ~map(.x, function(vals) {
+      if (length(vals) > 1) vals[vals != "Position does not exist"] else vals
+    }))
   )
 
 ## merge on aha flag
@@ -132,19 +133,46 @@ collapsed_individuals <- cleaned_individuals %>%
   distinct(entity_uniqueid, year) %>%
   mutate(flagged_leader_in_aha = TRUE)
 
+# Helper function to collapse values with priority logic
+collapse_csuite <- function(vals) {
+  # Handle NULL or empty
+  
+  if (is.null(vals) || length(vals) == 0) return(NA_character_)
+  
+  # Remove NAs
+  vals <- vals[!is.na(vals)]
+  if (length(vals) == 0) return(NA_character_)
+  
+  # Get unique values
+  vals <- unique(vals)
+  
+  # Priority: Active > Vacant > Position does not exist > first value
+  
+  if ("Active" %in% vals) {
+    return("Active")
+  } else if ("Vacant" %in% vals) {
+    return("Vacant")
+  } else if (length(vals) == 1) {
+    return(vals)
+  } else {
+    # Multiple other values - pick first (or you could paste them)
+    return(vals[1])
+  }
+}
+
 export <- cleaned_vacancies %>% 
   mutate(entity_uniqueid = as.numeric(entity_uniqueid)) %>%
   left_join(collapsed_individuals, by = c("entity_uniqueid", "year")) %>%
   mutate(flagged_leader_in_aha = ifelse(is.na(flagged_leader_in_aha), FALSE, flagged_leader_in_aha)) %>%
-  # convert all csuite flags from list to character string
-  rowwise() %>%
   mutate(
-    all_ceo = if(length(all_ceo) <= 1) as.character(all_ceo) else list(all_ceo),
-    all_cfo = if(length(all_cfo) <= 1) as.character(all_cfo) else list(all_cfo),
-    all_coo = if(length(all_coo) <= 1) as.character(all_coo) else list(all_coo),
-    all_cio = if(length(all_cio) <= 1) as.character(all_cio) else list(all_cio)
-  ) %>%
-  ungroup()
+    all_ceo = map_chr(all_ceo, collapse_csuite),
+    all_cfo = map_chr(all_cfo, collapse_csuite),
+    all_coo = map_chr(all_coo, collapse_csuite),
+    all_cio = map_chr(all_cio, collapse_csuite),
+    all_cmo = map_chr(all_cmo, collapse_csuite),
+    all_cno = map_chr(all_cno, collapse_csuite),
+    all_cco = map_chr(all_cco, collapse_csuite)
+  )
 
 # export dfs as feather + dta files
 write_feather(export, paste0(derived_data, "/himss_title_master.feather"))
