@@ -184,7 +184,7 @@ write_dta(export, paste0(derived_data, "/himss_title_master.dta"))
 
 ## merge on hospitals df
 selected_titles <- export %>% distinct(entity_uniqueid, year,
-                                       all_ceo,all_cfo, all_coo, all_cio,
+                                       all_ceo,all_cfo, all_coo, all_cmo, all_cno, all_cco, all_cio,
                                        head_of_facility, flagged_leader_in_aha)
 
 merged_hospitals <- hospitals %>% 
