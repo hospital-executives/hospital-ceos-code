@@ -213,6 +213,24 @@ summary_df <- vacancies_df %>%
     names_sep = "_"
   )
 
+cco_switch <- vacancies_df %>%
+  mutate(
+    title_standardized_key = normalize_title_std(name),
+    title_standardized     = normalize_title_std(name),
+    status = ifelse(str_detect(status, "Exist|exist"), "DNE", status)
+  ) %>%
+  filter(name == "Chief Compliance Officer" & status %in% c("DNE", "Vacant", "Active", NA)) %>%
+  arrange(entity_uniqueid, year) %>%
+  group_by(entity_uniqueid) %>%
+  mutate(
+    prev_status = lag(status),
+    cco_switched_to_active = as.integer(
+      status == "Active" & (is.na(prev_status) | prev_status %in% c("DNE", NA))
+    )
+  ) %>%
+  ungroup() %>%
+  distinct(entity_uniqueid, year, cco_switched_to_active)
+
 ## get individuals 
 indiv_summary <- cleaned_individuals %>% 
   distinct(entity_uniqueid, year, title_standardized, full_name, contact_uniqueid, confirmed) %>%
@@ -344,7 +362,8 @@ merged_export <- merged %>%
     business1_people_per_role, business2_people_per_role,
     clinical1_people_per_role, clinical2_people_per_role,
     itlegalhr1_people_per_role, itlegalhr2_people_per_role
-  )
+  ) %>% left_join(cco_switch %>% mutate(entity_uniqueid = as.numeric(entity_uniqueid))) %>%
+  filter(!is.na(entity_uniqueid))
 
 write_dta(merged_export, paste0(derived_data, "/positions_by_tier.dta"))
 
