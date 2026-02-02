@@ -292,10 +292,14 @@ matching_one_id_m_names <- function(df, confirmed, remaining) {
     ungroup() %>%
     filter(updated_id %in% ids_with_one_name) %>% 
     group_by(full_name) %>%
-    filter(n_distinct(updated_id) ==1) # to add to confirmed data frame
+    filter(n_distinct(updated_id) ==1) %>% # to add to confirmed data frame
+    ungroup()
+  
+  unique1a <- updated_ids %>% filter(contact_uniqueid %in% unique1$contact_uniqueid)
   
   remaining1 <- updated_ids %>%
-    anti_join(unique1)
+    anti_join(unique1) %>%
+    anti_join(unique1a)
 
   ########### PT 2: CHECK IF REMAINING IDS ARE UNIQUE AND DROP IF SO ########### 
   updated_ids_with_one_name <- updated_ids %>%
@@ -330,8 +334,9 @@ matching_one_id_m_names <- function(df, confirmed, remaining) {
                                  potential_id %in% updated_ids_with_one_name, potential_id, contact_uniqueid))
   
   unique2 <- case2 %>%
-    group_by(full_name) %>%
-    filter((n_distinct(updated_id) ==1 | min > 0) & updated_id %in% updated_ids_with_one_name) 
+    group_by(contact_uniqueid) %>%
+    filter(any(contact_uniqueid != updated_id)) %>%
+    ungroup() 
   
   remaining3 <- case2 %>%
     anti_join(unique2) %>%
@@ -384,10 +389,80 @@ matching_one_id_m_names <- function(df, confirmed, remaining) {
     ungroup() %>%
     mutate(contact_uniqueid = new_contact_uniqueid)
   
-  ########### PT 3: FORMAT RETURN ###########
-  new_confirmed_ids <- bind_rows(unique1, unique2,unique3)
+  ########### PT 4: MANUALLY UPDATE CFOS ###########
+  manually_confirmed <- c(
+    '107620','111650','1308774','1314329','1321164','1334167','1337813',
+    '1339270','346693','359673','408838','472573','494099','630032','663382',
+    '794646','794685','799918','84136', '99438','96739', '1375172', '1326824',
+    '1368943','1386585','154949','2315335'
+  )
+  unique4 <- remaining3 %>%
+    group_by(contact_uniqueid) %>%
+    filter(any(title_standardized == "CFO:  Chief Financial Officer") & !any(title_standardized == "CEO:  Chief Executive Officer")) %>%
+    ungroup() %>%
+    select(id, contact_uniqueid, year, firstname, lastname, full_name, title_standardized, 
+           entity_name, entity_city, entity_state,num_name, num_ids) %>%
+    mutate(
+      new_contact_uniqueid = case_when(
+        full_name == "nickiklein" ~ "354973",
+        full_name == "blairhenson" ~ as.character(max_id + 1),
+        full_name == "robertdaverja" ~ as.character(max_id + 2),
+        full_name == "scottmchone" ~  as.character(max_id + 100),
+        full_name == "bryanlewis" ~  as.character(max_id + 101),
+        full_name == "marygeorge" ~  as.character(max_id + 102),
+        full_name == "kimgrossman" ~  as.character(max_id + 103),
+        full_name == "steveumland" ~  as.character(max_id + 104),
+        full_name == "michaeldacus" ~  as.character(max_id + 105),
+        full_name == "yvonneginnrich" ~  as.character(max_id + 106),
+        full_name == "janebruton" ~  as.character(max_id + 107),
+        TRUE ~ contact_uniqueid
+      )) %>%
+    group_by(contact_uniqueid) %>%
+    filter(any(contact_uniqueid != new_contact_uniqueid) | contact_uniqueid %in% manually_confirmed) %>%
+    ungroup() %>%
+    mutate(contact_uniqueid = new_contact_uniqueid)
+  
+  
+  ########### PT 5: MANUALLY UPDATE COOs ###########
+  manually_confirmed <- c(
+    '132478','132492','1344926','1345681','1359001','155405','173249',
+    '2317590','2329827', '352663','485220','555358','629818','673184','674341',
+    '77505','77751','87549','86297','350465','2326650','681959'
+  )
+  unique5 <- remaining3 %>%
+    group_by(contact_uniqueid) %>%
+    filter(any(title_standardized == "COO:  Chief Operating Officer") &
+          !any(title_standardized == "CFO:  Chief Financial Officer") & 
+          !any(title_standardized == "CEO:  Chief Executive Officer")) %>%
+    ungroup() %>%
+    select(id, contact_uniqueid, year, firstname, lastname, full_name, title_standardized, 
+           entity_name, entity_city, entity_state,num_name, num_ids) %>%
+    mutate(
+      new_contact_uniqueid = case_when(
+        full_name == "nickiklein" ~ "354973",
+        full_name == "blairhenson" ~ as.character(max_id + 1),
+        full_name == "robertdaverja" ~ as.character(max_id + 2),
+        full_name == "albertpilkington" ~ '674277',
+        full_name == "jacobfisher" ~ as.character(max_id + 200),
+        full_name == "brianbrasser" ~ '132492',
+        full_name == "juliedieken" ~ '670406',
+        TRUE ~ contact_uniqueid)
+    ) %>%
+    group_by(contact_uniqueid) %>%
+    filter(any(contact_uniqueid != new_contact_uniqueid) | contact_uniqueid %in% manually_confirmed) %>%
+    ungroup() %>%
+    mutate(contact_uniqueid = new_contact_uniqueid)
+  
+  ########### PT 6: FORMAT RETURN ###########
+  new_confirmed_ids <- bind_rows(unique1 %>% mutate(contact_uniqueid = updated_id), 
+                                 unique2 %>% mutate(contact_uniqueid = updated_id),
+                                 unique3, 
+                                 unique4, 
+                                 unique5)
   remaining4 <- remaining3 %>%
-    anti_join(unique3, by = "id") 
+    anti_join(unique3, by = "id") %>%
+    anti_join(unique4, by = "id") %>%
+    anti_join(unique5, by = "id")
   
   return(list(remaining = remaining4, updated_ids = new_confirmed_ids))
   

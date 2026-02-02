@@ -236,7 +236,7 @@ def find_pairwise_shared_attributes(sub_df, name_pairs_set, meta_pairs_set):
 
     return pd.DataFrame(results)
 
-def update_results(results):
+def update_results(results, new_himss):
     results['shared_titles_flag'] = results['shared_titles'].apply(
         lambda x: 1 if len(x) > 0 else 0)
     results['shared_names_flag'] = results['shared_names'].apply(
@@ -249,6 +249,13 @@ def update_results(results):
         lambda x: 1 if len(x) > 0 else 0)
     results['shared_zips_flag'] = results['shared_zips'].apply(
         lambda x: 1 if len(x) > 0 else 0)
+    
+    id_years_dict = new_himss.groupby('contact_uniqueid')['year'].apply(set).to_dict()
+    def intersection_length(row):
+        set1 = id_years_dict.get(row["contact_id1"], set())  # Get years for contact_id1
+        set2 = id_years_dict.get(row["contact_id2"], set())  # Get years for contact_id2
+        return len(set1 & set2)  # Compute intersection and return its length
+    results["years_overlap"] = results.apply(intersection_length, axis=1)
 
     # Sum the flags to get the total count of shared attributes
     results['total_shared_attributes'] = (
@@ -925,39 +932,39 @@ def clean_results_pt6(remaining, dropped_sets, confirmed_graph,
         (comp_remaining4['shared_entity_ids_flag'] == 1)) &
         (comp_remaining4['lastname_lev_distance'] == 0) &
         (comp_remaining4['firstname_jw_distance'] >= 0.5))] 
-    comp_remaining6 = comp_remaining5[
-   ~((comp_remaining5['firstname_lev_distance'] == 0) &
-    (comp_remaining5['lastname_lev_distance'] == 0) & 
-    ~(comp_remaining5['contact_id1'].isin(cleaned_remaining_ids)) & 
-    ~(comp_remaining5['contact_id2'].isin(cleaned_remaining_ids)))]
+    #comp_remaining6 = comp_remaining5[
+  # ~((comp_remaining5['firstname_lev_distance'] == 0) &
+    #(comp_remaining5['lastname_lev_distance'] == 0) & 
+    #~(comp_remaining5['contact_id1'].isin(cleaned_remaining_ids)) & 
+    #~(comp_remaining5['contact_id2'].isin(cleaned_remaining_ids)))]
 
-    comp_remaining7 = comp_remaining6[
-    ~(((comp_remaining6['old_firstname_lev_distance'] == 0) &
-    (comp_remaining6['old_lastname_lev_distance'] == 0) & 
+    comp_remaining7 = comp_remaining5[
+    ~(((comp_remaining5['old_firstname_lev_distance'] == 0) &
+    (comp_remaining5['old_lastname_lev_distance'] == 0) & 
     (
         # rare names 
-        ((comp_remaining6['firstname_count_id1']  <= 100) | (comp_remaining6['lastname_count_id1'] <= 250)) |
+        ((comp_remaining5['firstname_count_id1']  <= 100) | (comp_remaining5['lastname_count_id1'] <= 250)) |
         # same state
-        ((comp_remaining6['shared_states'].apply(len) > 0) & (comp_remaining6['shared_titles_flag'])) |
+        ((comp_remaining5['shared_states'].apply(len) > 0) & (comp_remaining5['shared_titles_flag'])) |
         # diff states but same title
-        (comp_remaining6['diff_state_years_count']  == 1) & (comp_remaining6['shared_titles_flag']) |
+        (comp_remaining5['diff_state_years_count']  == 1) & (comp_remaining5['shared_titles_flag']) |
         # not super common last name & same title
         (
-            (comp_remaining6['lastname_count_id1'] <= 2000) & 
-            (comp_remaining6['shared_titles_flag'] == 1) & 
-            (comp_remaining6['diff_state_years_count'] <= 1)
+            (comp_remaining5['lastname_count_id1'] <= 2000) & 
+            (comp_remaining5['shared_titles_flag'] == 1) & 
+            (comp_remaining5['diff_state_years_count'] <= 1)
         ) |
         # same state & rare names
         (
-            (comp_remaining6['shared_states'].apply(len) > 0) & 
-            ((comp_remaining6['lastname_count_id1'] <= 500) |(comp_remaining6['firstname_count_id1'] <= 200) )
+            (comp_remaining5['shared_states'].apply(len) > 0) & 
+            ((comp_remaining5['lastname_count_id1'] <= 500) |(comp_remaining5['firstname_count_id1'] <= 200) )
         ) | 
         # any overlapping entities/addresses/systems
-        (comp_remaining6['shared_names_flag'] == 1) | 
-        (comp_remaining6['shared_entity_ids_flag'] == 1)| 
-        (comp_remaining6['shared_system_ids_flag'] == 1)|
-        (comp_remaining6['shared_addresses_flag'] == 1)|
-        (comp_remaining6['shared_zips_flag'] == 1) 
+        (comp_remaining5['shared_names_flag'] == 1) | 
+        (comp_remaining5['shared_entity_ids_flag'] == 1)| 
+        (comp_remaining5['shared_system_ids_flag'] == 1)|
+        (comp_remaining5['shared_addresses_flag'] == 1)|
+        (comp_remaining5['shared_zips_flag'] == 1) 
     )))
    ]
 
@@ -974,45 +981,45 @@ def clean_results_pt6(remaining, dropped_sets, confirmed_graph,
         (comp_remaining4['shared_entity_ids_flag'] == 1)) &
         (comp_remaining4['lastname_lev_distance'] == 0) &
         (comp_remaining4['firstname_jw_distance'] >= 0.5))] 
-    cleaned6 = comp_remaining5[
-   ((comp_remaining5['firstname_lev_distance'] == 0) &
-    (comp_remaining5['lastname_lev_distance'] == 0) & 
-    ~(comp_remaining5['contact_id1'].isin(cleaned_remaining_ids)) & 
-    ~(comp_remaining5['contact_id2'].isin(cleaned_remaining_ids)))]
-    cleaned7 = comp_remaining6[
-        (((comp_remaining6['old_firstname_lev_distance'] == 0) &
-        (comp_remaining6['old_lastname_lev_distance'] == 0) & 
+    #cleaned6 = comp_remaining5[
+  # ((comp_remaining5['firstname_lev_distance'] == 0) &
+    #(comp_remaining5['lastname_lev_distance'] == 0) & 
+    #~(comp_remaining5['contact_id1'].isin(cleaned_remaining_ids)) & 
+    #~(comp_remaining5['contact_id2'].isin(cleaned_remaining_ids)))]
+    cleaned7 = comp_remaining5[
+        (((comp_remaining5['old_firstname_lev_distance'] == 0) &
+        (comp_remaining5['old_lastname_lev_distance'] == 0) & 
         (
             # rare names 
-            ((comp_remaining6['firstname_count_id1']  <= 100) | (comp_remaining6['lastname_count_id1'] <= 200)) |
+            ((comp_remaining5['firstname_count_id1']  <= 100) | (comp_remaining5['lastname_count_id1'] <= 200)) |
             # same state
-            ((comp_remaining6['shared_states'].apply(len) > 0) & (comp_remaining6['shared_titles_flag'])) |
+            ((comp_remaining5['shared_states'].apply(len) > 0) & (comp_remaining5['shared_titles_flag'])) |
             # diff states but same title
-            ((comp_remaining6['diff_state_years_count']  <= 1) & (comp_remaining6['shared_titles_flag'])) |
+            ((comp_remaining5['diff_state_years_count']  <= 1) & (comp_remaining5['shared_titles_flag'])) |
             # not super common name & same title
             (
-                (comp_remaining6['lastname_count_id1'] <= 2000) & (comp_remaining6['firstname_count_id1'] <= 2000) & 
-                (comp_remaining6['shared_titles_flag'] == 1) & 
-                (comp_remaining6['diff_state_years_count'] <= 1)
+                (comp_remaining5['lastname_count_id1'] <= 2000) & (comp_remaining5['firstname_count_id1'] <= 2000) & 
+                (comp_remaining5['shared_titles_flag'] == 1) & 
+                (comp_remaining5['diff_state_years_count'] <= 1)
             ) |
             # same state & rare names
             (
-                (comp_remaining6['shared_states'].apply(len) > 0) & 
-                ((comp_remaining6['lastname_count_id1'] <= 500) |(comp_remaining6['firstname_count_id1'] <= 200) )
+                (comp_remaining5['shared_states'].apply(len) > 0) & 
+                ((comp_remaining5['lastname_count_id1'] <= 500) |(comp_remaining5['firstname_count_id1'] <= 200) )
             ) | 
             # any overlapping entities/addresses/systems
-            (comp_remaining6['shared_names_flag'] == 1) | 
-            (comp_remaining6['shared_entity_ids_flag'] == 1)| 
-            (comp_remaining6['shared_system_ids_flag'] == 1)|
-            (comp_remaining6['shared_addresses_flag'] == 1)|
-            (comp_remaining6['shared_zips_flag'] == 1) 
+            (comp_remaining5['shared_names_flag'] == 1) | 
+            (comp_remaining5['shared_entity_ids_flag'] == 1)| 
+            (comp_remaining5['shared_system_ids_flag'] == 1)|
+            (comp_remaining5['shared_addresses_flag'] == 1)|
+            (comp_remaining5['shared_zips_flag'] == 1) 
         )))
     ]
 
     add_to_graph_from_df(confirmed_graph, cleaned_a)
     add_to_graph_from_df(confirmed_graph, cleaned4)
     add_to_graph_from_df(confirmed_graph, cleaned5)
-    add_to_graph_from_df(confirmed_graph, cleaned6)
+    #add_to_graph_from_df(confirmed_graph, cleaned6)
     add_to_graph_from_df(confirmed_graph, cleaned7)
 
     return comp_remaining7, dropped_sets

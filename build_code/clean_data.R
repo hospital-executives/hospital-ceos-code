@@ -71,7 +71,7 @@ fixed <- update_ids(to_fix)
 # combined dfs to create confirmed df
 confirmed_pt1 <- bind_rows(ok, fixed)
 remaining_pt1 <- remaining2
-outliers <- remaining_pt1
+outliers <- remaining_pt1 %>% anti_join(confirmed, by = "id")
 
 outliers <- outliers %>%
   select(-c(add_list, entity_name_list, entityid_list))
