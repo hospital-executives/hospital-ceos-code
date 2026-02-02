@@ -18,9 +18,17 @@ Goal: 			Compute descriptive stats for CEOs
 * calculate CEO descriptive statistics _________________________________________
 
 
-* descriptives table 1 (Table of hospital-level cross-sectional descriptive stats in 2017)
+* descriptives table 1 (Table of hospital-level cross-sectional descriptive stats by year)
+
+program define descriptives_table
+
+	syntax , tabyear(integer)
 	
-//  	preserve
+//   	preserve
+
+	* make a variable capturing whether a person is a system CEO this year
+		replace system_ceo = 0 if entity_type == "Single Hospital Health System"
+		bysort contact_uniqueid year: egen system_ceo_thisyear = max(system_ceo) // needs to be done before we drop systems
 		
 	* ------- keep hospitals only -------
 		keep if is_hospital == 1 & entity_type == "Hospital"
@@ -30,8 +38,8 @@ Goal: 			Compute descriptive stats for CEOs
 		/* Columns
 			– Overall (column 1)
 			– For-profit vs. non-profit (column 2-3)
-			– System vs. independent hospitals (for now, define system as N hospitals ≥ 3) (column 4-5)
-			– PE vs. not (column 6-7)
+			– System vs. independent hospitals (3 categories: single, small, large)
+			– PE vs. not 
 		*/
 		
 		* For-profit vs. non-profit (column 2-3)
@@ -40,9 +48,26 @@ Goal: 			Compute descriptive stats for CEOs
 		* System vs independent: 
 		bysort parent_system entity_uniqueid year: gen system_counter = 1 if _n == 1
 		bysort parent_system year: egen system_N = total(system_counter)
-			* final
+			* minimum 3
 		gen system_ind_cleaned_3min = entity_type_parent == "IDS/RHA" & system_N >= 3
+			* 3 categories
+		gen system_cat = 1 if entity_type_parent == "Single Hospital Health System"
+		replace system_cat = 2 if entity_type_parent == "IDS/RHA" & system_N < 10
+		replace system_cat = 3 if entity_type_parent == "IDS/RHA" & system_N >= 10
+			* need to decide what to do with these: 
+		count if  entity_type_parent == "IDS/RHA" & system_N == 1
 		
+		* private equity vs not
+		egen pe_acq_row = rowmax(pe_acq_already pe_acq_window)
+			* 2017
+		bysort entity_uniqueid: egen pe_acq_by2017 = max(pe_acq_row)
+		replace pe_acq_by2017 = 0 if missing(pe_acq_by2017)
+		if "`tabyear'" != "2017" {
+			gen pe_acq_by`tabyear' = 1 if pe_acq_already == 1
+			replace pe_acq_by`tabyear' = 1 if pe_acq_window_year <= `tabyear'
+			replace pe_acq_by`tabyear' = 0 if missing(pe_acq_by`tabyear')
+		}
+			
 		tempfile base
 		save `base'
 		
@@ -68,6 +93,18 @@ Goal: 			Compute descriptive stats for CEOs
 // 			local role_cmo_stdpattern    "CMO:"
 // 			local role_cmo_titlepatterns ///
 // 				`" "CMO" "Chief Medical Officer" "chief medical officer" "'	
+			
+			* cco	
+			local role_cco_suffix        "cco"
+			local role_cco_stdpattern    "Chief Compliance Officer"
+			local role_cco_titlepatterns ///
+				`" "Chief Compliance Officer" "chief compliance officer" "'	
+
+			* mcs	
+			local role_mcs_suffix        "mcs"
+			local role_mcs_stdpattern    "Medical Staff Chief"
+			local role_mcs_titlepatterns ///
+				`" "Medical Staff Chief" "Chief of Medical Staff" "Medical Chief of Staff" "'	
 				
 			* CNH	
 			local role_cnh_suffix        "cnh"
@@ -76,7 +113,7 @@ Goal: 			Compute descriptive stats for CEOs
 				`" "CNH" "Chief Nursing Head" "chief nursing head" "'	
 				
 		* Loop over roles
-			foreach role in coo cfo /* cmo */ cnh {
+			foreach role in coo cfo /* cmo */ cco cnh mcs {
 
 				local suffix        "`role_`role'_suffix'"
 				local stdpattern    "`role_`role'_stdpattern'"
@@ -121,7 +158,7 @@ Goal: 			Compute descriptive stats for CEOs
 		bysort entity_uniqueid year: egen hosp_has_coo_cfo = max(temp_hosp_has_coo_cfo)
 		
 		* make a combined "technical" csuite variable (excluding CMO)
-		gen temp_hosp_has_technical = hosp_has_cnh*hosp_has_cio
+		gen temp_hosp_has_technical = hosp_has_cnh*hosp_has_cio*hosp_has_mcs
 		bysort entity_uniqueid year: egen hosp_has_technical = max(temp_hosp_has_technical)
 		
 		* number of distinct roles at hospital
@@ -130,6 +167,14 @@ Goal: 			Compute descriptive stats for CEOs
 			bysort entity_uniqueid year: egen ndistinct_std = total(temp_ndistinct_std)
 			* ndistinct_raw: number of unique job role observations in the hospital-year
 			bysort entity_uniqueid year: gen ndistinct_raw = _N
+			* ndistinct_title
+			bysort entity_uniqueid year title: gen temp_ndistinct_title = 1 if _n == 1
+			bysort entity_uniqueid year: egen ndistinct_title = total(temp_ndistinct_title)
+			* ndistinct_ind
+			bysort entity_uniqueid year contact_uniqueid: gen temp_ndistinct_ind = 1 if _n == 1
+			bysort entity_uniqueid year: egen ndistinct_ind = total(temp_ndistinct_ind)
+			* investigate
+// 			codebook ndistinct*
 	
 		* make a variable for a shared CEO
 		bysort contact_uniqueid year: egen count_char_ceo = total(char_ceo)
@@ -139,16 +184,17 @@ Goal: 			Compute descriptive stats for CEOs
 		tempfile base_withvars
 		save `base_withvars'
 		
-	* ------- keep 2017 only -------
-		keep if year == 2017
+	* ------- keep year only -------
+		keep if year == `tabyear'
 		
 	* ------- make panel A -------	
 		
 		bysort entity_uniqueid year: keep if _n ==1 // make unique by hospital	
-		tempfile hosp_2017
-		save `hosp_2017'
+		gen count = 1
+		tempfile hosp_`tabyear'
+		save `hosp_`tabyear''
 		
-		local collapsevarsA "hosp_has_ceo hosp_has_coo hosp_has_cfo hosp_has_coo_cfo hosp_has_cnh hosp_has_cio hosp_has_technical hosp_has_shared_ceo ndistinct_raw ndistinct_std"
+		local collapsevarsA "hosp_has_ceo hosp_has_coo hosp_has_cfo hosp_has_coo_cfo hosp_has_cco hosp_has_cnh hosp_has_cio hosp_has_mcs hosp_has_technical hosp_has_shared_ceo ndistinct_raw ndistinct_std ndistinct_title ndistinct_ind (rawsum) count"
 		
 		* ALL
 		collapse `collapsevarsA', by(year)
@@ -156,30 +202,51 @@ Goal: 			Compute descriptive stats for CEOs
 		tempfile panelA_all
 		save `panelA_all'
 		
-		use `hosp_2017', clear
+		use `hosp_`tabyear'', clear
 		
 		* FP/NFP
 		collapse `collapsevarsA', by(year forprofit)
 		drop if missing(forprofit)
 		gen type = "For-Profit" if forprofit == 1
 		replace type = "Non-Profit" if forprofit == 0
+		egen temp_total = total(count)
+		gen share = count/temp_total
+		drop temp_total
 		tempfile panelA_fp_nfp
 		save `panelA_fp_nfp'
 		
-		use `hosp_2017', clear
+		use `hosp_`tabyear'', clear
 		
 		* SYS/NON-SYS
-		collapse `collapsevarsA', by(year system_ind_cleaned_3min)
-		drop if missing(system_ind_cleaned_3min)
-		gen type = "System" if system_ind_cleaned_3min == 1
-		replace type = "Non-System" if system_ind_cleaned_3min == 0
+		collapse `collapsevarsA', by(year system_cat)
+		drop if missing(system_cat)
+		gen type = "Single" if system_cat == 1
+		replace type = "Small System" if system_cat == 2
+		replace type = "Large System" if system_cat == 3
+		egen temp_total = total(count)
+		gen share = count/temp_total
+		drop temp_total
 		tempfile panelA_sys
 		save `panelA_sys'
+		
+		use `hosp_`tabyear'', clear
+		
+		* PE/NON-PE
+		collapse `collapsevarsA', by(year pe_acq_by`tabyear')
+		drop if missing(pe_acq_by`tabyear')
+		gen type = "PE-Acquired" if pe_acq_by`tabyear' == 1
+		replace type = "Non-PE" if pe_acq_by`tabyear' == 0
+		egen temp_total = total(count)
+		gen share = count/temp_total
+		drop temp_total
+		tempfile panelA_pe
+		save `panelA_pe'
 		
 		* APPEND
 		use `panelA_all', clear
 		append using `panelA_fp_nfp'
 		append using `panelA_sys'
+		append using `panelA_pe'
 		encode type, gen(type_id)
 		drop type
 		
@@ -190,9 +257,12 @@ Goal: 			Compute descriptive stats for CEOs
 		rename v2 nfp
 		rename v3 fp 
 		rename v4 nonsys
-		rename v5 sys
-		drop if _varname == "forprofit" |  _varname == "system_ind_cleaned_3min" |  _varname == "type_id" | _varname == "year" |  _varname == "ndistinct_std"
-		order _varname all fp nfp sys nonsys
+		rename v5 sys_small
+		rename v6 sys_big
+		rename v7 nonpe
+		rename v8 pe
+		drop if _varname == "forprofit" |  _varname == "system_cat" |  _varname == "type_id" | _varname == "year" |  _varname == "ndistinct_std" | _varname == "pe_acq_by`tabyear'"
+		order _varname all fp nfp nonsys sys_small sys_big pe nonpe
 		
 	* ------- export panel A -------	
 		
@@ -201,56 +271,99 @@ Goal: 			Compute descriptive stats for CEOs
 		replace rowlabel = "COO present (\%)"                    if _varname == "hosp_has_coo"
 		replace rowlabel = "CFO present (\%)"                    if _varname == "hosp_has_cfo"
 		replace rowlabel = "COO and CFO present (\%)"             if _varname == "hosp_has_coo_cfo"
+		replace rowlabel = "CCO present (\%)"     				if _varname == "hosp_has_cco"
 		replace rowlabel = "CNH present (\%)"     				if _varname == "hosp_has_cnh"
 		replace rowlabel = "CIO present (\%)"                    if _varname == "hosp_has_cio"
+		replace rowlabel = "Medical Staff Chief present (\%)"     		if _varname == "hosp_has_mcs"
 		replace rowlabel = "All technical execs present (\%)"         if _varname == "hosp_has_technical"
 		replace rowlabel = "Shared CEO (\%)"             if _varname == "hosp_has_shared_ceo"
 		replace rowlabel = "Distinct roles (count)"          if _varname == "ndistinct_raw"
+		replace rowlabel = "Distinct titles (count)"          if _varname == "ndistinct_title"
+		replace rowlabel = "Distinct individuals (count)"          if _varname == "ndistinct_ind"
+		replace rowlabel = "Observations"			          if _varname == "count"
+		replace rowlabel = "Share"			          			if _varname == "share"
+		
 
 		local fmt "%9.2f"
+		local fmt_ct "%9.0fc"
 		
-		foreach v in all fp nfp sys nonsys {
+		foreach v in all fp nfp sys_small sys_big nonsys pe nonpe {
 			replace `v' = 100*`v' if inlist(_varname, ///
 				"hosp_has_ceo","hosp_has_coo","hosp_has_cfo","hosp_has_coo_cfo", ///
-				"hosp_has_cnh","hosp_has_cio","hosp_has_technical","hosp_has_shared_ceo")
+				"hosp_has_cnh","hosp_has_cio","hosp_has_technical","hosp_has_shared_ceo","hosp_has_mcs")
+			replace `v' = 100*`v' if inlist(_varname,"share","hosp_has_cco")
 		}
 		
-		local outfile "${overleaf}/tables/outline_descriptives_table1_panelA.tex"
+		local outfile "${overleaf}/tables/outline_descriptives_table1_panelA_`tabyear'.tex"
 		cap file close fh
 		file open fh using "`outfile'", write replace text
 
 		file write fh "\begin{table}[!htbp]" _n
 		file write fh "\centering" _n
-		file write fh "\caption{Hospital Leadership Roles, 2017 (Panel A)}" _n
-		file write fh "\label{tab:outline_descriptives_table1_panelA}" _n
-		file write fh "\begin{tabular}{lccccc}" _n
+		file write fh "\caption{Hospital Leadership Roles, `tabyear' (Panel A)}" _n
+		file write fh "\label{tab:outline_descriptives_table1_panelA_`tabyear'}" _n
+		file write fh "\begin{tabular}{lcccccccc}" _n
 		file write fh "\toprule" _n
 
 		* Group header row
-		file write fh " & \multicolumn{1}{c}{} & \multicolumn{2}{c}{Profit Status} & \multicolumn{2}{c}{System Affiliation} \\" _n
-		file write fh "\cmidrule(lr){3-4}\cmidrule(lr){5-6}" _n
-		file write fh " & \multicolumn{1}{c}{All} & \multicolumn{1}{c}{For-Profit} & \multicolumn{1}{c}{Non-Profit} & \multicolumn{1}{c}{System} & \multicolumn{1}{c}{Non-System} \\" _n
+		file write fh " & \multicolumn{1}{c}{} & \multicolumn{2}{c}{Profit Status} & \multicolumn{3}{c}{System Affiliation} & \multicolumn{2}{c}{Private Equity} \\" _n
+		file write fh "\cmidrule(lr){3-4}\cmidrule(lr){5-7}\cmidrule(lr){8-9}" _n
+		file write fh " & \multicolumn{1}{c}{All} & \multicolumn{1}{c}{For-Profit} & \multicolumn{1}{c}{Non-Profit} & \multicolumn{1}{c}{Non-System} & \multicolumn{1}{c}{Small System} & \multicolumn{1}{c}{Large System} & \multicolumn{1}{c}{PE-Acquired} & \multicolumn{1}{c}{Non-PE} \\" _n
 		file write fh "\midrule" _n
 
 		* Body rows
 		quietly {
 			forvalues i = 1/`=_N' {
-				local r = rowlabel[`i']
+				if _varname[`i'] == "count" {
+					file write fh "\midrule" _n
+					local r = rowlabel[`i']
 
-				local a  : display `fmt' all[`i']
-				local fp : display `fmt' fp[`i']
-				local nf : display `fmt' nfp[`i']
-				local sy : display `fmt' sys[`i']
-				local ns : display `fmt' nonsys[`i']
+					local a  : display `fmt_ct' all[`i']
+					local fp : display `fmt_ct' fp[`i']
+					local nf : display `fmt_ct' nfp[`i']
+					local sy_sm : display `fmt_ct' sys_small[`i']
+					local sy_b : display `fmt_ct' sys_big[`i']
+					local ns : display `fmt_ct' nonsys[`i']
+					local pe : display `fmt_ct' pe[`i']
+					local np : display `fmt_ct' nonpe[`i']
 
-				* trim leading spaces from :display output
-				local a  = strtrim("`a'")
-				local fp = strtrim("`fp'")
-				local nf = strtrim("`nf'")
-				local sy = strtrim("`sy'")
-				local ns = strtrim("`ns'")
+					* trim leading spaces from :display output
+					local a  = strtrim("`a'")
+					local fp = strtrim("`fp'")
+					local nf = strtrim("`nf'")
+					local sy_sm = strtrim("`sy_sm'")
+					local sy_b = strtrim("`sy_b'")
+					local ns = strtrim("`ns'")
+					local pe = strtrim("`pe'")
+					local np = strtrim("`np'")
 
-				file write fh "`r' & `a' & `fp' & `nf' & `sy' & `ns' \\" _n
+					file write fh "`r' & `a' & `fp' & `nf' & `ns' & `sy_sm' & `sy_b' & `pe' & `np' \\" _n
+				}
+				else {
+					local r = rowlabel[`i']
+
+					local a  : display `fmt' all[`i']
+					local fp : display `fmt' fp[`i']
+					local nf : display `fmt' nfp[`i']
+					local sy_sm : display `fmt' sys_small[`i']
+					local sy_b : display `fmt' sys_big[`i']
+					local ns : display `fmt' nonsys[`i']
+					local pe : display `fmt' pe[`i']
+					local np : display `fmt' nonpe[`i']
+
+					* trim leading spaces from :display output
+					local a  = strtrim("`a'")
+					local fp = strtrim("`fp'")
+					local nf = strtrim("`nf'")
+					local sy_sm = strtrim("`sy_sm'")
+					local sy_b = strtrim("`sy_b'")
+					local ns = strtrim("`ns'")
+					local pe = strtrim("`pe'")
+					local np = strtrim("`np'")
+
+					file write fh "`r' & `a' & `fp' & `nf' & `ns' & `sy_sm' & `sy_b' & `pe' & `np' \\" _n
+				}
+			
 			}
 		}
 
@@ -281,25 +394,39 @@ Goal: 			Compute descriptive stats for CEOs
 		replace char_clinical = regexm(credentials,"MD|md|DO|PharmD|RN|PhD|PsyD")
 		
 		* for person-hospital combinations, count total number of years between 2009 and 2017
+		drop if year > `tabyear'
 		bysort contact_uniqueid entity_uniqueid year: gen year_at_hosp_0917 = 1 if _n == 1
 		bysort contact_uniqueid entity_uniqueid: egen total_years_at_hosp_0917 = total(year_at_hosp_0917)
 		
+		* for person-hospital combinations, count total number of roles between 2009 and 2017
+		bysort contact_uniqueid entity_uniqueid title_standardized: gen role_at_hosp_0917 = 1 if _n == 1
+		bysort contact_uniqueid entity_uniqueid: egen total_roles_at_hosp_0917 = total(role_at_hosp_0917)
+		
 		* reduce sample to hospital CEOs only
 		keep if hospital_ceo == 1 // same as char_ceo in this sample
+		
+		* make a CEO of own system indicator
+		gen system_ceo_own = (contact_uniqueid == contact_uniqueid_parentceo & entity_type_parent != "Single Hospital Health System")
+// 		replace system_ceo_own = . if entity_type_parent == "Single Hospital Health System" // Should we do this? 
 		
 		* count number of years per person (# CEO years)
 		bysort contact_uniqueid year: gen year_as_ceo_0917 = 1 if _n == 1
 		bysort contact_uniqueid: egen total_years_as_ceo_0917 = total(year_as_ceo_0917)
 		
+		* count number of facilities per person (# CEO facilities)
+		bysort contact_uniqueid entity_uniqueid: gen hosp_as_ceo_0917 = 1 if _n == 1
+		bysort contact_uniqueid: egen total_hosps_as_ceo_0917 = total(hosp_as_ceo_0917)
+		
 		* keep 2017 only
-		keep if year == 2017
+		keep if year == `tabyear'
 		
 	* ------- make panel B -------	
 		
-		tempfile hosp_2017
-		save `hosp_2017'
+		gen count = 1
+		tempfile hospceo_`tabyear'
+		save `hospceo_`tabyear''
 		
-		local collapsevarsB "char_female char_clinical total_years_at_hosp_0917 total_years_as_ceo_0917"
+		local collapsevarsB "char_female char_clinical total_years_at_hosp_0917 total_years_as_ceo_0917 total_hosps_as_ceo_0917 total_roles_at_hosp_0917 system_ceo_thisyear system_ceo_own (rawsum) count"
 		
 		* ALL
 		collapse `collapsevarsB', by(year)
@@ -307,30 +434,54 @@ Goal: 			Compute descriptive stats for CEOs
 		tempfile panelB_all
 		save `panelB_all'
 		
-		use `hosp_2017', clear
+		use `hospceo_`tabyear'', clear
 		
 		* FP/NFP
 		collapse `collapsevarsB', by(year forprofit)
 		drop if missing(forprofit)
 		gen type = "For-Profit" if forprofit == 1
 		replace type = "Non-Profit" if forprofit == 0
+		egen temp_total = total(count)
+		gen share = count/temp_total
+		drop temp_total
+		tempfile panelA_fp_nfp
 		tempfile panelB_fp_nfp
 		save `panelB_fp_nfp'
 		
-		use `hosp_2017', clear
+		use `hospceo_`tabyear'', clear
 		
 		* SYS/NON-SYS
-		collapse `collapsevarsB', by(year system_ind_cleaned_3min)
-		drop if missing(system_ind_cleaned_3min)
-		gen type = "System" if system_ind_cleaned_3min == 1
-		replace type = "Non-System" if system_ind_cleaned_3min == 0
+		collapse `collapsevarsB', by(year system_cat)
+		drop if missing(system_cat)
+		gen type = "Single" if system_cat == 1
+		replace type = "Small System" if system_cat == 2
+		replace type = "Large System" if system_cat == 3
+		egen temp_total = total(count)
+		gen share = count/temp_total
+		drop temp_total
+		tempfile panelA_fp_nfp
 		tempfile panelB_sys
 		save `panelB_sys'
+		
+		use `hospceo_`tabyear'', clear
+		
+		* PE/NON-PE
+		collapse `collapsevarsB', by(year pe_acq_by`tabyear')
+		drop if missing(pe_acq_by`tabyear')
+		gen type = "PE-Acquired" if pe_acq_by`tabyear' == 1
+		replace type = "Non-PE" if pe_acq_by`tabyear' == 0
+		egen temp_total = total(count)
+		gen share = count/temp_total
+		drop temp_total
+		tempfile panelA_fp_nfp
+		tempfile panelB_pe
+		save `panelB_pe'
 		
 		* APPEND
 		use `panelB_all', clear
 		append using `panelB_fp_nfp'
 		append using `panelB_sys'
+		append using `panelB_pe'
 		encode type, gen(type_id)
 		drop type
 		
@@ -341,61 +492,105 @@ Goal: 			Compute descriptive stats for CEOs
 		rename v2 nfp
 		rename v3 fp 
 		rename v4 nonsys
-		rename v5 sys
-		drop if _varname == "forprofit" |  _varname == "system_ind_cleaned_3min" |  _varname == "type_id" | _varname == "year" |  _varname == "ndistinct_std"
-		order _varname all fp nfp sys nonsys
+		rename v5 sys_small
+		rename v6 sys_big
+		rename v7 nonpe
+		rename v8 pe
+		drop if _varname == "forprofit" |  _varname == "system_cat" |  _varname == "type_id" | _varname == "year" |  _varname == "ndistinct_std" | _varname == "pe_acq_by`tabyear'"
+		order _varname all fp nfp nonsys sys_small sys_big pe nonpe
 		
 	* ------- export panel B -------	
 		
 		gen str60 rowlabel = _varname
-		replace rowlabel = "Female (\%)"                    if _varname == "char_female"
+		replace rowlabel = "Female (\%)"                    	if _varname == "char_female"
 		replace rowlabel = "Clinical Degree (\%)"                    if _varname == "char_clinical"
 		replace rowlabel = "Years at Hospital (Any Role)"                    if _varname == "total_years_at_hosp_0917"
 		replace rowlabel = "Years as CEO (Any Hospital)"             if _varname == "total_years_as_ceo_0917"
+		replace rowlabel = "Hospitals as CEO (Count)"             if _varname == "total_hosps_as_ceo_0917"
+		replace rowlabel = "Unique Roles at Hospital (Count)"             if _varname == "total_roles_at_hosp_0917"
+		replace rowlabel = "Also CEO of Any System (\%)"             if _varname == "system_ceo_thisyear"
+		replace rowlabel = "Also CEO of Own System (\%)"             if _varname == "system_ceo_own"
+		replace rowlabel = "Observations"			          	if _varname == "count"
+		replace rowlabel = "Share"			          			if _varname == "share"
 
 		local fmt "%9.2f"
+		local fmt_ct "%9.0fc"
 		
-		foreach v in all fp nfp sys nonsys {
+		foreach v in all fp nfp sys_small sys_big nonsys pe nonpe {
 			replace `v' = 100*`v' if inlist(_varname, ///
-				"char_female","char_clinical")
+				"char_female","char_clinical","system_ceo_thisyear","system_ceo_own","share")
 		}
 		
-		local outfile "${overleaf}/tables/outline_descriptives_table1_panelB.tex"
+		local outfile "${overleaf}/tables/outline_descriptives_table1_panelB_`tabyear'.tex"
 		cap file close fh
 		file open fh using "`outfile'", write replace text
 
 		file write fh "\begin{table}[!htbp]" _n
 		file write fh "\centering" _n
-		file write fh "\caption{Hospital CEO Characteristics, 2017 (Panel B)}" _n
-		file write fh "\label{tab:outline_descriptives_table1_panelA}" _n
-		file write fh "\begin{tabular}{lccccc}" _n
+		file write fh "\caption{Hospital CEO Characteristics, `tabyear' (Panel B)}" _n
+		file write fh "\label{tab:outline_descriptives_table1_panelB_`tabyear'}" _n
+		file write fh "\begin{tabular}{lcccccccc}" _n
 		file write fh "\toprule" _n
 
 		* Group header row
-		file write fh " & \multicolumn{1}{c}{} & \multicolumn{2}{c}{Profit Status} & \multicolumn{2}{c}{System Affiliation} \\" _n
-		file write fh "\cmidrule(lr){3-4}\cmidrule(lr){5-6}" _n
-		file write fh " & \multicolumn{1}{c}{All} & \multicolumn{1}{c}{For-Profit} & \multicolumn{1}{c}{Non-Profit} & \multicolumn{1}{c}{System} & \multicolumn{1}{c}{Non-System} \\" _n
+		file write fh " & \multicolumn{1}{c}{} & \multicolumn{2}{c}{Profit Status} & \multicolumn{3}{c}{System Affiliation} & \multicolumn{2}{c}{Private Equity} \\" _n
+		file write fh "\cmidrule(lr){3-4}\cmidrule(lr){5-7}\cmidrule(lr){8-9}" _n
+		file write fh " & \multicolumn{1}{c}{All} & \multicolumn{1}{c}{For-Profit} & \multicolumn{1}{c}{Non-Profit} & \multicolumn{1}{c}{Non-System} & \multicolumn{1}{c}{Small System} & \multicolumn{1}{c}{Large System} & \multicolumn{1}{c}{PE-Acquired} & \multicolumn{1}{c}{Non-PE} \\" _n
 		file write fh "\midrule" _n
 
 		* Body rows
 		quietly {
 			forvalues i = 1/`=_N' {
-				local r = rowlabel[`i']
+				if _varname[`i'] == "count" {
+					file write fh "\midrule" _n
+					local r = rowlabel[`i']
 
-				local a  : display `fmt' all[`i']
-				local fp : display `fmt' fp[`i']
-				local nf : display `fmt' nfp[`i']
-				local sy : display `fmt' sys[`i']
-				local ns : display `fmt' nonsys[`i']
+					local a  : display `fmt_ct' all[`i']
+					local fp : display `fmt_ct' fp[`i']
+					local nf : display `fmt_ct' nfp[`i']
+					local sy_sm : display `fmt_ct' sys_small[`i']
+					local sy_b : display `fmt_ct' sys_big[`i']
+					local ns : display `fmt_ct' nonsys[`i']
+					local pe : display `fmt_ct' pe[`i']
+					local np : display `fmt_ct' nonpe[`i']
 
-				* trim leading spaces from :display output
-				local a  = strtrim("`a'")
-				local fp = strtrim("`fp'")
-				local nf = strtrim("`nf'")
-				local sy = strtrim("`sy'")
-				local ns = strtrim("`ns'")
+					* trim leading spaces from :display output
+					local a  = strtrim("`a'")
+					local fp = strtrim("`fp'")
+					local nf = strtrim("`nf'")
+					local sy_sm = strtrim("`sy_sm'")
+					local sy_b = strtrim("`sy_b'")
+					local ns = strtrim("`ns'")
+					local pe = strtrim("`pe'")
+					local np = strtrim("`np'")
 
-				file write fh "`r' & `a' & `fp' & `nf' & `sy' & `ns' \\" _n
+					file write fh "`r' & `a' & `fp' & `nf' & `ns' & `sy_sm' & `sy_b' & `pe' & `np' \\" _n
+				}
+				else {
+					local r = rowlabel[`i']
+
+					local a  : display `fmt' all[`i']
+					local fp : display `fmt' fp[`i']
+					local nf : display `fmt' nfp[`i']
+					local sy_sm : display `fmt' sys_small[`i']
+					local sy_b : display `fmt' sys_big[`i']
+					local ns : display `fmt' nonsys[`i']
+					local pe : display `fmt' pe[`i']
+					local np : display `fmt' nonpe[`i']
+
+					* trim leading spaces from :display output
+					local a  = strtrim("`a'")
+					local fp = strtrim("`fp'")
+					local nf = strtrim("`nf'")
+					local sy_sm = strtrim("`sy_sm'")
+					local sy_b = strtrim("`sy_b'")
+					local ns = strtrim("`ns'")
+					local pe = strtrim("`pe'")
+					local np = strtrim("`np'")
+
+					file write fh "`r' & `a' & `fp' & `nf' & `ns' & `sy_sm' & `sy_b' & `pe' & `np' \\" _n
+				}
+			
 			}
 		}
 
@@ -412,10 +607,296 @@ Goal: 			Compute descriptive stats for CEOs
 	* ------- make panel C variables -------	
 	
 		use `base_withvars', clear
-		
 	
+		* keep categories of hospitals
+		keep entity_uniqueid year forprofit system_cat pe_acq*
+		collapse forprofit system_cat pe_acq*, by(entity_uniqueid year)
+		tempfile hosp_cats
+		save `hosp_cats'
+	
+		use "${dbdata}/derived/hospitals_with_turnover.dta", clear
+		merge 1:1 entity_uniqueid year using `hosp_cats', gen(_merge_cats)
+		
+		* keep hospitals only -------
+		keep if is_hospital == 1 & entity_type == "Hospital"
+		restrict_hosp_sample // will keep only general and CAH
+		
+		* any turnover event
+		bysort entity_uniqueid: egen ever_ceo_turnover = max(turnover_ceo)
+		
+		* average number of hospital CEO turnover events
+		bysort entity_uniqueid: egen total_ceo_turnover = total(turnover_ceo)
+		
+		* turnover_ceo, turnover_cfo, turnover_coo
+		
+		*  turnover rate among technical c-suite (CMO/CNO/CTO/CIO)
+		egen turnover_technical = rowmean(turnover_cmo turnover_cio turnover_cno) 
+		
+	* ------- collapse panel C variables -------	
+		
+		* keep year only
+		keep if year == `tabyear'
+		
+		gen count = 1
+		tempfile turnover_`tabyear'
+		save `turnover_`tabyear''
+		
+		local collapsevarsC "turnover_ceo ever_ceo_turnover total_ceo_turnover turnover_cfo turnover_coo turnover_technical (rawsum) count"
+		
+		* ALL
+		collapse `collapsevarsC', by(year)
+		gen type = "All"
+		tempfile panelC_all
+		save `panelC_all'
+		
+		use `turnover_`tabyear'', clear
+		
+		* FP/NFP
+		collapse `collapsevarsC', by(year forprofit)
+		drop if missing(forprofit)
+		gen type = "For-Profit" if forprofit == 1
+		replace type = "Non-Profit" if forprofit == 0
+		egen temp_total = total(count)
+		gen share = count/temp_total
+		drop temp_total
+		tempfile panelC_fp_nfp
+		save `panelC_fp_nfp'
+		
+		use `turnover_`tabyear'', clear
+		
+		* SYS/NON-SYS
+		collapse `collapsevarsC', by(year system_cat)
+		drop if missing(system_cat)
+		gen type = "Single" if system_cat == 1
+		replace type = "Small System" if system_cat == 2
+		replace type = "Large System" if system_cat == 3
+		egen temp_total = total(count)
+		gen share = count/temp_total
+		drop temp_total
+		tempfile panelC_sys
+		save `panelC_sys'
+		
+		use `turnover_`tabyear'', clear
+		
+		* PE/NON-PE
+		collapse `collapsevarsC', by(year pe_acq_by`tabyear')
+		drop if missing(pe_acq_by`tabyear')
+		gen type = "PE-Acquired" if pe_acq_by`tabyear' == 1
+		replace type = "Non-PE" if pe_acq_by`tabyear' == 0
+		egen temp_total = total(count)
+		gen share = count/temp_total
+		drop temp_total
+		tempfile panelC_pe
+		save `panelC_pe'
+		
+		* APPEND
+		use `panelC_all', clear
+		append using `panelC_fp_nfp'
+		append using `panelC_sys'
+		append using `panelC_pe'
+		encode type, gen(type_id)
+		drop type
+		
+		xpose, clear varname
+		
+		* clean
+		rename v1 all
+		rename v2 nfp
+		rename v3 fp 
+		rename v4 nonsys
+		rename v5 sys_small
+		rename v6 sys_big
+		rename v7 nonpe
+		rename v8 pe
+		drop if _varname == "forprofit" |  _varname == "system_cat" |  _varname == "type_id" | _varname == "year" |  _varname == "ndistinct_std" | _varname == "pe_acq_by`tabyear'"
+		order _varname all fp nfp nonsys sys_small sys_big pe nonpe
+		
+	* ------- export panel B -------	
+		
+		gen str60 rowlabel = _varname
+		replace rowlabel = "CEO Turnover Rate (\%)"                    	if _varname == "turnover_ceo"
+		replace rowlabel = "Ever Have CEO Turnover (\%)"                    if _varname == "ever_ceo_turnover"
+		replace rowlabel = "Number of Turnover Events"                    if _varname == "total_ceo_turnover"
+		replace rowlabel = "CFO Turnover Rate (\%)"                    	if _varname == "turnover_cfo"
+		replace rowlabel = "COO Turnover Rate (\%)"                    	if _varname == "turnover_coo"
+		replace rowlabel = "Technical Turnover Rate (\%)"                    if _varname == "turnover_technical"
+		replace rowlabel = "Observations"			          	if _varname == "count"
+		replace rowlabel = "Share"			          			if _varname == "share"
+
+		local fmt "%9.2f"
+		local fmt_ct "%9.0fc"
+		
+		foreach v in all fp nfp sys_small sys_big nonsys pe nonpe {
+			replace `v' = 100*`v' if inlist(_varname, ///
+				"turnover_ceo","ever_ceo_turnover","turnover_cfo","turnover_coo","turnover_technical","share")
+		}
+		
+		local outfile "${overleaf}/tables/outline_descriptives_table1_panelC_`tabyear'.tex"
+		cap file close fh
+		file open fh using "`outfile'", write replace text
+
+		file write fh "\begin{table}[!htbp]" _n
+		file write fh "\centering" _n
+		file write fh "\caption{Hospital Turnover Characteristics, `tabyear' (Panel C)}" _n
+		file write fh "\label{tab:outline_descriptives_table1_panelC_`tabyear'}" _n
+		file write fh "\begin{tabular}{lcccccccc}" _n
+		file write fh "\toprule" _n
+
+		* Group header row
+		file write fh " & \multicolumn{1}{c}{} & \multicolumn{2}{c}{Profit Status} & \multicolumn{3}{c}{System Affiliation} & \multicolumn{2}{c}{Private Equity} \\" _n
+		file write fh "\cmidrule(lr){3-4}\cmidrule(lr){5-7}\cmidrule(lr){8-9}" _n
+		file write fh " & \multicolumn{1}{c}{All} & \multicolumn{1}{c}{For-Profit} & \multicolumn{1}{c}{Non-Profit} & \multicolumn{1}{c}{Non-System} & \multicolumn{1}{c}{Small System} & \multicolumn{1}{c}{Large System} & \multicolumn{1}{c}{PE-Acquired} & \multicolumn{1}{c}{Non-PE} \\" _n
+		file write fh "\midrule" _n
+
+		* Body rows
+		quietly {
+			forvalues i = 1/`=_N' {
+				if _varname[`i'] == "count" {
+					file write fh "\midrule" _n
+					local r = rowlabel[`i']
+
+					local a  : display `fmt_ct' all[`i']
+					local fp : display `fmt_ct' fp[`i']
+					local nf : display `fmt_ct' nfp[`i']
+					local sy_sm : display `fmt_ct' sys_small[`i']
+					local sy_b : display `fmt_ct' sys_big[`i']
+					local ns : display `fmt_ct' nonsys[`i']
+					local pe : display `fmt_ct' pe[`i']
+					local np : display `fmt_ct' nonpe[`i']
+
+					* trim leading spaces from :display output
+					local a  = strtrim("`a'")
+					local fp = strtrim("`fp'")
+					local nf = strtrim("`nf'")
+					local sy_sm = strtrim("`sy_sm'")
+					local sy_b = strtrim("`sy_b'")
+					local ns = strtrim("`ns'")
+					local pe = strtrim("`pe'")
+					local np = strtrim("`np'")
+
+					file write fh "`r' & `a' & `fp' & `nf' & `ns' & `sy_sm' & `sy_b' & `pe' & `np' \\" _n
+				}
+				else {
+					local r = rowlabel[`i']
+
+					local a  : display `fmt' all[`i']
+					local fp : display `fmt' fp[`i']
+					local nf : display `fmt' nfp[`i']
+					local sy_sm : display `fmt' sys_small[`i']
+					local sy_b : display `fmt' sys_big[`i']
+					local ns : display `fmt' nonsys[`i']
+					local pe : display `fmt' pe[`i']
+					local np : display `fmt' nonpe[`i']
+
+					* trim leading spaces from :display output
+					local a  = strtrim("`a'")
+					local fp = strtrim("`fp'")
+					local nf = strtrim("`nf'")
+					local sy_sm = strtrim("`sy_sm'")
+					local sy_b = strtrim("`sy_b'")
+					local ns = strtrim("`ns'")
+					local pe = strtrim("`pe'")
+					local np = strtrim("`np'")
+
+					file write fh "`r' & `a' & `fp' & `nf' & `ns' & `sy_sm' & `sy_b' & `pe' & `np' \\" _n
+				}
+			
+			}
+		}
+
+		file write fh "\bottomrule" _n
+		file write fh "\end{tabular}" _n
+		file write fh "\vspace{0.25em} \\" _n
+		file write fh "\footnotesize Notes: Entries are means by subgroup." _n
+		file write fh "\end{table}" _n
+
+		file close fh
+
+		di as result "Wrote LaTeX table to: `outfile'"
+			
+		
+	* ------- make a COO over time -------	
+		
+		use `base_withvars', clear
+		if `tabyear' == 2017 {
+			bysort entity_uniqueid year: keep if _n ==1 // make unique by hospital-year
+			
+			gen hosp_has_nonshared_ceo = (hosp_has_ceo == 1 & hosp_has_shared_ceo == 0)
+		
+			tempfile hosp_all_coo
+			save `hosp_all_coo'
+			
+			local collapsevarsCOO "hosp_has_ceo hosp_has_coo hosp_has_cfo hosp_has_coo_cfo hosp_has_cnh hosp_has_cio hosp_has_technical hosp_has_shared_ceo ndistinct_raw ndistinct_std hosp_has_nonshared_ceo"
+			
+			* ALL
+			collapse `collapsevarsCOO', by(year)
+			gen type = "All"
+			twoway line hosp_has_nonshared_ceo year, ytitle("Share with Own CEO") ylabel(0(0.1)1)
+				graph export "${overleaf}/tables/outline_descriptives_table2_CEOtimeseries.pdf", as(pdf) replace
+			twoway line hosp_has_technical year, ytitle("All Technical Roles Filled") ylabel(0(0.1)1)
+				graph export "${overleaf}/tables/outline_descriptives_table3_technicaltimeseries.pdf", as(pdf) replace
+			tempfile panelCOO_all
+			save `panelCOO_all'
+			
+			use `hosp_all_coo', clear
+			
+			* FP/NFP
+			collapse `collapsevarsCOO', by(year forprofit)
+			drop if missing(forprofit)
+			gen type = "For-Profit" if forprofit == 1
+			replace type = "Non-Profit" if forprofit == 0
+			tempfile panelCOO_fp_nfp
+			save `panelCOO_fp_nfp'
+			
+			use `hosp_all_coo', clear
+			
+			* SYS/NON-SYS
+			collapse `collapsevarsCOO', by(year system_ind_cleaned_3min)
+			drop if missing(system_ind_cleaned_3min)
+			gen type = "System" if system_ind_cleaned_3min == 1
+			replace type = "Non-System" if system_ind_cleaned_3min == 0
+			tempfile panelCOO_sys
+			save `panelCOO_sys'
+			
+			use `hosp_all_coo', clear
+			
+			* PE/NON-PE
+			collapse `collapsevarsCOO', by(year pe_acq_by2017)
+			drop if missing(pe_acq_by2017)
+			gen type = "PE-Acquired" if pe_acq_by2017 == 1
+			replace type = "Non-PE" if pe_acq_by2017 == 0
+			tempfile panelCOO_pe
+			save `panelCOO_pe'
+			
+			* APPEND
+			use `panelCOO_all', clear
+			append using `panelCOO_fp_nfp'
+			append using `panelCOO_sys'
+			append using `panelCOO_pe'
+			encode type, gen(type_id)
+			drop type
+			
+			twoway ///
+				(line hosp_has_coo year if type_id==1, sort lcolor(black)) ///
+				(line hosp_has_coo year if type_id==2, sort lcolor(navy)) ///
+				(line hosp_has_coo year if type_id==4, sort lcolor (blue)) ///
+				(line hosp_has_coo year if type_id==7, sort lcolor (maroon)) ///
+				(line hosp_has_coo year if type_id==5, sort lcolor(red)) ///
+				(line hosp_has_coo year if type_id==6, sort lcolor(dkorange)) ///
+				(line hosp_has_coo year if type_id==3, sort lcolor(orange)), ///
+				legend(order(1 "All" 2 "For-Profit" 3 "Non-Profit" 4 "System" 5 "Non-System" 6 "PE-Acquired" 7 "Non-PE")) ///
+				ytitle("Share with COO")
+			graph export "${overleaf}/tables/outline_descriptives_table1_COOtimeseries.pdf", as(pdf) replace
+		}
+		
+		
 	restore
 
+end
+
+// descriptives_table, tabyear(2017)
+descriptives_table, tabyear(2015)
+descriptives_table, tabyear(2010)
 
 * step-up graphs? EXPERIMENTING
 

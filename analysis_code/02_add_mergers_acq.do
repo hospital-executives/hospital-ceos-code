@@ -188,13 +188,36 @@ Goal: 			Merge M&A data into hospital-level dataset
 
 	preserve
 		use "${dbdata}/supplemental/private_equity/Clean-Cut-Full-Year-PE-ShortTerm-Hospital-Level-Deal-List.dta", clear
+		gen deal_level = 1 if dealtype_PE == "Buyout"
+		replace deal_level = 2 if dealtype_PE == "PE Growth/Expansion"
+		replace deal_level = 3 if dealtype_PE == "PIPE"
 		rename pn medicarenumber
 		rename id_aha aha_id	
-		tempfile pe_data
-		save `pe_data'
+		bysort year medicarenumber (deal_level): keep if _n == 1
+		tempfile pe_data_yr
+		save `pe_data_yr'
+		* make hospital level flag for PE category
+			* event before 2009
+		gen event_before_2009 = year < 2009
+		bysort medicarenumber: egen pe_acq_already = max(event_before_2009)
+			* event between 2009 and 2017
+		gen event_2009_2017 = inrange(year,2009,2017)
+		bysort medicarenumber: egen pe_acq_window = max(event_2009_2017)
+			replace pe_acq_window = 0 if pe_acq_already == 1
+		gen event_2009_2017_miss = event_2009_2017
+		replace event_2009_2017_miss = . if event_2009_2017_miss == 0
+		bysort medicarenumber: egen pe_acq_window_year = min(event_2009_2017_miss*year)
+		bysort medicarenumber: keep if _n == 1
+		keep medicarenumber pe_acq*
+		tempfile pe_data_all
+		save `pe_data_all'
 	restore
 	
-	merge m:1 medicarenumber year using `pe_data', gen(_merge_pe)	
+	merge m:1 medicarenumber year using `pe_data_yr', gen(_merge_pe_yr)
+	tab year if _merge_pe_yr == 2
+	drop if _merge_pe_yr == 2
+	merge m:1 medicarenumber using `pe_data_all', gen(_merge_pe_all)	
+	drop if _merge_pe_all == 2
 	
 
 * MISC DATA CLEANING ___________________________________________________________

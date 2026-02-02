@@ -151,7 +151,7 @@ Goal: 			Clean system ID variable from Cooper et al data
 	restore
 	
 * make a forprofit variable that excludes government hospitals
-// 	gen forprofit = aha_own_fp
+	gen forprofit = aha_own_fp
 	replace forprofit = aha_own_fp_campus if missing(aha_own_fp) & !missing(aha_own_fp_campus)
 	replace forprofit = . if aha_own_gov == 1
 	replace forprofit = . if missing(aha_own_gov) & aha_own_gov_campus == 1
@@ -332,7 +332,7 @@ Goal: 			Clean system ID variable from Cooper et al data
 			aha_* tar acq any hsanum hrrnum _merge_entity_aha _merge_campus_aha  ///
 			syschng_sysid_ma syschng_system_id syschng_ct_system_id syschng_ct_sysid_ma ///
 			forprofit gov_priv_type *_parent ///
-			dealtype_PE PE_flag pe_acq_already pe_acq_window pe_acq_window_year // PE variables
+			dealtype_PE PE_flag pe_acq_already pe_acq_window pe_acq_window_year // 
 			
 * make unique by entity_uniqueid year
 	bysort entity_uniqueid year: keep if _n == 1
