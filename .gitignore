@@ -7,5 +7,8 @@ __pycache__/
 **/.Rhistory
 build_code/input/
 build_code/temp/
+build_code/Rplots.pdf
 setup_environment/python_packages.txt
 setup_environment/proj-env
+event_code/temp/
+titles_code/*.xlsx
