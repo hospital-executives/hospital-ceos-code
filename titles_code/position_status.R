@@ -347,3 +347,289 @@ merged_export <- merged %>%
   )
 
 write_dta(merged_export, paste0(derived_data, "/positions_by_tier.dta"))
+
+
+##### run regressions at the role level #####
+long_vacancies <- valid_vacancies %>%
+  mutate(
+    title_standardized_key = normalize_title_std(name),
+    title_standardized     = normalize_title_std(name),
+    status = ifelse(str_detect(status, "Exist|exist"), "DNE", status),
+    non_report = status == "Not Reported",
+    contact_corporate = status == "Contact Corporate",
+    unclear = non_report | contact_corporate
+  ) %>%
+  filter(title_standardized_key)
+
+###### merge in for profit status
+xwalk_raw = read_dta(paste0(derived_data, "/temp/merged_ma_sysid_xwalk.dta")) 
+
+xwalk <- xwalk_raw %>% 
+  distinct(entity_uniqueid, entity_uniqueid_parent, year, sysid_orig,sysid_ma, forprofit)
+
+# First merge: get parent profit status
+sysprofit <- read_dta(paste0(derived_data, "/temp/systems_nonharmonized_withprofit.dta")) %>%
+  select(entity_uniqueid, year, forprofit) %>%
+  rename(
+    entity_uniqueid_parent = entity_uniqueid,
+    forprofit_parent = forprofit
+  )
+
+# Merge on entity_uniqueid_parent and year (left join keeps all from main df)
+xwalk <- xwalk %>%
+  left_join(sysprofit, by = c("entity_uniqueid_parent", "year"))
+
+# Second merge: pull in forprofit_imputed for the entity itself
+sys_forprofit_imputed <- read_dta(paste0(derived_data, "/temp/systems_nonharmonized_withprofit.dta")) %>%
+  select(entity_uniqueid, year, forprofit_imputed)
+
+get_mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+xwalk <- xwalk %>%
+  left_join(sys_forprofit_imputed, by = c("entity_uniqueid", "year")) %>%
+  mutate(
+    # Replace forprofit with forprofit_imputed where available (this only changes things for parents)
+    forprofit = if_else(!is.na(forprofit_imputed), forprofit_imputed, forprofit)
+  ) %>%
+  select(-forprofit_imputed) %>%
+  group_by(entity_uniqueid) %>%
+  mutate(sysid_orig = ifelse(sysid_orig == "", get_mode(sysid_orig), sysid_orig)) %>%
+  ungroup() %>%
+  group_by(sysid_orig, year) %>%
+  mutate(num_hosp = n_distinct(entity_uniqueid)) %>%
+  ungroup() %>%
+  mutate(
+    no_sys = sysid_orig == ""
+  ) %>%
+  group_by(sysid_orig) %>%
+  mutate(
+    modal_num_hosp = get_mode(num_hosp),
+    indep_hospital = modal_num_hosp == 1 | no_sys | sysid_orig == 2,
+    small_system = modal_num_hosp < 10 & !indep_hospital & !no_sys,
+    large_system = modal_num_hosp >= 10 & !indep_hospital & !no_sys
+  ) %>%
+  ungroup()
+
+#
+regression_df <- long_vacancies %>% left_join(xwalk)
+
+### run regressions
+
+library(broom)
+library(ggplot2)
+
+# Prepare the data
+reg_data <- regression_df %>%
+  # Exclude cases where all system status indicators are FALSE
+  filter(indep_hospital | small_system | large_system) %>%
+  # Create factor variables
+  mutate(
+    profit_status = factor(if_else(forprofit_parent == 1, "For-Profit", "Not-for-Profit"),
+                           levels = c("For-Profit", "Not-for-Profit")),
+    system_status = case_when(
+      indep_hospital ~ "Independent",
+      small_system ~ "Small System",
+      large_system ~ "Large System"
+    ),
+    system_status = factor(system_status, levels = c("Independent", "Small System", "Large System")),
+    year = factor(year)
+  )
+
+# Get list of roles
+roles <- unique(reg_data$title_standardized)
+
+# ---- Regression 1: Profit Status ----
+profit_results <- map_dfr(roles, function(role) {
+  role_data <- reg_data %>% filter(title_standardized == role)
+  
+  # Skip if insufficient variation in key variables
+  if (n_distinct(role_data$profit_status) < 2) return(NULL)
+  if (n_distinct(role_data$year) < 2) return(NULL)
+  if (nrow(role_data) < 10) return(NULL)  # optional: require minimum obs
+  
+  tryCatch({
+    model <- lm(non_report ~ profit_status + year, data = role_data)
+    
+    tidy(model, conf.int = TRUE) %>%
+      filter(term == "profit_statusNot-for-Profit") %>%
+      mutate(role = role)
+  }, error = function(e) NULL)
+})
+
+# ---- Regression 2: System Status ----
+system_results <- map_dfr(roles, function(role) {
+  role_data <- reg_data %>% filter(title_standardized == role)
+  
+  # Skip if insufficient variation in key variables
+  if (n_distinct(role_data$system_status) < 2) return(NULL)
+  if (n_distinct(role_data$year) < 2) return(NULL)
+  if (nrow(role_data) < 10) return(NULL)  # optional: require minimum obs
+  
+  tryCatch({
+    model <- lm(non_report ~ system_status + year, data = role_data)
+    
+    tidy(model, conf.int = TRUE) %>%
+      filter(term %in% c("system_statusSmall System", "system_statusLarge System")) %>%
+      mutate(
+        role = role,
+        term = str_remove(term, "system_status")
+      )
+  }, error = function(e) NULL)
+})
+
+# ---- Forest Plot 1: Profit Status ----
+profit_plot <- profit_results %>%
+  mutate(role = fct_reorder(role, estimate)) %>%
+  ggplot(aes(x = estimate, y = role)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2) +
+  geom_point(size = 2) +
+  labs(
+    title = "Effect of Not-for-Profit Status on Non-Reporting",
+    subtitle = "Baseline: For-Profit",
+    x = "Coefficient (95% CI)",
+    y = NULL
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 8),
+    panel.grid.minor = element_blank()
+  )
+
+# ---- Forest Plot 2: System Status ----
+system_plot <- system_results %>%
+  mutate(
+    role = fct_reorder(role, estimate, .fun = mean),
+    term = factor(term, levels = c("Small System", "Large System"))
+  ) %>%
+  ggplot(aes(x = estimate, y = role, color = term, shape = term)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2, 
+                 position = position_dodge(width = 0.5)) +
+  geom_point(size = 2, position = position_dodge(width = 0.5)) +
+  scale_color_manual(values = c("Small System" = "#1b9e77", "Large System" = "#d95f02")) +
+  labs(
+    title = "Effect of System Size on Non-Reporting",
+    subtitle = "Baseline: Independent Hospital",
+    x = "Coefficient (95% CI)",
+    y = NULL,
+    color = NULL,
+    shape = NULL
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 8),
+    panel.grid.minor = element_blank(),
+    legend.position = "bottom"
+  )
+
+# Display plots
+profit_plot
+system_plot
+
+# Optionally save
+figures_folder = '/Users/katherinepapen/Library/CloudStorage/Dropbox/Apps/Overleaf/Hospital CEOs/notes/Title descriptives/figures'
+ggsave(paste0(figures_folder, "/profit_status_forest.png"), profit_plot, width = 10, height = 8)
+ggsave(paste0(figures_folder, "/system_status_forest.png"), system_plot, width = 10, height = 10)
+
+#### also run with "unclear" as the outcome ####
+# ---- Regression 3: Profit Status (Unclear) ----
+# ---- Regression 3: Profit Status (Unclear) ----
+profit_results_unclear <- map_dfr(roles, function(role) {
+  role_data <- reg_data %>% 
+    filter(title_standardized == role) %>%
+    filter(as.numeric(as.character(year)) > 2011)
+  
+  # Skip if insufficient variation in key variables
+  if (n_distinct(role_data$profit_status) < 2) return(NULL)
+  if (n_distinct(role_data$year) < 2) return(NULL)
+  if (nrow(role_data) < 10) return(NULL)
+  
+  tryCatch({
+    model <- lm(unclear ~ profit_status + year, data = role_data)
+    
+    tidy(model, conf.int = TRUE) %>%
+      filter(term == "profit_statusNot-for-Profit") %>%
+      mutate(role = role)
+  }, error = function(e) NULL)
+})
+
+# ---- Regression 4: System Status (Unclear) ----
+system_results_unclear <- map_dfr(roles, function(role) {
+  role_data <- reg_data %>% 
+    filter(title_standardized == role) %>%
+    filter(as.numeric(as.character(year)) > 2011)
+  
+  # Skip if insufficient variation in key variables
+  if (n_distinct(role_data$system_status) < 2) return(NULL)
+  if (n_distinct(role_data$year) < 2) return(NULL)
+  if (nrow(role_data) < 10) return(NULL)
+  
+  tryCatch({
+    model <- lm(unclear ~ system_status + year, data = role_data)
+    
+    tidy(model, conf.int = TRUE) %>%
+      filter(term %in% c("system_statusSmall System", "system_statusLarge System")) %>%
+      mutate(
+        role = role,
+        term = str_remove(term, "system_status")
+      )
+  }, error = function(e) NULL)
+})
+
+# ---- Forest Plot 3: Profit Status (Unclear) ----
+profit_plot_unclear <- profit_results_unclear %>%
+  mutate(role = fct_reorder(role, estimate)) %>%
+  ggplot(aes(x = estimate, y = role)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2) +
+  geom_point(size = 2) +
+  labs(
+    title = "Effect of Not-for-Profit Status on Unclear Reporting",
+    subtitle = "Baseline: For-Profit",
+    x = "Coefficient (95% CI)",
+    y = NULL
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 8),
+    panel.grid.minor = element_blank()
+  )
+
+# ---- Forest Plot 4: System Status (Unclear) ----
+system_plot_unclear <- system_results_unclear %>%
+  mutate(
+    role = fct_reorder(role, estimate, .fun = mean),
+    term = factor(term, levels = c("Small System", "Large System"))
+  ) %>%
+  ggplot(aes(x = estimate, y = role, color = term, shape = term)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2, 
+                 position = position_dodge(width = 0.5)) +
+  geom_point(size = 2, position = position_dodge(width = 0.5)) +
+  scale_color_manual(values = c("Small System" = "#1b9e77", "Large System" = "#d95f02")) +
+  labs(
+    title = "Effect of System Size on Unclear Reporting",
+    subtitle = "Baseline: Independent Hospital",
+    x = "Coefficient (95% CI)",
+    y = NULL,
+    color = NULL,
+    shape = NULL
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 8),
+    panel.grid.minor = element_blank(),
+    legend.position = "bottom"
+  )
+
+# Display plots
+profit_plot_unclear
+system_plot_unclear
+
+# Optionally save
+ggsave(paste0(figures_folder, "/profit_status_unclear_forest.png"), profit_plot_unclear, width = 10, height = 8)
+ggsave(paste0(figures_folder, "/system_status_unclear_forest.png"), system_plot_unclear, width = 10, height = 10)
