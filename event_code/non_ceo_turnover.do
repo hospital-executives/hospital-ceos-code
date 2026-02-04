@@ -30,7 +30,7 @@ merge 1:1 entity_uniqueid year using `himss_type_xwalk', assert(master match) ke
 restrict_hosp_sample
 
 * will need to revisit for the cases where we're dropping observations still
-merge 1:1 entity_uniqueid year using "${dbdata}/derived/temp/hospitals_with_turnover.dta", keep(match) nogen
+merge 1:1 entity_uniqueid year using "${dbdata}/derived/hospitals_with_turnover.dta", keep(match) nogen
 
 make_target_sample
 

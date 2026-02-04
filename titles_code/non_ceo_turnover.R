@@ -13,6 +13,8 @@ rm(list = ls())
 if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
   setwd(dirname(getActiveDocumentContext()$path))
   source("../build_code/config.R")
+} else {
+  source("../build_code/config.R")
 }
 
 # ----------------------------
@@ -117,19 +119,19 @@ turnover_data <- role_holders %>%
   arrange(entity_uniqueid, title_standardized, year) %>%
   group_by(entity_uniqueid, title_standardized) %>%
   mutate(
-    # Get next year's info
-    next_year = lead(year),
-    next_contact = lead(contact_uniqueid),
-    next_confirmed = lead(confirmed),
-    # Check if next observation is actually year + 1 (not a gap)
-    is_consecutive = next_year == year + 1
+    # Get previous year's info
+    prev_year = lag(year),
+    prev_contact = lag(contact_uniqueid),
+    prev_confirmed = lag(confirmed),
+    # Check if previous observation is actually year - 1 (not a gap)
+    is_consecutive = prev_year == year - 1
   ) %>%
   mutate(
     turnover = case_when(
       !is_consecutive ~ NA_real_,
-      !confirmed | !next_confirmed ~ NA_real_,
-      contact_uniqueid != next_contact ~ 1,
-      contact_uniqueid == next_contact ~ 0
+      !confirmed | !prev_confirmed ~ NA_real_,
+      contact_uniqueid != prev_contact ~ 1,
+      contact_uniqueid == prev_contact ~ 0
     )
   ) %>%
   ungroup() %>%
