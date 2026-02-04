@@ -995,7 +995,11 @@ def clean_results_pt6(remaining, dropped_sets, confirmed_graph,
             # same state
             ((comp_remaining5['shared_states'].apply(len) > 0) & (comp_remaining5['shared_titles_flag'])) |
             # diff states but same title
-            ((comp_remaining5['diff_state_years_count']  <= 1) & (comp_remaining5['shared_titles_flag'])) |
+            (
+             (comp_remaining5['diff_state_years_count']  <= 1) & (comp_remaining5['shared_titles_flag']) & 
+             (comp_remaining5['firstname_count_id1']  <= 3000) & (comp_remaining5['lastname_count_id1'] <= 1000)
+            )
+            |
             # not super common name & same title
             (
                 (comp_remaining5['lastname_count_id1'] <= 2000) & (comp_remaining5['firstname_count_id1'] <= 2000) & 

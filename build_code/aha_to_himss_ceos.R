@@ -5,6 +5,7 @@ library(xtable)
 library(dplyr)
 library(purrr)
 library(stringdist)
+library(data.table)
 
 # load data
 if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
@@ -13,7 +14,7 @@ if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable())
   hospitals <- read_feather(paste0(derived_data, "/hospitals_with_xwalk.feather"))
   final <- read_feather(paste0(derived_data, "/individuals_with_xwalk.feather"))
   supp_path <- supplemental_data
-  output_dir <- paste0(data_file_path, "/summary_stats/execs")
+  output_dir <- paste0(data_file_path, "summary_stats/execs")
 } else {
   args <- commandArgs(trailingOnly = TRUE)
   source("config.R")
@@ -269,82 +270,92 @@ himss_df <- final %>% filter(!is.na(entity_aha)) %>%
     himss_full = full_name,
     himss_year = year)
 
-within_5yr <- aha_df %>%
-  left_join(himss_df, by = "ahanumber") %>%
-  filter(abs(himss_year - aha_year) <= 5)
+# Convert to data.tables if not already
+setDT(aha_df)
+setDT(himss_df)
 
-# calculate string similarity/nickname measures
-within_5yr <- within_5yr %>% mutate(
-  full_jw  = stringdist(full_aha , himss_full , method = "jw", p = 0.1),
+# Left join and filter within 5 years
+within_5yr <- himss_df[aha_df, on = "ahanumber", allow.cartesian = TRUE][abs(himss_year - aha_year) <= 5]
+
+# Calculate string similarity/nickname measures
+within_5yr[, `:=`(
+  full_jw  = stringdist(full_aha, himss_full, method = "jw", p = 0.1),
   first_jw = stringdist(first_aha, first_himss, method = "jw", p = 0.1),
-  last_jw  = stringdist(last_aha , last_himss , method = "jw", p = 0.1),
-  nick_1 = mapply(function(a, b) names_in_same_row_dict(a, b, dict1), first_aha, first_himss),
-  nick_2 = mapply(function(a, b) names_in_same_row_dict(a, b, dict2), first_aha, first_himss),
-  nick_3 = mapply(function(a, b) names_in_same_row_dict(a, b, dict3), first_aha, first_himss),
-  last_substring = mapply(last_name_overlap, last_aha, last_himss),
+  last_jw  = stringdist(last_aha, last_himss, method = "jw", p = 0.1),
+  nick_1   = mapply(function(a, b) names_in_same_row_dict(a, b, dict1), first_aha, first_himss),
+  nick_2   = mapply(function(a, b) names_in_same_row_dict(a, b, dict2), first_aha, first_himss),
+  nick_3   = mapply(function(a, b) names_in_same_row_dict(a, b, dict3), first_aha, first_himss),
+  last_substring  = mapply(last_name_overlap, last_aha, last_himss),
   first_substring = mapply(last_name_overlap, first_aha, first_himss)
-)
+)]
 
-matches <- within_5yr %>% filter(aha_year > 2008) %>%
-  mutate(
-    full_condition = (full_jw <= 0.1 & !is.na(full_jw)),
-    last_condition = ((last_jw <= 0.15 & !is.na(last_jw)) | last_substring),
-    first_condition = (first_jw <= 0.15 & !is.na(first_jw)) | first_substring |
-      nick_1 | nick_2 | nick_3,
-    similarity_condition = full_condition | (first_condition & last_condition)
-  ) %>%
-  group_by(full_aha, ahanumber, aha_year, himss_year) %>%  
-  filter(any(similarity_condition)) %>%
-  ungroup() %>%
-  group_by(full_aha, ahanumber, aha_year) %>%
-  mutate(
-    has_himss_year_equal = any(himss_year == aha_year, na.rm = TRUE),
-    has_himss_after = any(himss_year > aha_year, na.rm = TRUE),
-    has_himss_before = any(himss_year < aha_year, na.rm = TRUE),
-    has_himss_after_no_match = has_himss_after & !has_himss_year_equal,
-    has_himss_before_no_match = has_himss_before & !has_himss_year_equal
-  ) %>%
-  ungroup() %>%
-  mutate(
-    year_diff = abs(himss_year - aha_year),
-    prefer_after = if_else(himss_year > aha_year, 1, 0),
-    match_type = case_when(
-      ceo_himss_title_fuzzy ~ paste0("jw_year_", year_diff),
-      TRUE ~ paste0("jw_year_title_", year_diff)
-    )
-  ) 
+# Create matches
+matches <- within_5yr[aha_year > 2008]
 
-matches_aha <- matches %>%
-  group_by(full_aha, ahanumber, aha_year) %>%
-  slice_min(order_by = year_diff, with_ties = TRUE) %>%  # keep ties
-  slice_max(order_by = prefer_after, n = 1, with_ties = FALSE) %>%  # break ties by favoring after
-  ungroup() %>% 
-  rename(himss_after_aha = has_himss_after_no_match, 
-         himss_before_aha = has_himss_before_no_match) %>%
-  rename(year = aha_year) %>%
-  distinct(ahanumber, full_aha, year, match_type, himss_after_aha, himss_before_aha) 
+# Add condition columns
+matches[, `:=`(
+  full_condition = (full_jw <= 0.1 & !is.na(full_jw)),
+  last_condition = ((last_jw <= 0.15 & !is.na(last_jw)) | last_substring),
+  first_condition = (first_jw <= 0.15 & !is.na(first_jw)) | first_substring |
+    nick_1 | nick_2 | nick_3
+)]
+matches[, similarity_condition := full_condition | (first_condition & last_condition)]
 
-matched_himss <- matched_himss %>% 
-  rbind(
-    matches %>% filter(similarity_condition) %>%
-      rename(year = aha_year) %>%
-      distinct(ahanumber, year, id, match_type)
-  ) %>%
-  distinct()
+# Filter: keep groups where any row meets similarity_condition
+matches <- matches[, .SD[any(similarity_condition)], by = .(full_aha, ahanumber, aha_year, himss_year)]
 
-all_matches <- rbind(accounted_for, matches_aha) %>%
-  mutate(
-    match_order = case_when(
-      match_type == "jw" ~ 1,
-      match_type == "title" ~ 2,
-      str_detect(match_type, "^jw_year_\\d+$") ~ 2 + as.numeric(str_extract(match_type, "\\d+")),
-      str_detect(match_type, "^jw_year_title_\\d+$") ~ 100 + as.numeric(str_extract(match_type, "\\d+")),
-      TRUE ~ Inf
-    )
-  ) %>%
-  group_by(full_aha, ahanumber, year) %>%
-  slice_min(order_by = match_order, n = 1, with_ties = FALSE) %>%
-  ungroup()
+# Add has_himss_* columns by group
+matches[, `:=`(
+  has_himss_year_equal = any(himss_year == aha_year, na.rm = TRUE),
+  has_himss_after = any(himss_year > aha_year, na.rm = TRUE),
+  has_himss_before = any(himss_year < aha_year, na.rm = TRUE)
+), by = .(full_aha, ahanumber, aha_year)]
+
+matches[, `:=`(
+  has_himss_after_no_match = has_himss_after & !has_himss_year_equal,
+  has_himss_before_no_match = has_himss_before & !has_himss_year_equal
+)]
+
+# Add year_diff, prefer_after, match_type
+matches[, `:=`(
+  year_diff = abs(himss_year - aha_year),
+  prefer_after = fifelse(himss_year > aha_year, 1, 0),
+  match_type = fifelse(ceo_himss_title_fuzzy,
+                       paste0("jw_year_", abs(himss_year - aha_year)),
+                       paste0("jw_year_title_", abs(himss_year - aha_year)))
+)]
+
+# Create matches_aha: slice_min then slice_max
+matches_aha <- matches[order(year_diff, -prefer_after), 
+                       .SD[year_diff == min(year_diff)][1], 
+                       by = .(full_aha, ahanumber, aha_year)]
+
+# Rename columns
+setnames(matches_aha, 
+         c("has_himss_after_no_match", "has_himss_before_no_match", "aha_year"),
+         c("himss_after_aha", "himss_before_aha", "year"))
+
+# Keep distinct columns
+matches_aha <- unique(matches_aha[, .(ahanumber, full_aha, year, match_type, himss_after_aha, himss_before_aha)])
+
+# Update matched_himss
+new_rows <- matches[similarity_condition == TRUE, .(ahanumber, year = aha_year, id, match_type)]
+new_rows <- unique(new_rows)
+matched_himss <- unique(rbind(matched_himss, new_rows))
+
+# Create all_matches
+setDT(accounted_for)
+all_matches <- rbind(accounted_for, matches_aha)
+
+all_matches[, match_order := fcase(
+  match_type == "jw", 1,
+  match_type == "title", 2,
+  grepl("^jw_year_\\d+$", match_type), 2 + as.numeric(gsub("\\D", "", match_type)),
+  grepl("^jw_year_title_\\d+$", match_type), 100 + as.numeric(gsub("\\D", "", match_type)),
+  default = Inf
+)]
+
+all_matches <- all_matches[order(match_order), .SD[1], by = .(full_aha, ahanumber, year)]
 
 #### clear environment ####
 keep_names <- c(
@@ -359,64 +370,83 @@ rm(list = setdiff(ls(envir = .GlobalEnv), keep_names), envir = .GlobalEnv)
 ### fourth pass - find matches where AHA observation occurs in HIMSS, but ------
 ###              in a different system, using a (first, last) fuzzy join ------
 ###              and using system id from AHA 
-himss_preprocessed <- final %>% 
-  distinct(id, firstname, lastname, entity_name, campus_aha, 
-          entity_aha, title_standardized, title, year, ceo_himss_title_fuzzy) %>%
-  rename(himss_year = year)  %>%
-  filter(!is.na(firstname) & !is.na(lastname))
+# himss_preprocessed
+himss_preprocessed <- unique(final[, .(id, firstname, lastname, entity_name, campus_aha, 
+                                       entity_aha, title_standardized, title, year, ceo_himss_title_fuzzy)])
+setnames(himss_preprocessed, "year", "himss_year")
+himss_preprocessed <- himss_preprocessed[!is.na(firstname) & !is.na(lastname)]
 
-remaining <- all_aha_ceos %>% left_join(cleaned_aha) %>%
-  distinct(ahanumber, year, mname, full_aha, last_aha, first_aha) %>%
-  anti_join(all_matches %>% distinct(full_aha,ahanumber, year)) %>%
-  rename(firstname = first_aha,
-         lastname = last_aha,
-         aha_year = year)  %>%
-  filter(!is.na(firstname) & !is.na(lastname)) %>%
-  stringdist_join(himss_preprocessed, by = c("firstname", "lastname")) %>%
-  filter(!is.na(id))
+# remaining - note: stringdist_join is from fuzzyjoin, no direct data.table equivalent
+setDT(all_aha_ceos)
+setDT(cleaned_aha)
 
-cleaned_remaining <- remaining %>%
-  mutate(first_jw = stringdist(firstname.x, firstname.y, method = "jw"),
-         last_jw = stringdist(lastname.x, lastname.y, method = "jw"),
-         nick_1 = mapply(function(a, b) names_in_same_row_dict(a, b, dict1), firstname.x, firstname.y),
-         nick_2 = mapply(function(a, b) names_in_same_row_dict(a, b, dict2), firstname.x, firstname.y),
-         nick_3 = mapply(function(a, b) names_in_same_row_dict(a, b, dict3), firstname.x, firstname.y),
-         last_substring = mapply(last_name_overlap, lastname.x, lastname.y),
-         first_substring = mapply(last_name_overlap, firstname.x, firstname.y))
+remaining <- cleaned_aha[all_aha_ceos, on = names(all_aha_ceos)[names(all_aha_ceos) %in% names(cleaned_aha)]]
+remaining <- unique(remaining[, .(ahanumber, year, mname, full_aha, last_aha, first_aha)])
 
-aha_sysid <- cleaned_aha %>% distinct(ahanumber, year, sysid)
+# Anti-join
+all_matches_keys <- unique(all_matches[, .(full_aha, ahanumber, year)])
+remaining <- remaining[!all_matches_keys, on = .(full_aha, ahanumber, year)]
 
-potential_matches <-  cleaned_remaining %>% rename(year = aha_year) %>%
-  left_join(aha_sysid) %>%
-  rename(aha_aha = ahanumber,
-         aha_sysid = sysid,
-         ahanumber = campus_aha,
-         aha_year = year,
-         year = himss_year) %>%
-  left_join(aha_sysid) %>%
-  rename(campus_aha = ahanumber,
-         himss_sysid = sysid,
-         himss_year = year) 
+setnames(remaining, c("first_aha", "last_aha", "year"), c("firstname", "lastname", "aha_year"))
+remaining <- remaining[!is.na(firstname) & !is.na(lastname)]
 
-aha_sys_matches <- potential_matches %>% filter(aha_sysid == himss_sysid) %>%
-  group_by(full_aha, aha_aha, aha_year) %>%
-  mutate(
-    has_himss_year_equal = any(himss_year == aha_year, na.rm = TRUE),
-    has_himss_after = any(himss_year > aha_year, na.rm = TRUE),
-    has_himss_before = any(himss_year < aha_year, na.rm = TRUE),
-    has_himss_after_no_match = has_himss_after & !has_himss_year_equal,
-    has_himss_before_no_match = has_himss_before & !has_himss_year_equal
-  ) %>% ungroup() %>%
-  mutate(year_diff = abs(himss_year - aha_year),
-         prefer_after = if_else(himss_year > aha_year, 1, 0),
-         match_type = case_when(
-           ceo_himss_title_fuzzy & himss_year == aha_year ~ "sys",
-           ceo_himss_title_fuzzy & himss_year != aha_year ~ paste0("sys_year_", year_diff),
-           !ceo_himss_title_fuzzy & himss_year != aha_year ~ paste0("sys_title_year_", year_diff),
-           !ceo_himss_title_fuzzy & himss_year == aha_year ~ "sys_title",
-           TRUE ~ "unaccounted"
-         )) 
+# stringdist_join doesn't have a data.table equivalent - use fuzzyjoin or do a cross join + filter
+# Option 1: Keep using fuzzyjoin
+remaining <- as.data.table(
+  stringdist_join(remaining, himss_preprocessed, by = c("firstname", "lastname"))
+)
+remaining <- remaining[!is.na(id)]
 
+# cleaned_remaining
+cleaned_remaining <- copy(remaining)
+cleaned_remaining[, `:=`(
+  first_jw = stringdist(firstname.x, firstname.y, method = "jw"),
+  last_jw = stringdist(lastname.x, lastname.y, method = "jw"),
+  nick_1 = mapply(function(a, b) names_in_same_row_dict(a, b, dict1), firstname.x, firstname.y),
+  nick_2 = mapply(function(a, b) names_in_same_row_dict(a, b, dict2), firstname.x, firstname.y),
+  nick_3 = mapply(function(a, b) names_in_same_row_dict(a, b, dict3), firstname.x, firstname.y),
+  last_substring = mapply(last_name_overlap, lastname.x, lastname.y),
+  first_substring = mapply(last_name_overlap, firstname.x, firstname.y)
+)]
+
+# aha_sysid
+aha_sysid <- unique(cleaned_aha[, .(ahanumber, year, sysid)])
+
+# potential_matches
+potential_matches <- copy(cleaned_remaining)
+setnames(potential_matches, "aha_year", "year")
+potential_matches <- aha_sysid[potential_matches, on = .(ahanumber, year)]
+setnames(potential_matches, 
+         c("ahanumber", "sysid", "campus_aha", "year", "himss_year"),
+         c("aha_aha", "aha_sysid", "ahanumber", "aha_year", "year"))
+potential_matches <- aha_sysid[potential_matches, on = .(ahanumber, year)]
+setnames(potential_matches,
+         c("ahanumber", "sysid", "year"),
+         c("campus_aha", "himss_sysid", "himss_year"))
+
+# aha_sys_matches
+aha_sys_matches <- potential_matches[aha_sysid == himss_sysid]
+
+aha_sys_matches[, `:=`(
+  has_himss_year_equal = any(himss_year == aha_year, na.rm = TRUE),
+  has_himss_after = any(himss_year > aha_year, na.rm = TRUE),
+  has_himss_before = any(himss_year < aha_year, na.rm = TRUE)
+), by = .(full_aha, aha_aha, aha_year)]
+
+aha_sys_matches[, `:=`(
+  has_himss_after_no_match = has_himss_after & !has_himss_year_equal,
+  has_himss_before_no_match = has_himss_before & !has_himss_year_equal,
+  year_diff = abs(himss_year - aha_year),
+  prefer_after = fifelse(himss_year > aha_year, 1, 0)
+)]
+
+aha_sys_matches[, match_type := fcase(
+  ceo_himss_title_fuzzy & himss_year == aha_year, "sys",
+  ceo_himss_title_fuzzy & himss_year != aha_year, paste0("sys_year_", year_diff),
+  !ceo_himss_title_fuzzy & himss_year != aha_year, paste0("sys_title_year_", year_diff),
+  !ceo_himss_title_fuzzy & himss_year == aha_year, "sys_title",
+  rep(TRUE, .N), "unaccounted"
+)]
 if (any(aha_sys_matches$match_type == "unaccounted", na.rm = TRUE)) {
   stop("Some matches are unaccounted for")
 }
@@ -498,57 +528,71 @@ if (any(himss_sys_matches$match_type == "unaccounted", na.rm = TRUE)) {
   stop("Some matches are unaccounted for")
 }
 
-matched_himss <- matched_himss %>% 
-  rbind(
-    himss_sys_matches %>%
-      rename(year = aha_year) %>%
-      distinct(ahanumber, year, id, match_type)
-  ) %>%
-  distinct()
+# matched_himss rbind
+new_rows <- copy(himss_sys_matches)
+setnames(new_rows, "aha_year", "year")
+new_rows <- unique(new_rows[, .(ahanumber, year, id, match_type)])
+matched_himss <- unique(rbind(matched_himss, new_rows))
 
-himss_sys_matches_aha <- himss_sys_matches %>%
-  group_by(full_aha, ahanumber, aha_year) %>%
-  mutate(
-    has_himss_year_equal = any(himss_year == aha_year, na.rm = TRUE),
-    has_himss_after = any(himss_year > aha_year, na.rm = TRUE),
-    has_himss_before = any(himss_year < aha_year, na.rm = TRUE),
-    has_himss_after_no_match = has_himss_after & !has_himss_year_equal,
-    has_himss_before_no_match = has_himss_before & !has_himss_year_equal
-  ) %>% 
-  slice_min(order_by = year_diff, with_ties = TRUE) %>%  # keep ties
-  slice_max(order_by = prefer_after, n = 1, with_ties = FALSE) %>%  # break ties by favoring after
-  ungroup() %>%
-  rename(himss_after_aha = has_himss_after_no_match, 
-         himss_before_aha = has_himss_before_no_match)
+# himss_sys_matches_aha
+himss_sys_matches_aha <- copy(himss_sys_matches)
+
+himss_sys_matches_aha[, `:=`(
+  has_himss_year_equal = any(himss_year == aha_year, na.rm = TRUE),
+  has_himss_after = any(himss_year > aha_year, na.rm = TRUE),
+  has_himss_before = any(himss_year < aha_year, na.rm = TRUE)
+), by = .(full_aha, ahanumber, aha_year)]
+
+himss_sys_matches_aha[, `:=`(
+  has_himss_after_no_match = has_himss_after & !has_himss_year_equal,
+  has_himss_before_no_match = has_himss_before & !has_himss_year_equal
+)]
+
+# slice_min then slice_max: order by year_diff (asc), then prefer_after (desc), take first per group
+himss_sys_matches_aha <- himss_sys_matches_aha[order(year_diff, -prefer_after), 
+                                               .SD[year_diff == min(year_diff)][1], 
+                                               by = .(full_aha, ahanumber, aha_year)]
+
+setnames(himss_sys_matches_aha, 
+         c("has_himss_after_no_match", "has_himss_before_no_match"),
+         c("himss_after_aha", "himss_before_aha"))
 
 ##### clean and export aha matches #####
-final_matches <- rbind(all_matches %>% select(-match_order), 
-                       aha_sys_matches_aha %>% select(full_aha, aha_aha, aha_year,
-                                              match_type, himss_before_aha,
-                                              himss_after_aha) %>%
-                         rename(ahanumber = aha_aha, year = aha_year), 
-                       himss_sys_matches_aha %>% select(full_aha, ahanumber, aha_year,
-                                                    match_type, himss_before_aha,
-                                                    himss_after_aha) %>%
-                         rename(year = aha_year)) %>%
-  mutate(
-    match_order = case_when(
-      match_type == "jw" ~ 1,
-      match_type == "title" ~ 2,
-      str_detect(match_type, "^jw_year_\\d+$") ~ 2 + as.numeric(str_extract(match_type, "\\d+")),
-      str_detect(match_type, "^jw_year_title_\\d+$") ~ 100 + as.numeric(str_extract(match_type, "\\d+")),
-      match_type == "sys" ~ 1000,
-      str_detect(match_type, "^sys_title$") ~ 1001,
-      str_detect(match_type, "^sys_year$") ~ 1002,
-      TRUE ~ Inf
-    )
-  ) %>%
-  group_by(full_aha, ahanumber, year) %>%
-  slice_min(order_by = match_order, n = 1, with_ties = FALSE) %>%
-  ungroup() %>%
-  mutate(
-    match_type = str_replace_all(match_type, "year_|_0", "")
-  )
+# Prepare each piece
+setDT(aha_sys_matches_aha)
+setDT(himss_sys_matches_aha)
+setDT(all_matches)
+
+part1 <- all_matches[, !"match_order"]
+
+part2 <- aha_sys_matches_aha[, .(full_aha, ahanumber = aha_aha, year = aha_year,
+                                 match_type, himss_before_aha, himss_after_aha)]
+
+part3 <- himss_sys_matches_aha[, .(full_aha, ahanumber, year = aha_year,
+                                   match_type, himss_before_aha, himss_after_aha)]
+
+final_matches <- rbind(part1, part2, part3)
+
+# Add match_order
+final_matches[, match_order := fcase(
+  match_type == "jw", 1,
+  match_type == "title", 2,
+  grepl("^jw_year_\\d+$", match_type), 2 + as.numeric(gsub("\\D", "", match_type)),
+  grepl("^jw_year_title_\\d+$", match_type), 100 + as.numeric(gsub("\\D", "", match_type)),
+  match_type == "sys", 1000,
+  match_type == "sys_title", 1001,
+  match_type == "sys_year", 1002,
+  rep(TRUE, .N), Inf
+)]
+
+# slice_min: take row with minimum match_order per group
+final_matches <- final_matches[order(match_order), .SD[1], by = .(full_aha, ahanumber, year)]
+
+# Clean up match_type
+final_matches[, match_type := gsub("year_|_0", "", match_type)]
+
+final_matches <- as.data.frame(final_matches)
+matched_himss <- as.data.frame(matched_himss)
 
 cleaned_matches <- final_matches %>% inner_join(all_aha_ceos)
 write_feather(cleaned_matches, paste0(auxiliary_data, "/matched_aha_ceos.feather"))
