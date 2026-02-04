@@ -188,7 +188,14 @@ no_active <- panel_filled %>%
   filter(!has_active) %>%
   select(name, year)
 
-summary_df <- vacancies_df %>%
+# First create your cleaned base data
+title_abbrev <- c(
+  "chief_medical_information_officer" = "cmio",
+  "patient_accounting_revenue_cycle_head" = "patient_accounting"
+  # add more as needed
+)
+
+base_df <- vacancies_df %>%
   mutate(
     title_standardized_key = normalize_title_std(name),
     title_standardized     = normalize_title_std(name),
@@ -196,22 +203,49 @@ summary_df <- vacancies_df %>%
   ) %>%
   left_join(title_tier_group_map, by = "title_standardized_key") %>%
   filter(!is.na(tier) & status %in% c("DNE", "Vacant", "Active")) %>%
-  # Create clean tier_group variable: e.g., "business1", "clinical2", "itlegalhr1"
   mutate(
     tier_num = str_extract(tier, "\\d"),
-    group_clean = tolower(group) %>% str_replace_all("[^a-z]", ""),  # removes spaces, slashes
+    group_clean = tolower(group) %>% str_replace_all("[^a-z]", ""),
     status_clean = tolower(status) %>% str_replace_all(" ", "_"),
-    tier_group = paste0(group_clean, tier_num)
-  ) %>%
-  # Count by entity, year, tier_group, and status
+    tier_group = paste0(group_clean, tier_num),
+    # Clean title for use in column names
+    title_clean = title_standardized %>%
+      str_remove(":.*") %>%
+      tolower() %>%
+      str_replace_all("[^a-z0-9]", "_") %>%
+      str_replace_all("_+", "_") %>%
+      str_remove("^_|_$"),
+    # Apply abbreviation if exists, otherwise keep original
+    title_clean = ifelse(title_clean %in% names(title_abbrev), 
+                         title_abbrev[title_clean], 
+                         title_clean)
+  )
+
+# Tier-level counts (your existing logic)
+tier_summary <- base_df %>%
   count(entity_uniqueid, year, tier_group, status_clean) %>%
-  # Pivot wider
   pivot_wider(
     names_from = c(tier_group, status_clean),
     values_from = n,
     values_fill = 0,
     names_sep = "_"
   )
+
+# Position-level indicators (1/0 for each role × status)
+position_indicators <- base_df %>%
+  distinct(entity_uniqueid, year, title_clean, status_clean) %>%
+  mutate(indicator = 1L) %>%
+  pivot_wider(
+    id_cols = c(entity_uniqueid, year),
+    names_from = c(title_clean, status_clean),
+    values_from = indicator,
+    values_fill = 0L,
+    names_sep = "_"
+  )
+
+# Combine both
+summary_df <- tier_summary %>%
+  left_join(position_indicators, by = c("entity_uniqueid", "year"))
 
 cco_switch <- vacancies_df %>%
   mutate(
@@ -257,6 +291,10 @@ indiv_summary <- cleaned_individuals %>%
     names_glue = "{tier_group}_{.value}"
   )
 
+## merge hospitals + individuals
+merged <- summary_df %>% mutate(entity_uniqueid = as.numeric(entity_uniqueid)) %>%
+  left_join(indiv_summary, by = c('entity_uniqueid', 'year'))
+
 ## get number of roles in each tier for each year
 # Step 1: Calculate the number of existing titles per tier_group per year
 # First, add tier_group info to the title mapping
@@ -301,9 +339,7 @@ roles_exist_by_year <- expand.grid(
   )
 
 
-## merge hospitals + individuals
-merged <- summary_df %>% mutate(entity_uniqueid = as.numeric(entity_uniqueid)) %>%
-  left_join(indiv_summary, by = c('entity_uniqueid', 'year'))
+
 
 merged <- merged %>%
   mutate(year = as.numeric(year)) %>%
@@ -347,22 +383,8 @@ merged_export <- merged %>%
     entity_uniqueid,
     year,
     # Share active
-    business1_sh_active, business2_sh_active,
-    clinical1_sh_active, clinical2_sh_active,
-    itlegalhr1_sh_active, itlegalhr2_sh_active,
-    # Share vacant
-    business1_sh_vacant, business2_sh_vacant,
-    clinical1_sh_vacant, clinical2_sh_vacant,
-    itlegalhr1_sh_vacant, itlegalhr2_sh_vacant,
-    # Share DNE
-    business1_sh_dne, business2_sh_dne,
-    clinical1_sh_dne, clinical2_sh_dne,
-    itlegalhr1_sh_dne, itlegalhr2_sh_dne,
-    # People per role
-    business1_people_per_role, business2_people_per_role,
-    clinical1_people_per_role, clinical2_people_per_role,
-    itlegalhr1_people_per_role, itlegalhr2_people_per_role
-  ) %>% left_join(cco_switch %>% mutate(entity_uniqueid = as.numeric(entity_uniqueid))) %>%
+    ends_with("active"), ends_with("vacant"), ends_with("dne"), ends_with("per_role")
+    ) %>% left_join(cco_switch %>% mutate(entity_uniqueid = as.numeric(entity_uniqueid))) %>%
   filter(!is.na(entity_uniqueid))
 
 write_dta(merged_export, paste0(derived_data, "/positions_by_tier.dta"))
