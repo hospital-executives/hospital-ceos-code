@@ -189,6 +189,7 @@ hospitals_df <- hospitals %>%
   left_join(turnover_wide, by = c("entity_uniqueid", "year")) %>%
   left_join(gap_wide, by = c("entity_uniqueid", "year")) 
 
+
 # Step 5: Fill in gap years with FALSE (no turnover)
 # Logic: gaps should have turnover == 0, then default to individuals df
 # If a position changes from active to vacant or vice versa, turnover should be TRUE
@@ -196,61 +197,86 @@ hospitals_df <- hospitals_df %>%
   arrange(entity_uniqueid, year) %>%
   group_by(entity_uniqueid) %>%
   mutate(
-    # Check for specific transitions: Vacant <-> Active
-    vacancy_change_ceo = (all_ceo == "Vacant" & lag(all_ceo) == "Active") | 
-      (all_ceo == "Active" & lag(all_ceo) == "Vacant"),
-    vacancy_change_cfo = (all_cfo == "Vacant" & lag(all_cfo) == "Active") | 
-      (all_cfo == "Active" & lag(all_cfo) == "Vacant"),
-    vacancy_change_coo = (all_coo == "Vacant" & lag(all_coo) == "Active") | 
-      (all_coo == "Active" & lag(all_coo) == "Vacant"),
-    vacancy_change_cmo = (all_cmo == "Vacant" & lag(all_cmo) == "Active") | 
-      (all_cmo == "Active" & lag(all_cmo) == "Vacant"),
-    vacancy_change_cno = (all_cno == "Vacant" & lag(all_cno) == "Active") | 
-      (all_cno == "Active" & lag(all_cno) == "Vacant"),
-    vacancy_change_cco = (all_cco == "Vacant" & lag(all_cco) == "Active") | 
-      (all_cco == "Active" & lag(all_cco) == "Vacant"),
-    vacancy_change_cio = (all_cio == "Vacant" & lag(all_cio) == "Active") | 
-      (all_cio == "Active" & lag(all_cio) == "Vacant")
+    # Check if previous observation is actually the prior year
+    is_consecutive_year = lag(year) == year - 1,
+    
+    # Check for specific transitions: Vacant <-> Active (only if consecutive years)
+    vacancy_change_ceo = if_else(is_consecutive_year,
+                                 (all_ceo == "Vacant" & lag(all_ceo) == "Active") | 
+                                   (all_ceo == "Active" & lag(all_ceo) == "Vacant"),
+                                 NA),
+    vacancy_change_cfo = if_else(is_consecutive_year,
+                                 (all_cfo == "Vacant" & lag(all_cfo) == "Active") | 
+                                   (all_cfo == "Active" & lag(all_cfo) == "Vacant"),
+                                 NA),
+    vacancy_change_coo = if_else(is_consecutive_year,
+                                 (all_coo == "Vacant" & lag(all_coo) == "Active") | 
+                                   (all_coo == "Active" & lag(all_coo) == "Vacant"),
+                                 NA),
+    vacancy_change_cmo = if_else(is_consecutive_year,
+                                 (all_cmo == "Vacant" & lag(all_cmo) == "Active") | 
+                                   (all_cmo == "Active" & lag(all_cmo) == "Vacant"),
+                                 NA),
+    vacancy_change_cno = if_else(is_consecutive_year,
+                                 (all_cno == "Vacant" & lag(all_cno) == "Active") | 
+                                   (all_cno == "Active" & lag(all_cno) == "Vacant"),
+                                 NA),
+    vacancy_change_cco = if_else(is_consecutive_year,
+                                 (all_cco == "Vacant" & lag(all_cco) == "Active") | 
+                                   (all_cco == "Active" & lag(all_cco) == "Vacant"),
+                                 NA),
+    vacancy_change_cio = if_else(is_consecutive_year,
+                                 (all_cio == "Vacant" & lag(all_cio) == "Active") | 
+                                   (all_cio == "Active" & lag(all_cio) == "Vacant"),
+                                 NA)
   ) %>%
+  select(-is_consecutive_year) %>% # Remove helper column if not needed %>%
   ungroup() %>%
   mutate(
     turnover_ceo = case_when(
+      year == 2009 ~ NA,
       gap_ceo == TRUE ~ 0,
       vacancy_change_ceo == TRUE ~ 1,
       !is.na(turnover_ceo) ~ turnover_ceo,
       TRUE ~ NA_real_
     ),
     turnover_cfo = case_when(
+      year == 2009 ~ NA,
       gap_cfo == TRUE ~ 0,
       vacancy_change_cfo == TRUE ~ 1,
       !is.na(turnover_cfo) ~ turnover_cfo,
       TRUE ~ NA_real_
     ),
     turnover_coo = case_when(
+      year == 2009 ~ NA,
       gap_coo == TRUE ~ 0,
       vacancy_change_coo == TRUE ~ 1,
       !is.na(turnover_coo) ~ turnover_coo,
       TRUE ~ NA_real_
     ),
     turnover_cmo = case_when(
+      year == 2009 ~ NA,
       gap_cmo == TRUE ~ 0,
       vacancy_change_cmo == TRUE ~ 1,
       !is.na(turnover_cmo) ~ turnover_cmo,
       TRUE ~ NA_real_
     ),
     turnover_cno = case_when(
+      year == 2009 ~ NA,
       gap_cno == TRUE ~ 0,
       vacancy_change_cno == TRUE ~ 1,
       !is.na(turnover_cno) ~ turnover_cno,
       TRUE ~ NA_real_
     ),
     turnover_cco = case_when(
+      year == 2009 ~ NA,
       gap_cco == TRUE ~ 0,
       vacancy_change_cco == TRUE ~ 1,
       !is.na(turnover_cco) ~ turnover_cco,
       TRUE ~ NA_real_
     ),
     turnover_cio = case_when(
+      year == 2009 ~ NA,
       gap_cio == TRUE ~ 0,
       vacancy_change_cio == TRUE ~ 1,
       !is.na(turnover_cio) ~ turnover_cio,
@@ -266,4 +292,4 @@ hospitals_df %>%
 
 export <- hospitals_df %>% select(year, entity_uniqueid,starts_with("turnover_"), starts_with("vacant"), starts_with("vacancy_change"))
 
-write_dta(hospitals_df, paste0(derived_data, "/hospitals_with_turnover.dta"))
+write_dta(export, paste0(derived_data, "/hospitals_with_turnover.dta"))
