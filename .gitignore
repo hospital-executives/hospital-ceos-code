@@ -11,4 +11,6 @@ build_code/Rplots.pdf
 setup_environment/python_packages.txt
 setup_environment/proj-env
 event_code/temp/
+event_code/*.dta
 titles_code/*.xlsx
+titles_code/*.dta
