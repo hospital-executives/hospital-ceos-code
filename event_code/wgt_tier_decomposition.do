@@ -146,7 +146,8 @@ local nspecs = 1
 // Create results file
 tempfile results
 postfile handle str10 tg_code str50 role_var str30 role_label str10 outcome_type ///
-         double avg_effect double avg_se int spec_num using `results', replace
+         double avg_effect double avg_se int spec_num double pre_mean ///
+         using `results', replace
 
 forvalues s = 1/`nspecs' {
     
@@ -188,11 +189,18 @@ forvalues s = 1/`nspecs' {
                     
                     lincom (ev_lag0 + ev_lag1 + ev_lag2)/3
                     
-                    local avg_eff = r(estimate)
+					local avg_eff = r(estimate)
                     local avg_se_val = r(se)
-                    
+					
+                    summarize `outcome_var' if (`spec`s'_control') & year < tar_event_year, meanonly
+                    local pre_mean = r(mean)
+
+                    // Scale
+                    local scaled_eff = `avg_eff' / `pre_mean'
+                    local scaled_se  = `avg_se_val' / `pre_mean'
+
                     post handle ("`tg'") ("`role'") ("`role_label'") ("`outcome_type'") ///
-                               (`avg_eff') (`avg_se_val') (`s')
+						(`scaled_eff') (`scaled_se') (`s') (`pre_mean')
                 }
                 
                 if _rc != 0 {
@@ -276,29 +284,10 @@ foreach tg of local all_tg {
                plotregion(margin(l=0)) ///
                name(forest_`tg'_`outcome_type', replace)
         
-        graph export "${overleaf}/notes/Non CEO Event Study/figures/forest_`tg'_`outcome_type'.pdf", ///
+        graph export "${overleaf}/notes/Non CEO Event Study/figures/wgt_forest_`tg'_`outcome_type'.pdf", ///
                      as(pdf) replace
         
         restore
-    }
-}
-
-*-------------------------------------------------------------------------------
-* STEP 4: Optional - Combined panel for each tier
-*-------------------------------------------------------------------------------
-
-// Combine active/vacant/dne for each tier-group into one figure
-foreach tg of local all_tg {
-    
-    capture graph combine forest_`tg'_active forest_`tg'_vacant forest_`tg'_dne, ///
-            cols(3) ///
-            title("``tg'_title'", size(medium)) ///
-            graphregion(color(white)) ///
-            name(forest_`tg'_combined, replace)
-    
-    if _rc == 0 {
-        graph export "${overleaf}/notes/Non CEO Event Study/figures/forest_`tg'_combined.pdf", ///
-                     as(pdf) replace
     }
 }
 
