@@ -24,11 +24,14 @@ program define descriptives_table
 
 	syntax , tabyear(integer)
 	
-//   	preserve
+  	preserve
 
 	* make a variable capturing whether a person is a system CEO this year
 		replace system_ceo = 0 if entity_type == "Single Hospital Health System"
 		bysort contact_uniqueid year: egen system_ceo_thisyear = max(system_ceo) // needs to be done before we drop systems
+		
+	* first year in sample by person
+	bysort contact_uniqueid: egen firstyear = min(year)
 		
 	* ------- keep hospitals only -------
 		keep if is_hospital == 1 & entity_type == "Hospital"
@@ -609,8 +612,8 @@ program define descriptives_table
 		use `base_withvars', clear
 	
 		* keep categories of hospitals
-		keep entity_uniqueid year forprofit system_cat pe_acq*
-		collapse forprofit system_cat pe_acq*, by(entity_uniqueid year)
+		keep entity_uniqueid year forprofit system_cat pe_acq* is_hospital entity_type type
+		collapse forprofit system_cat pe_acq* is_hospital, by(entity_uniqueid type entity_type year)
 		tempfile hosp_cats
 		save `hosp_cats'
 	
@@ -711,7 +714,7 @@ program define descriptives_table
 		drop if _varname == "forprofit" |  _varname == "system_cat" |  _varname == "type_id" | _varname == "year" |  _varname == "ndistinct_std" | _varname == "pe_acq_by`tabyear'"
 		order _varname all fp nfp nonsys sys_small sys_big pe nonpe
 		
-	* ------- export panel B -------	
+	* ------- export panel C -------	
 		
 		gen str60 rowlabel = _varname
 		replace rowlabel = "CEO Turnover Rate (\%)"                    	if _varname == "turnover_ceo"
@@ -818,7 +821,7 @@ program define descriptives_table
 	* ------- make a COO over time -------	
 		
 		use `base_withvars', clear
-		if `tabyear' == 2017 {
+		if "`tabyear'" == "2017" {
 			bysort entity_uniqueid year: keep if _n ==1 // make unique by hospital-year
 			
 			gen hosp_has_nonshared_ceo = (hosp_has_ceo == 1 & hosp_has_shared_ceo == 0)
@@ -888,6 +891,429 @@ program define descriptives_table
 				ytitle("Share with COO")
 			graph export "${overleaf}/tables/outline_descriptives_table1_COOtimeseries.pdf", as(pdf) replace
 		}
+		
+	* ------- make table 2 panel A variables -------	
+		use `base_withvars', clear
+		
+		merge m:1 entity_uniqueid year using "${dbdata}/derived/hospitals_with_turnover.dta", keep(1 3) gen(_merge_turnover)
+		
+		* surgical vs nuclear turnover
+		egen nonceo_turnover = rowmax(turnover_cfo turnover_cio turnover_coo turnover_cco turnover_cno turnover_cmo)
+		egen nonceo_turnover_ct = rowtotal(turnover_cfo turnover_cio turnover_coo turnover_cco turnover_cno turnover_cmo)
+		gen surgical_ceo_turnover = turnover_ceo ==1 & nonceo_turnover == 0
+			replace surgical_ceo_turnover = . if missing(turnover_ceo) | missing(nonceo_turnover)
+		gen nuclear_ceo_turnover = turnover_ceo ==1 & nonceo_turnover == 1
+			replace surgical_ceo_turnover = . if missing(turnover_ceo) | missing(nonceo_turnover)
+			
+		* tempfile here and come back to it
+		tempfile tab2data
+		save `tab2data'
+		
+	* ------- export table 2 panel A variables -------	 
+		* keep hospitals only -------
+		keep if is_hospital == 1 & entity_type == "Hospital"
+		restrict_hosp_sample // will keep only general and CAH
+		
+		* make unique by hosp-year
+		bysort entity_uniqueid year: keep if _n == 1
+		
+		* keep only the table year
+		keep if year == `tabyear'
+		
+		gen count = 1
+		tempfile turnovers_`tabyear'
+		save `turnovers_`tabyear''
+		
+		local collapsevars2A "surgical_ceo_turnover nuclear_ceo_turnover nonceo_turnover_ct (rawsum) count"
+		
+		* ALL
+		collapse `collapsevars2A', by(year)
+		gen type = "All"
+		tempfile panel2A_all
+		save `panel2A_all'
+		
+		use `turnovers_`tabyear'', clear
+		
+		* FP/NFP
+		collapse `collapsevars2A', by(year forprofit)
+		drop if missing(forprofit)
+		gen type = "For-Profit" if forprofit == 1
+		replace type = "Non-Profit" if forprofit == 0
+		egen temp_total = total(count)
+		gen share = count/temp_total
+		drop temp_total
+		tempfile panel2A_fp_nfp
+		save `panel2A_fp_nfp'
+		
+		use `turnovers_`tabyear'', clear
+		
+		* SYS/NON-SYS
+		collapse `collapsevars2A', by(year system_cat)
+		drop if missing(system_cat)
+		gen type = "Single" if system_cat == 1
+		replace type = "Small System" if system_cat == 2
+		replace type = "Large System" if system_cat == 3
+		egen temp_total = total(count)
+		gen share = count/temp_total
+		drop temp_total
+		tempfile panel2A_sys
+		save `panel2A_sys'
+		
+		use `turnovers_`tabyear'', clear
+		
+		* PE/NON-PE
+		collapse `collapsevars2A', by(year pe_acq_by`tabyear')
+		drop if missing(pe_acq_by`tabyear')
+		gen type = "PE-Acquired" if pe_acq_by`tabyear' == 1
+		replace type = "Non-PE" if pe_acq_by`tabyear' == 0
+		egen temp_total = total(count)
+		gen share = count/temp_total
+		drop temp_total
+		tempfile panel2A_pe
+		save `panel2A_pe'
+		
+		* APPEND
+		use `panel2A_all', clear
+		append using `panel2A_fp_nfp'
+		append using `panel2A_sys'
+		append using `panel2A_pe'
+		encode type, gen(type_id)
+		drop type
+		
+		xpose, clear varname
+		
+		* clean
+		rename v1 all
+		rename v2 nfp
+		rename v3 fp 
+		rename v4 nonsys
+		rename v5 sys_small
+		rename v6 sys_big
+		rename v7 nonpe
+		rename v8 pe
+		drop if _varname == "forprofit" |  _varname == "system_cat" |  _varname == "type_id" | _varname == "year" |  _varname == "ndistinct_std" | _varname == "pe_acq_by`tabyear'"
+		order _varname all fp nfp nonsys sys_small sys_big pe nonpe
+		
+	* ------- export table 2 panel A -------	
+		
+		gen str60 rowlabel = _varname
+		replace rowlabel = "Share with Surgical Turnover (\%)"                  if _varname == "surgical_ceo_turnover"
+		replace rowlabel = "Share with Nuclear Turnover (\%)"                   if _varname == "nuclear_ceo_turnover"
+		replace rowlabel = "Average Number of C-Suite Turnovers"                if _varname == "nonceo_turnover_ct"
+		replace rowlabel = "Observations"                    					if _varname == "count"
+		replace rowlabel = "Share"                    							if _varname == "share"
+
+		local fmt "%9.2f"
+		local fmt_ct "%9.0fc"
+		
+		foreach v in all fp nfp sys_small sys_big nonsys pe nonpe {
+			replace `v' = 100*`v' if inlist(_varname, ///
+				"surgical_ceo_turnover","nuclear_ceo_turnover","share")
+		}
+		
+		local outfile "${overleaf}/tables/outline_descriptives_table2_panelA_`tabyear'.tex"
+		cap file close fh
+		file open fh using "`outfile'", write replace text
+
+		file write fh "\begin{table}[!htbp]" _n
+		file write fh "\centering" _n
+		file write fh "\caption{Hospital CEO Turnover Characteristics, `tabyear' (Panel A)}" _n
+		file write fh "\label{tab:outline_descriptives_table2_panelA_`tabyear'}" _n
+		file write fh "\begin{tabular}{lcccccccc}" _n
+		file write fh "\toprule" _n
+
+		* Group header row
+		file write fh " & \multicolumn{1}{c}{} & \multicolumn{2}{c}{Profit Status} & \multicolumn{3}{c}{System Affiliation} & \multicolumn{2}{c}{Private Equity} \\" _n
+		file write fh "\cmidrule(lr){3-4}\cmidrule(lr){5-7}\cmidrule(lr){8-9}" _n
+		file write fh " & \multicolumn{1}{c}{All} & \multicolumn{1}{c}{For-Profit} & \multicolumn{1}{c}{Non-Profit} & \multicolumn{1}{c}{Non-System} & \multicolumn{1}{c}{Small System} & \multicolumn{1}{c}{Large System} & \multicolumn{1}{c}{PE-Acquired} & \multicolumn{1}{c}{Non-PE} \\" _n
+		file write fh "\midrule" _n
+
+		* Body rows
+		quietly {
+			forvalues i = 1/`=_N' {
+				if _varname[`i'] == "count" {
+					file write fh "\midrule" _n
+					local r = rowlabel[`i']
+
+					local a  : display `fmt_ct' all[`i']
+					local fp : display `fmt_ct' fp[`i']
+					local nf : display `fmt_ct' nfp[`i']
+					local sy_sm : display `fmt_ct' sys_small[`i']
+					local sy_b : display `fmt_ct' sys_big[`i']
+					local ns : display `fmt_ct' nonsys[`i']
+					local pe : display `fmt_ct' pe[`i']
+					local np : display `fmt_ct' nonpe[`i']
+
+					* trim leading spaces from :display output
+					local a  = strtrim("`a'")
+					local fp = strtrim("`fp'")
+					local nf = strtrim("`nf'")
+					local sy_sm = strtrim("`sy_sm'")
+					local sy_b = strtrim("`sy_b'")
+					local ns = strtrim("`ns'")
+					local pe = strtrim("`pe'")
+					local np = strtrim("`np'")
+
+					file write fh "`r' & `a' & `fp' & `nf' & `ns' & `sy_sm' & `sy_b' & `pe' & `np' \\" _n
+				}
+				else {
+					local r = rowlabel[`i']
+
+					local a  : display `fmt' all[`i']
+					local fp : display `fmt' fp[`i']
+					local nf : display `fmt' nfp[`i']
+					local sy_sm : display `fmt' sys_small[`i']
+					local sy_b : display `fmt' sys_big[`i']
+					local ns : display `fmt' nonsys[`i']
+					local pe : display `fmt' pe[`i']
+					local np : display `fmt' nonpe[`i']
+
+					* trim leading spaces from :display output
+					local a  = strtrim("`a'")
+					local fp = strtrim("`fp'")
+					local nf = strtrim("`nf'")
+					local sy_sm = strtrim("`sy_sm'")
+					local sy_b = strtrim("`sy_b'")
+					local ns = strtrim("`ns'")
+					local pe = strtrim("`pe'")
+					local np = strtrim("`np'")
+
+					file write fh "`r' & `a' & `fp' & `nf' & `ns' & `sy_sm' & `sy_b' & `pe' & `np' \\" _n
+				}
+			
+			}
+		}
+
+		file write fh "\bottomrule" _n
+		file write fh "\end{tabular}" _n
+		file write fh "\vspace{0.25em} \\" _n
+		file write fh "\footnotesize Notes: Entries are means by subgroup." _n
+		file write fh "\end{table}" _n
+
+		file close fh
+
+		di as result "Wrote LaTeX table to: `outfile'"
+		
+	* ------- make table 2 panel B variables -------
+	
+		use `tab2data', clear
+		
+		* unit here is the ceo post-turnover
+		keep if ceo_turnover == 1
+		keep if hospital_ceo == 1
+		
+		* identify internal and external and new
+		gen internal_hire = regexm(hosp_transition_type_yr,"internal") 
+		gen external_hire = regexm(hosp_transition_type_yr,"lateral|external")
+		gen new_hire = year == firstyear
+		
+		* make unified variable
+		gen hire_type = 1 if internal_hire == 1
+			replace hire_type = 2 if external_hire == 1
+			replace hire_type = 3 if new_hire == 1
+		tab hire_type, m
+			
+		* clinical degree variable 
+		gen char_clinical = char_md
+		replace char_clinical = regexm(credentials,"MD|md|DO|PharmD|RN|PhD|PsyD")
+		
+		foreach type in internal external {
+			gen `type'_hire_female = char_female if `type'_hire == 1
+			gen `type'_hire_clinical = char_clinical if `type'_hire == 1
+		}
+		gen external_hire_withinsystem = regexm(hosp_transition_type_det,"within system") if external_hire ==1 
+			replace external_hire_withinsystem = . if missing(hosp_transition_type_yr)
+		
+	* ------- export table 2 panel B variables -------	 
+
+		* keep only the table year
+		keep if year == `tabyear'
+		
+		gen count = 1
+		
+		tempfile turnovers_`tabyear'
+		save `turnovers_`tabyear''
+		
+		local collapsevars2B "internal_hire internal_hire_female internal_hire_clinical external_hire external_hire_female external_hire_clinical external_hire_withinsystem new_hire (rawsum) count"
+		
+		* ALL
+		collapse `collapsevars2B', by(year)
+		gen type = "All"
+		tempfile panel2B_all
+		save `panel2B_all'
+		di "All"
+		
+		use `turnovers_`tabyear'', clear
+		
+		* FP/NFP
+		collapse `collapsevars2B', by(year forprofit)
+		drop if missing(forprofit)
+		gen type = "For-Profit" if forprofit == 1
+		replace type = "Non-Profit" if forprofit == 0
+		egen temp_total = total(count)
+		gen share = count/temp_total
+		drop temp_total
+		tempfile panel2B_fp_nfp
+		save `panel2B_fp_nfp'
+		di "NFP"
+		
+		use `turnovers_`tabyear'', clear
+		
+		* SYS/NON-SYS
+		collapse `collapsevars2B', by(year system_cat)
+		drop if missing(system_cat)
+		gen type = "Single" if system_cat == 1
+		replace type = "Small System" if system_cat == 2
+		replace type = "Large System" if system_cat == 3
+		egen temp_total = total(count)
+		gen share = count/temp_total
+		drop temp_total
+		tempfile panel2B_sys
+		save `panel2B_sys'
+		di "Sys"
+		
+		use `turnovers_`tabyear'', clear
+		
+		* PE/NON-PE
+		collapse `collapsevars2B', by(year pe_acq_by`tabyear')
+		drop if missing(pe_acq_by`tabyear')
+		gen type = "PE-Acquired" if pe_acq_by`tabyear' == 1
+		replace type = "Non-PE" if pe_acq_by`tabyear' == 0
+		egen temp_total = total(count)
+		gen share = count/temp_total
+		drop temp_total
+		tempfile panel2B_pe
+		save `panel2B_pe'
+		di "PE"
+		
+		* APPEND
+		use `panel2B_all', clear
+		append using `panel2B_fp_nfp'
+		append using `panel2B_sys'
+		append using `panel2B_pe'
+		encode type, gen(type_id)
+		drop type
+		
+		xpose, clear varname
+		
+		* clean
+		rename v1 all
+		rename v2 nfp
+		rename v3 fp 
+		rename v4 nonsys
+		rename v5 sys_small
+		rename v6 sys_big
+		rename v7 nonpe
+		rename v8 pe
+		drop if _varname == "forprofit" |  _varname == "system_cat" |  _varname == "type_id" | _varname == "year" |  _varname == "ndistinct_std" | _varname == "pe_acq_by`tabyear'"
+		order _varname all fp nfp nonsys sys_small sys_big pe nonpe
+		
+	* ------- export table 2 panel B -------	
+		
+		gen str60 rowlabel = _varname
+		replace rowlabel = "Share Internal Hires (\%)"                  		if _varname == "internal_hire"
+		replace rowlabel = "Internal Hire: Share Female (\%)"                   if _varname == "internal_hire_female"
+		replace rowlabel = "Internal Hire: Share Clinical Degree (\%)"                if _varname == "internal_hire_clinical"
+		replace rowlabel = "Share External Hires (\%)"                  		if _varname == "external_hire"
+		replace rowlabel = "External Hire: Share Female (\%)"                   if _varname == "external_hire_female"
+		replace rowlabel = "External Hire: Share Clinical Degree (\%)"                if _varname == "external_hire_clinical"
+		replace rowlabel = "External Hire: Share Within System (\%)"                if _varname == "external_hire_withinsystem"
+		replace rowlabel = "New Hire (\%)"                					if _varname == "new_hire"
+		replace rowlabel = "Observations"                    					if _varname == "count"
+		replace rowlabel = "Share"                    							if _varname == "share"
+
+		local fmt "%9.2f"
+		local fmt_ct "%9.0fc"
+		
+		foreach v in all fp nfp sys_small sys_big nonsys pe nonpe {
+			replace `v' = 100*`v' if inlist(_varname, ///
+				"internal_hire","internal_hire_female", "internal_hire_clinical","external_hire","external_hire_female","external_hire_clinical")
+			replace `v' = 100*`v' if inlist(_varname, ///
+				"external_hire_withinsystem","new_hire","share")
+		}
+		
+		local outfile "${overleaf}/tables/outline_descriptives_table2_panelB_`tabyear'.tex"
+		cap file close fh
+		file open fh using "`outfile'", write replace text
+
+		file write fh "\begin{table}[!htbp]" _n
+		file write fh "\centering" _n
+		file write fh "\caption{Hospital CEO Turnover Characteristics, `tabyear' (Panel B)}" _n
+		file write fh "\label{tab:outline_descriptives_table2_panelB_`tabyear'}" _n
+		file write fh "\begin{tabular}{lcccccccc}" _n
+		file write fh "\toprule" _n
+
+		* Group header row
+		file write fh " & \multicolumn{1}{c}{} & \multicolumn{2}{c}{Profit Status} & \multicolumn{3}{c}{System Affiliation} & \multicolumn{2}{c}{Private Equity} \\" _n
+		file write fh "\cmidrule(lr){3-4}\cmidrule(lr){5-7}\cmidrule(lr){8-9}" _n
+		file write fh " & \multicolumn{1}{c}{All} & \multicolumn{1}{c}{For-Profit} & \multicolumn{1}{c}{Non-Profit} & \multicolumn{1}{c}{Non-System} & \multicolumn{1}{c}{Small System} & \multicolumn{1}{c}{Large System} & \multicolumn{1}{c}{PE-Acquired} & \multicolumn{1}{c}{Non-PE} \\" _n
+		file write fh "\midrule" _n
+
+		* Body rows
+		quietly {
+			forvalues i = 1/`=_N' {
+				if _varname[`i'] == "count" {
+					file write fh "\midrule" _n
+					local r = rowlabel[`i']
+
+					local a  : display `fmt_ct' all[`i']
+					local fp : display `fmt_ct' fp[`i']
+					local nf : display `fmt_ct' nfp[`i']
+					local sy_sm : display `fmt_ct' sys_small[`i']
+					local sy_b : display `fmt_ct' sys_big[`i']
+					local ns : display `fmt_ct' nonsys[`i']
+					local pe : display `fmt_ct' pe[`i']
+					local np : display `fmt_ct' nonpe[`i']
+
+					* trim leading spaces from :display output
+					local a  = strtrim("`a'")
+					local fp = strtrim("`fp'")
+					local nf = strtrim("`nf'")
+					local sy_sm = strtrim("`sy_sm'")
+					local sy_b = strtrim("`sy_b'")
+					local ns = strtrim("`ns'")
+					local pe = strtrim("`pe'")
+					local np = strtrim("`np'")
+
+					file write fh "`r' & `a' & `fp' & `nf' & `ns' & `sy_sm' & `sy_b' & `pe' & `np' \\" _n
+				}
+				else {
+					local r = rowlabel[`i']
+
+					local a  : display `fmt' all[`i']
+					local fp : display `fmt' fp[`i']
+					local nf : display `fmt' nfp[`i']
+					local sy_sm : display `fmt' sys_small[`i']
+					local sy_b : display `fmt' sys_big[`i']
+					local ns : display `fmt' nonsys[`i']
+					local pe : display `fmt' pe[`i']
+					local np : display `fmt' nonpe[`i']
+
+					* trim leading spaces from :display output
+					local a  = strtrim("`a'")
+					local fp = strtrim("`fp'")
+					local nf = strtrim("`nf'")
+					local sy_sm = strtrim("`sy_sm'")
+					local sy_b = strtrim("`sy_b'")
+					local ns = strtrim("`ns'")
+					local pe = strtrim("`pe'")
+					local np = strtrim("`np'")
+
+					file write fh "`r' & `a' & `fp' & `nf' & `ns' & `sy_sm' & `sy_b' & `pe' & `np' \\" _n
+				}
+			
+			}
+		}
+
+		file write fh "\bottomrule" _n
+		file write fh "\end{tabular}" _n
+		file write fh "\vspace{0.25em} \\" _n
+		file write fh "\footnotesize Notes: Entries are means by subgroup." _n
+		file write fh "\end{table}" _n
+
+		file close fh
+
+		di as result "Wrote LaTeX table to: `outfile'"
 		
 		
 	restore
