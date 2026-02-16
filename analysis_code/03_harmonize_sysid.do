@@ -328,10 +328,10 @@ Goal: 			Clean system ID variable from Cooper et al data
 // 	}
 //	
 * keep key variables
-	keep 	entity_uniqueid year sysid_ma sysid_orig sysid_campus is_hospital ///
+	keep 	entity_uniqueid year sysid_ma sysid_orig sysid_campus is_hospital medicarenumber ///
 			aha_* tar acq any hsanum hrrnum _merge_entity_aha _merge_campus_aha  ///
 			syschng_sysid_ma syschng_system_id syschng_ct_system_id syschng_ct_sysid_ma ///
-			forprofit gov_priv_type *_parent ///
+			forprofit gov_priv_type type entity_type *_parent ///
 			dealtype_PE PE_flag pe_acq_already pe_acq_window pe_acq_window_year // PE variables
 			
 * make unique by entity_uniqueid year

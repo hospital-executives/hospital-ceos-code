@@ -22,7 +22,12 @@ Goal: 			Compute descriptive stats for CEOs
 
 program define descriptives_table
 
-	syntax , tabyear(integer)
+	syntax , tabyear(integer) contact_corp(string)
+
+	* TO-DO: add contact_corp
+// 	if "`contact_corp'" == "y" {
+//		
+// 	}
 	
   	preserve
 
@@ -194,10 +199,15 @@ program define descriptives_table
 		
 		bysort entity_uniqueid year: keep if _n ==1 // make unique by hospital	
 		gen count = 1
+		
+		* merge in middle-management measures from positions_by_tier.dta
+		merge 1:1 entity_uniqueid year using "${dbdata}/derived/positions_by_tier.dta", gen(_merge_tier) keep(1 3) 
+		
+		* save file
 		tempfile hosp_`tabyear'
 		save `hosp_`tabyear''
 		
-		local collapsevarsA "hosp_has_ceo hosp_has_coo hosp_has_cfo hosp_has_coo_cfo hosp_has_cco hosp_has_cnh hosp_has_cio hosp_has_mcs hosp_has_technical hosp_has_shared_ceo ndistinct_raw ndistinct_std ndistinct_title ndistinct_ind (rawsum) count"
+		local collapsevarsA "hosp_has_ceo hosp_has_coo hosp_has_cfo hosp_has_coo_cfo hosp_has_cco hosp_has_cnh hosp_has_cio hosp_has_mcs hosp_has_technical hosp_has_shared_ceo ndistinct_raw ndistinct_std ndistinct_title ndistinct_ind business1_sh_active business2_sh_active clinical1_sh_active clinical2_sh_active itlegalhr1_sh_active itlegalhr2_sh_active (rawsum) count"
 		
 		* ALL
 		collapse `collapsevarsA', by(year)
@@ -283,6 +293,12 @@ program define descriptives_table
 		replace rowlabel = "Distinct roles (count)"          if _varname == "ndistinct_raw"
 		replace rowlabel = "Distinct titles (count)"          if _varname == "ndistinct_title"
 		replace rowlabel = "Distinct individuals (count)"          if _varname == "ndistinct_ind"
+		replace rowlabel = "Business 1 Tier \% Active"          if _varname == "business1_sh_active"
+		replace rowlabel = "Business 2 Tier \% Active"          if _varname == "business2_sh_active"
+		replace rowlabel = "IT/Legal/HR 1 Tier \% Active"          if _varname == "itlegalhr1_sh_active"
+		replace rowlabel = "IT/Legal/HR 2 Tier \% Active"          if _varname == "itlegalhr2_sh_active"
+		replace rowlabel = "Clinical 1 Tier \% Active"          if _varname == "clinical1_sh_active"
+		replace rowlabel = "Clinical 2 Tier \% Active"          if _varname == "clinical2_sh_active"
 		replace rowlabel = "Observations"			          if _varname == "count"
 		replace rowlabel = "Share"			          			if _varname == "share"
 		
@@ -294,7 +310,7 @@ program define descriptives_table
 			replace `v' = 100*`v' if inlist(_varname, ///
 				"hosp_has_ceo","hosp_has_coo","hosp_has_cfo","hosp_has_coo_cfo", ///
 				"hosp_has_cnh","hosp_has_cio","hosp_has_technical","hosp_has_shared_ceo","hosp_has_mcs")
-			replace `v' = 100*`v' if inlist(_varname,"share","hosp_has_cco")
+			replace `v' = 100*`v' if inlist(_varname,"share","hosp_has_cco", "business1_sh_active", "business2_sh_active", "itlegalhr1_sh_active","itlegalhr2_sh_active", "clinical1_sh_active", "clinical2_sh_active")
 		}
 		
 		local outfile "${overleaf}/tables/outline_descriptives_table1_panelA_`tabyear'.tex"
@@ -817,6 +833,10 @@ program define descriptives_table
 
 		di as result "Wrote LaTeX table to: `outfile'"
 			
+			
+		keep if _varname == "turnover_ceo"	
+		tempfile ceo_turnover_append
+		save `ceo_turnover_append'
 		
 	* ------- make a COO over time -------	
 		
@@ -900,6 +920,7 @@ program define descriptives_table
 		* surgical vs nuclear turnover
 		egen nonceo_turnover = rowmax(turnover_cfo turnover_cio turnover_coo turnover_cco turnover_cno turnover_cmo)
 		egen nonceo_turnover_ct = rowtotal(turnover_cfo turnover_cio turnover_coo turnover_cco turnover_cno turnover_cmo)
+		gen nonceo_turnover_share = nonceo_turnover_ct/6
 		gen surgical_ceo_turnover = turnover_ceo ==1 & nonceo_turnover == 0
 			replace surgical_ceo_turnover = . if missing(turnover_ceo) | missing(nonceo_turnover)
 		gen nuclear_ceo_turnover = turnover_ceo ==1 & nonceo_turnover == 1
@@ -914,6 +935,9 @@ program define descriptives_table
 		keep if is_hospital == 1 & entity_type == "Hospital"
 		restrict_hosp_sample // will keep only general and CAH
 		
+		* condition on CEO turnover
+		keep if turnover_ceo == 1
+		
 		* make unique by hosp-year
 		bysort entity_uniqueid year: keep if _n == 1
 		
@@ -924,7 +948,7 @@ program define descriptives_table
 		tempfile turnovers_`tabyear'
 		save `turnovers_`tabyear''
 		
-		local collapsevars2A "surgical_ceo_turnover nuclear_ceo_turnover nonceo_turnover_ct (rawsum) count"
+		local collapsevars2A "surgical_ceo_turnover nuclear_ceo_turnover nonceo_turnover_ct nonceo_turnover_share (rawsum) count"
 		
 		* ALL
 		collapse `collapsevars2A', by(year)
@@ -1000,15 +1024,18 @@ program define descriptives_table
 		replace rowlabel = "Share with Surgical Turnover (\%)"                  if _varname == "surgical_ceo_turnover"
 		replace rowlabel = "Share with Nuclear Turnover (\%)"                   if _varname == "nuclear_ceo_turnover"
 		replace rowlabel = "Average Number of C-Suite Turnovers"                if _varname == "nonceo_turnover_ct"
+		replace rowlabel = "Share of C-Suite with Turnover (\%)"                if _varname == "nonceo_turnover_share"
 		replace rowlabel = "Observations"                    					if _varname == "count"
 		replace rowlabel = "Share"                    							if _varname == "share"
 
+		append using `ceo_turnover_append'
+		
 		local fmt "%9.2f"
 		local fmt_ct "%9.0fc"
 		
 		foreach v in all fp nfp sys_small sys_big nonsys pe nonpe {
 			replace `v' = 100*`v' if inlist(_varname, ///
-				"surgical_ceo_turnover","nuclear_ceo_turnover","share")
+				"surgical_ceo_turnover","nuclear_ceo_turnover","nonceo_turnover_share","share")
 		}
 		
 		local outfile "${overleaf}/tables/outline_descriptives_table2_panelA_`tabyear'.tex"
@@ -1212,16 +1239,18 @@ program define descriptives_table
 		
 		gen str60 rowlabel = _varname
 		replace rowlabel = "Share Internal Hires (\%)"                  		if _varname == "internal_hire"
-		replace rowlabel = "Internal Hire: Share Female (\%)"                   if _varname == "internal_hire_female"
-		replace rowlabel = "Internal Hire: Share Clinical Degree (\%)"                if _varname == "internal_hire_clinical"
+		replace rowlabel = "\hspace{0.5cm}Share Female (\%)"                   if _varname == "internal_hire_female"
+		replace rowlabel = " \hspace{0.5cm}Share Clinical Degree (\%)"                if _varname == "internal_hire_clinical"
 		replace rowlabel = "Share External Hires (\%)"                  		if _varname == "external_hire"
-		replace rowlabel = "External Hire: Share Female (\%)"                   if _varname == "external_hire_female"
-		replace rowlabel = "External Hire: Share Clinical Degree (\%)"                if _varname == "external_hire_clinical"
-		replace rowlabel = "External Hire: Share Within System (\%)"                if _varname == "external_hire_withinsystem"
-		replace rowlabel = "New Hire (\%)"                					if _varname == "new_hire"
+		replace rowlabel = "\hspace{0.5cm}Share Female (\%)"                   if _varname == "external_hire_female"
+		replace rowlabel = "\hspace{0.5cm}Share Clinical Degree (\%)"                if _varname == "external_hire_clinical"
+		replace rowlabel = "\hspace{0.5cm}Share Within System (\%)"                if _varname == "external_hire_withinsystem"
+		replace rowlabel = "Share New Hire (\%)"                					if _varname == "new_hire"
 		replace rowlabel = "Observations"                    					if _varname == "count"
 		replace rowlabel = "Share"                    							if _varname == "share"
 
+		append using `ceo_turnover_append'
+		
 		local fmt "%9.2f"
 		local fmt_ct "%9.0fc"
 		
@@ -1320,9 +1349,9 @@ program define descriptives_table
 
 end
 
-// descriptives_table, tabyear(2017)
-descriptives_table, tabyear(2015)
-descriptives_table, tabyear(2010)
+// descriptives_table, tabyear(2017) contact_corp(n)
+descriptives_table, tabyear(2015) contact_corp(n)
+descriptives_table, tabyear(2010) contact_corp(n)
 
 * step-up graphs? EXPERIMENTING
 
