@@ -42,9 +42,19 @@ csuite_roles <- c(
 csuite_data <- individuals %>%
   mutate(
     title_lower = tolower(gsub("[[:punct:]]", "", title)),
-    char_ceo = str_detect(title_lower, "ceo|chief executive officer| c e o")
+    char_ceo = str_detect(title_lower, "ceo|chief executive officer| c e o"),
+    credentials_lower = tolower(gsub("[[:punct:]]", "", credentials)),
+    is_md = str_detect(credentials_lower, "md") | salutation == "Dr.",
+    is_md = case_when(
+      !is.na(is_md) ~ is_md,
+      !is.na(credentials_lower) ~ FALSE,
+      TRUE ~ NA
+    )
   ) %>%
-  filter(title_standardized %in% csuite_roles | char_ceo)
+  group_by(contact_uniqueid, entity_uniqueid, year) %>%
+  mutate(num_std_titles = n_distinct(num_std_titles)) %>%
+  ungroup() %>%
+  filter(title_standardized %in% csuite_roles | char_ceo) 
 
 # Step 2: For each person-hospital-role combo, find gaps
 # A gap exists at year X+1 if person is observed at X and X+2 but not X+1
@@ -123,6 +133,8 @@ turnover_data <- role_holders %>%
     prev_year = lag(year),
     prev_contact = lag(contact_uniqueid),
     prev_confirmed = lag(confirmed),
+    prev_gender = lag(gender),
+    prev_md = lag(is_md),
     # Check if previous observation is actually year - 1 (not a gap)
     is_consecutive = prev_year == year - 1
   ) %>%
@@ -135,13 +147,13 @@ turnover_data <- role_holders %>%
     )
   ) %>%
   ungroup() %>%
-  distinct(entity_uniqueid, year, title_standardized, turnover, contact_uniqueid, char_ceo, all_leader_flag)
+  distinct(entity_uniqueid, year, title_standardized, turnover, contact_uniqueid, char_ceo, all_leader_flag, prev_gender, prev_md)
 
 updated_turnover <- turnover_data %>%
   group_by(entity_uniqueid, year, title_standardized) %>%
   filter(n() == 1) %>%
   ungroup() %>%
-  distinct(entity_uniqueid, year, title_standardized, turnover)
+  distinct(entity_uniqueid, year, title_standardized, turnover, prev_gender, prev_md)
 
 non_std_turnover <- turnover_data %>%
   mutate(std_ceo = title_standardized == "CEO:  Chief Executive Officer") %>%
@@ -167,11 +179,11 @@ role_mapping <- c(
 turnover_wide <- updated_turnover %>%
   mutate(role = role_mapping[title_standardized]) %>%
   filter(!is.na(role)) %>%
-  select(entity_uniqueid, year, role, turnover) %>%
+  select(entity_uniqueid, year, role, turnover, prev_gender, prev_md) %>%
   pivot_wider(
     names_from = role,
-    values_from = turnover,
-    names_prefix = "turnover_"
+    values_from = c(turnover, prev_gender, prev_md),
+    names_glue = "{.value}_{role}"
   )
 
 # Step 3: Pivot gap_flags to wide format
@@ -290,6 +302,11 @@ hospitals_df %>%
     across(starts_with("turnover_"), ~mean(.x == 1, na.rm = TRUE), .names = "{.col}_count")
   )
 
-export <- hospitals_df %>% select(year, entity_uniqueid,starts_with("turnover_"), starts_with("vacant"), starts_with("vacancy_change"))
+export <- hospitals_df %>% select(year, entity_uniqueid,
+                                  starts_with("turnover_"), 
+                                  starts_with("vacant"), 
+                                  starts_with("vacancy_change"),
+                                  starts_with("prev_gender"),
+                                  starts_with("prev_md"))
 
 write_dta(export, paste0(derived_data, "/hospitals_with_turnover.dta"))
