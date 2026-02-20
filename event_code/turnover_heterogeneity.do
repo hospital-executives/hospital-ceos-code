@@ -119,6 +119,14 @@ local binname7 "cah"
 local label7_0 "Not CAH"
 local label7_1 "CAH"
 
+local splitnice1 "Ownership Type"
+local splitnice2 "Bed Count"
+local splitnice3 "Medicaid"
+local splitnice4 "Medicare"
+local splitnice5 "FTE"
+local splitnice6 "Teaching Status"
+local splitnice7 "CAH Status"
+
 local turnover_outcomes "turnover_ceo turnover_cfo turnover_coo turnover_cmo turnover_cno turnover_cco turnover_cio"
 local vacancy_outcomes  "vacant_ceo vacant_cfo vacant_coo vacant_cmo vacant_cno vacant_cco vacant_cio"
 
@@ -144,6 +152,7 @@ forvalues s = 1/`n_splits' {
     local splitname "`binname`s''"
     local lab0      "`label`s'_0'"
     local lab1      "`label`s'_1'"
+    local splitnice "`splitnice`s''"
 
     display _newline(3) as result "=============================================="
     display as result " Split: `splitvar'  (`lab0' vs `lab1')"
@@ -302,7 +311,7 @@ forvalues s = 1/`n_splits' {
             ylabel(`ylabs', angle(0) labsize(medium) nogrid) ///
             ytitle("") ///
             xtitle("Avg. Treatment Effect (t=0 to t=2)", size(medium)) ///
-            title("`ptitle_fam': `lab0' vs `lab1'", size(medlarge)) ///
+            title("`ptitle_fam' by `splitnice'", size(medlarge)) ///
             legend(order(2 "`lab0'" 4 "`lab1'") ///
                    rows(1) position(6) size(small)) ///
             graphregion(color(white)) plotregion(margin(l=2 r=2)) ///
@@ -326,7 +335,7 @@ forvalues s = 1/`n_splits' {
             ylabel(`ylabs', angle(0) labsize(medium) nogrid) ///
             ytitle("") ///
             xtitle("Avg. Effect / Pre-Period Mean", size(medium)) ///
-            title("`ptitle_fam' (Normalised): `lab0' vs `lab1'", ///
+            title("`ptitle_fam' (Normalised) by `splitnice'", ///
                   size(medlarge)) ///
             legend(order(2 "`lab0'" 4 "`lab1'") ///
                    rows(1) position(6) size(small)) ///
