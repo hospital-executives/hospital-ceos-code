@@ -167,7 +167,7 @@ forvalues s = 1/`nspecs' {
             plottype(scatter) ///
             ciplottype(rcap)
         
-        graph export "${overleaf}/notes/Non CEO Event Study/figures/file'_`outcome'.pdf", as(pdf) name("Graph") replace
+        graph export "${overleaf}/notes/Non CEO Event Study/figures/`outcome'.pdf", as(pdf) name("Graph") replace
     }
 }
 
