@@ -1,0 +1,898 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{subcaption}
+\usepackage{caption}
+\usepackage[hidelinks]{hyperref}
+
+\title{Hospital CEOs: Non-CEO C-Suite Event Study Results\\
+       \large 2-Year Balanced Sample, Never-Treated Controls}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\clearpage
+
+% ============================================================
+\section{Pre-Treatment Means}
+% ============================================================
+
+\subsection{C-Suite Turnover and Vacancy}
+
+\input{tables/pre_treatment_means}
+
+\subsection{Tier-Level Staffing Outcomes}
+
+\input{tables/tier_pre_treatment_means}
+
+\clearpage
+
+% ============================================================
+\section{C-Suite Turnover Event Studies}
+% ============================================================
+
+\subsection{Turnover Outcomes}
+
+\begin{figure}[H]
+\caption{Effect of CEO turnover on c-suite turnover, by role}
+\label{fig:turnover_event}
+\centering
+\begin{subfigure}[t]{0.30\textwidth}
+    \caption{CEO}
+    \includegraphics[width=\linewidth]{figures/2yrbalanced_never_tar_turnover_ceo.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.30\textwidth}
+    \caption{CFO}
+    \includegraphics[width=\linewidth]{figures/2yrbalanced_never_tar_turnover_cfo.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.30\textwidth}
+    \caption{COO}
+    \includegraphics[width=\linewidth]{figures/2yrbalanced_never_tar_turnover_coo.pdf}
+\end{subfigure}
+
+\vspace{0.5em}
+\begin{subfigure}[t]{0.30\textwidth}
+    \caption{CMO}
+    \includegraphics[width=\linewidth]{figures/2yrbalanced_never_tar_turnover_cmo.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.30\textwidth}
+    \caption{CNO}
+    \includegraphics[width=\linewidth]{figures/2yrbalanced_never_tar_turnover_cno.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.30\textwidth}
+    \caption{CCO}
+    \includegraphics[width=\linewidth]{figures/2yrbalanced_never_tar_turnover_cco.pdf}
+\end{subfigure}
+
+\vspace{0.5em}
+\begin{subfigure}[t]{0.30\textwidth}
+    \caption{CIO}
+    \includegraphics[width=\linewidth]{figures/2yrbalanced_never_tar_turnover_cio.pdf}
+\end{subfigure}
+\end{figure}
+
+\clearpage
+\subsection{Vacancy Outcomes}
+
+\begin{figure}[H]
+\caption{Effect of CEO turnover on c-suite vacancy, by role}
+\label{fig:vacancy_event}
+\centering
+\begin{subfigure}[t]{0.30\textwidth}
+    \caption{CEO}
+    \includegraphics[width=\linewidth]{figures/2yrbalanced_never_tar_vacant_ceo.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.30\textwidth}
+    \caption{CFO}
+    \includegraphics[width=\linewidth]{figures/2yrbalanced_never_tar_vacant_cfo.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.30\textwidth}
+    \caption{COO}
+    \includegraphics[width=\linewidth]{figures/2yrbalanced_never_tar_vacant_coo.pdf}
+\end{subfigure}
+
+\vspace{0.5em}
+\begin{subfigure}[t]{0.30\textwidth}
+    \caption{CMO}
+    \includegraphics[width=\linewidth]{figures/2yrbalanced_never_tar_vacant_cmo.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.30\textwidth}
+    \caption{CNO}
+    \includegraphics[width=\linewidth]{figures/2yrbalanced_never_tar_vacant_cno.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.30\textwidth}
+    \caption{CCO}
+    \includegraphics[width=\linewidth]{figures/2yrbalanced_never_tar_vacant_cco.pdf}
+\end{subfigure}
+
+\vspace{0.5em}
+\begin{subfigure}[t]{0.30\textwidth}
+    \caption{CIO}
+    \includegraphics[width=\linewidth]{figures/2yrbalanced_never_tar_vacant_cio.pdf}
+\end{subfigure}
+\end{figure}
+
+\clearpage
+
+% ============================================================
+\section{Hospital Characteristics Heterogeneity}
+% ============================================================
+
+\noindent Forest plots show average treatment effects (t=0 to t=2) for each c-suite role, split by binary hospital characteristics. Raw effects are in percentage-point units; normalized effects are scaled by the pre-period mean.
+
+\subsection{For-Profit vs.\ Non-Profit}
+
+\begin{figure}[H]
+\caption{Heterogeneity by for-profit status}
+\label{fig:het_fp}
+\centering
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Turnover --- raw}
+    \includegraphics[width=\linewidth]{figures/forest_turnover_raw_fp.png}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Turnover --- normalized}
+    \includegraphics[width=\linewidth]{figures/forest_turnover_norm_fp.png}
+\end{subfigure}
+
+\vspace{0.5em}
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Vacancy --- raw}
+    \includegraphics[width=\linewidth]{figures/forest_vacancy_raw_fp.png}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Vacancy --- normalized}
+    \includegraphics[width=\linewidth]{figures/forest_vacancy_norm_fp.png}
+\end{subfigure}
+\end{figure}
+
+\clearpage
+\subsection{Bed Count (Above vs.\ Below Median)}
+
+\begin{figure}[H]
+\caption{Heterogeneity by bed count}
+\label{fig:het_beds}
+\centering
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Turnover --- raw}
+    \includegraphics[width=\linewidth]{figures/forest_turnover_raw_bdtot.png}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Turnover --- normalized}
+    \includegraphics[width=\linewidth]{figures/forest_turnover_norm_bdtot.png}
+\end{subfigure}
+
+\vspace{0.5em}
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Vacancy --- raw}
+    \includegraphics[width=\linewidth]{figures/forest_vacancy_raw_bdtot.png}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Vacancy --- normalized}
+    \includegraphics[width=\linewidth]{figures/forest_vacancy_norm_bdtot.png}
+\end{subfigure}
+\end{figure}
+
+\clearpage
+\subsection{Medicaid Share (Above vs.\ Below Median)}
+
+\begin{figure}[H]
+\caption{Heterogeneity by Medicaid share}
+\label{fig:het_medicaid}
+\centering
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Turnover --- raw}
+    \includegraphics[width=\linewidth]{figures/forest_turnover_raw_mcddc.png}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Turnover --- normalized}
+    \includegraphics[width=\linewidth]{figures/forest_turnover_norm_mcddc.png}
+\end{subfigure}
+
+\vspace{0.5em}
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Vacancy --- raw}
+    \includegraphics[width=\linewidth]{figures/forest_vacancy_raw_mcddc.png}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Vacancy --- normalized}
+    \includegraphics[width=\linewidth]{figures/forest_vacancy_norm_mcddc.png}
+\end{subfigure}
+\end{figure}
+
+\clearpage
+\subsection{Medicare Share (Above vs.\ Below Median)}
+
+\begin{figure}[H]
+\caption{Heterogeneity by Medicare share}
+\label{fig:het_medicare}
+\centering
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Turnover --- raw}
+    \includegraphics[width=\linewidth]{figures/forest_turnover_raw_mcr.png}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Turnover --- normalized}
+    \includegraphics[width=\linewidth]{figures/forest_turnover_norm_mcr.png}
+\end{subfigure}
+
+\vspace{0.5em}
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Vacancy --- raw}
+    \includegraphics[width=\linewidth]{figures/forest_vacancy_raw_mcr.png}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Vacancy --- normalized}
+    \includegraphics[width=\linewidth]{figures/forest_vacancy_norm_mcr.png}
+\end{subfigure}
+\end{figure}
+
+\clearpage
+\subsection{FTE Count (Above vs.\ Below Median)}
+
+\begin{figure}[H]
+\caption{Heterogeneity by FTE count}
+\label{fig:het_fte}
+\centering
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Turnover --- raw}
+    \includegraphics[width=\linewidth]{figures/forest_turnover_raw_fte.png}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Turnover --- normalized}
+    \includegraphics[width=\linewidth]{figures/forest_turnover_norm_fte.png}
+\end{subfigure}
+
+\vspace{0.5em}
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Vacancy --- raw}
+    \includegraphics[width=\linewidth]{figures/forest_vacancy_raw_fte.png}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Vacancy --- normalized}
+    \includegraphics[width=\linewidth]{figures/forest_vacancy_norm_fte.png}
+\end{subfigure}
+\end{figure}
+
+\clearpage
+\subsection{Teaching Status}
+
+\begin{figure}[H]
+\caption{Heterogeneity by teaching status}
+\label{fig:het_teaching}
+\centering
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Turnover --- raw}
+    \includegraphics[width=\linewidth]{figures/forest_turnover_raw_teaching.png}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Turnover --- normalized}
+    \includegraphics[width=\linewidth]{figures/forest_turnover_norm_teaching.png}
+\end{subfigure}
+
+\vspace{0.5em}
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Vacancy --- raw}
+    \includegraphics[width=\linewidth]{figures/forest_vacancy_raw_teaching.png}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Vacancy --- normalized}
+    \includegraphics[width=\linewidth]{figures/forest_vacancy_norm_teaching.png}
+\end{subfigure}
+\end{figure}
+
+\clearpage
+\subsection{Critical Access Hospital Status}
+
+\begin{figure}[H]
+\caption{Heterogeneity by critical access hospital status}
+\label{fig:het_cah}
+\centering
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Turnover --- raw}
+    \includegraphics[width=\linewidth]{figures/forest_turnover_raw_cah.png}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Turnover --- normalized}
+    \includegraphics[width=\linewidth]{figures/forest_turnover_norm_cah.png}
+\end{subfigure}
+
+\vspace{0.5em}
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Vacancy --- raw}
+    \includegraphics[width=\linewidth]{figures/forest_vacancy_raw_cah.png}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Vacancy --- normalized}
+    \includegraphics[width=\linewidth]{figures/forest_vacancy_norm_cah.png}
+\end{subfigure}
+\end{figure}
+
+\clearpage
+
+% ============================================================
+\section{Individual Characteristics Heterogeneity}
+% ============================================================
+
+\noindent Forest plots show average treatment effects by the gender and MD status of the outgoing (predecessor) executive. Sample counts are provided below each figure.
+
+\subsection{Predecessor Gender}
+
+\begin{figure}[H]
+\caption{Turnover heterogeneity by predecessor gender}
+\label{fig:het_gender}
+\centering
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Raw}
+    \includegraphics[width=\linewidth]{figures/forest_turnover_raw_gender.png}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Normalized}
+    \includegraphics[width=\linewidth]{figures/forest_turnover_norm_gender.png}
+\end{subfigure}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Sample counts by predecessor gender}
+\label{tab:counts_gender}
+\input{figures/counts_turnover_gender}
+\end{table}
+
+\clearpage
+\subsection{Predecessor MD Status}
+
+\begin{figure}[H]
+\caption{Turnover heterogeneity by predecessor MD status}
+\label{fig:het_md}
+\centering
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Raw}
+    \includegraphics[width=\linewidth]{figures/forest_turnover_raw_md.png}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Normalized}
+    \includegraphics[width=\linewidth]{figures/forest_turnover_norm_md.png}
+\end{subfigure}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Sample counts by predecessor MD status}
+\label{tab:counts_md}
+\input{figures/counts_turnover_md}
+\end{table}
+
+\clearpage
+
+% ============================================================
+\section{Tier-Level Outcomes}
+% ============================================================
+
+\noindent Event study estimates of the effect of CEO turnover on the share of positions that are active, vacant, or do not exist, by organizational tier. Forest plots pool all tiers; the next section disaggregates by role within tier.
+
+\subsection{Unweighted Forest Plots}
+
+\begin{figure}[H]
+\caption{Effect of CEO turnover on tier-level staffing outcomes (unweighted)}
+\label{fig:tier_forest}
+\centering
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Share active}
+    \includegraphics[width=\linewidth]{figures/forest_sh_active.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Share vacant}
+    \includegraphics[width=\linewidth]{figures/forest_sh_vacant.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Share DNE}
+    \includegraphics[width=\linewidth]{figures/forest_sh_dne.pdf}
+\end{subfigure}
+\end{figure}
+
+\subsection{Normalized Forest Plots}
+
+\begin{figure}[H]
+\caption{Effect of CEO turnover on tier-level staffing outcomes (normalized by pre-period mean)}
+\label{fig:tier_wgt_forest}
+\centering
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Share active}
+    \includegraphics[width=\linewidth]{figures/wgt_forest_sh_active.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Share vacant}
+    \includegraphics[width=\linewidth]{figures/wgt_forest_sh_vacant.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Share DNE}
+    \includegraphics[width=\linewidth]{figures/wgt_forest_sh_dne.pdf}
+\end{subfigure}
+\end{figure}
+
+\clearpage
+\subsection{Event Studies by Tier}
+
+\noindent Event study plots for each tier-level outcome, estimated separately by organizational tier group.
+
+\begin{figure}[H]
+\caption{Event study: Share active, by tier}
+\centering
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Business Tier 1}
+    \includegraphics[width=\linewidth]{figures/event_business1_sh_active.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Business Tier 2}
+    \includegraphics[width=\linewidth]{figures/event_business2_sh_active.pdf}
+\end{subfigure}
+
+\vspace{0.5em}
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Clinical Tier 1}
+    \includegraphics[width=\linewidth]{figures/event_clinical1_sh_active.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Clinical Tier 2}
+    \includegraphics[width=\linewidth]{figures/event_clinical2_sh_active.pdf}
+\end{subfigure}
+
+\vspace{0.5em}
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{IT/Legal/HR Tier 1}
+    \includegraphics[width=\linewidth]{figures/event_itlegalhr1_sh_active.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{IT/Legal/HR Tier 2}
+    \includegraphics[width=\linewidth]{figures/event_itlegalhr2_sh_active.pdf}
+\end{subfigure}
+\end{figure}
+
+\begin{figure}[H]
+\caption{Event study: Share vacant, by tier}
+\centering
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Business Tier 1}
+    \includegraphics[width=\linewidth]{figures/event_business1_sh_vacant.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Business Tier 2}
+    \includegraphics[width=\linewidth]{figures/event_business2_sh_vacant.pdf}
+\end{subfigure}
+
+\vspace{0.5em}
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Clinical Tier 1}
+    \includegraphics[width=\linewidth]{figures/event_clinical1_sh_vacant.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Clinical Tier 2}
+    \includegraphics[width=\linewidth]{figures/event_clinical2_sh_vacant.pdf}
+\end{subfigure}
+
+\vspace{0.5em}
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{IT/Legal/HR Tier 1}
+    \includegraphics[width=\linewidth]{figures/event_itlegalhr1_sh_vacant.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{IT/Legal/HR Tier 2}
+    \includegraphics[width=\linewidth]{figures/event_itlegalhr2_sh_vacant.pdf}
+\end{subfigure}
+\end{figure}
+
+\begin{figure}[H]
+\caption{Event study: Share does not exist (DNE), by tier}
+\centering
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Business Tier 1}
+    \includegraphics[width=\linewidth]{figures/event_business1_sh_dne.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Business Tier 2}
+    \includegraphics[width=\linewidth]{figures/event_business2_sh_dne.pdf}
+\end{subfigure}
+
+\vspace{0.5em}
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Clinical Tier 1}
+    \includegraphics[width=\linewidth]{figures/event_clinical1_sh_dne.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Clinical Tier 2}
+    \includegraphics[width=\linewidth]{figures/event_clinical2_sh_dne.pdf}
+\end{subfigure}
+
+\vspace{0.5em}
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{IT/Legal/HR Tier 1}
+    \includegraphics[width=\linewidth]{figures/event_itlegalhr1_sh_dne.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{IT/Legal/HR Tier 2}
+    \includegraphics[width=\linewidth]{figures/event_itlegalhr2_sh_dne.pdf}
+\end{subfigure}
+\end{figure}
+
+\begin{figure}[H]
+\caption{Event study: People per role, by tier}
+\centering
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Business Tier 1}
+    \includegraphics[width=\linewidth]{figures/event_business1_people_per_role.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Business Tier 2}
+    \includegraphics[width=\linewidth]{figures/event_business2_people_per_role.pdf}
+\end{subfigure}
+
+\vspace{0.5em}
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Clinical Tier 1}
+    \includegraphics[width=\linewidth]{figures/event_clinical1_people_per_role.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Clinical Tier 2}
+    \includegraphics[width=\linewidth]{figures/event_clinical2_people_per_role.pdf}
+\end{subfigure}
+
+\vspace{0.5em}
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{IT/Legal/HR Tier 1}
+    \includegraphics[width=\linewidth]{figures/event_itlegalhr1_people_per_role.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{IT/Legal/HR Tier 2}
+    \includegraphics[width=\linewidth]{figures/event_itlegalhr2_people_per_role.pdf}
+\end{subfigure}
+\end{figure}
+
+\clearpage
+
+% ============================================================
+\section{Role-Level Decomposition by Tier}
+% ============================================================
+
+\noindent Average treatment effects for individual roles within each tier, shown separately for each outcome type (active, vacant, DNE).
+
+\subsection{Tier 1 Business}
+
+\begin{figure}[H]
+\caption{Tier 1 Business}
+\centering
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Active}
+    \includegraphics[width=\linewidth]{figures/forest_t1b_active.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Vacant}
+    \includegraphics[width=\linewidth]{figures/forest_t1b_vacant.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{DNE}
+    \includegraphics[width=\linewidth]{figures/forest_t1b_dne.pdf}
+\end{subfigure}
+\end{figure}
+
+\subsection{Tier 1 Clinical}
+
+\begin{figure}[H]
+\caption{Tier 1 Clinical}
+\centering
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Active}
+    \includegraphics[width=\linewidth]{figures/forest_t1c_active.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Vacant}
+    \includegraphics[width=\linewidth]{figures/forest_t1c_vacant.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{DNE}
+    \includegraphics[width=\linewidth]{figures/forest_t1c_dne.pdf}
+\end{subfigure}
+\end{figure}
+
+\subsection{Tier 1 IT/Legal/HR}
+
+\begin{figure}[H]
+\caption{Tier 1 IT/Legal/HR}
+\centering
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Active}
+    \includegraphics[width=\linewidth]{figures/forest_t1i_active.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Vacant}
+    \includegraphics[width=\linewidth]{figures/forest_t1i_vacant.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{DNE}
+    \includegraphics[width=\linewidth]{figures/forest_t1i_dne.pdf}
+\end{subfigure}
+\end{figure}
+
+\clearpage
+\subsection{Tier 2 Business}
+
+\begin{figure}[H]
+\caption{Tier 2 Business}
+\centering
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Active}
+    \includegraphics[width=\linewidth]{figures/forest_t2b_active.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Vacant}
+    \includegraphics[width=\linewidth]{figures/forest_t2b_vacant.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{DNE}
+    \includegraphics[width=\linewidth]{figures/forest_t2b_dne.pdf}
+\end{subfigure}
+\end{figure}
+
+\subsection{Tier 2 Clinical}
+
+\begin{figure}[H]
+\caption{Tier 2 Clinical}
+\centering
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Active}
+    \includegraphics[width=\linewidth]{figures/forest_t2c_active.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Vacant}
+    \includegraphics[width=\linewidth]{figures/forest_t2c_vacant.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{DNE}
+    \includegraphics[width=\linewidth]{figures/forest_t2c_dne.pdf}
+\end{subfigure}
+\end{figure}
+
+\subsection{Tier 2 IT/Legal/HR}
+
+\begin{figure}[H]
+\caption{Tier 2 IT/Legal/HR}
+\centering
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Active}
+    \includegraphics[width=\linewidth]{figures/forest_t2i_active.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Vacant}
+    \includegraphics[width=\linewidth]{figures/forest_t2i_vacant.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{DNE}
+    \includegraphics[width=\linewidth]{figures/forest_t2i_dne.pdf}
+\end{subfigure}
+\end{figure}
+
+\clearpage
+
+% ============================================================
+\section{Weighted Role-Level Decomposition by Tier}
+% ============================================================
+
+\noindent Effects scaled by the pre-period mean, shown separately for each outcome type within each tier-group.
+
+\subsection{Tier 1 Business}
+
+\begin{figure}[H]
+\caption{Weighted: Tier 1 Business}
+\centering
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Active}
+    \includegraphics[width=\linewidth]{figures/wgt_forest_t1b_active.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Vacant}
+    \includegraphics[width=\linewidth]{figures/wgt_forest_t1b_vacant.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{DNE}
+    \includegraphics[width=\linewidth]{figures/wgt_forest_t1b_dne.pdf}
+\end{subfigure}
+\end{figure}
+
+\subsection{Tier 1 Clinical}
+
+\begin{figure}[H]
+\caption{Weighted: Tier 1 Clinical}
+\centering
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Active}
+    \includegraphics[width=\linewidth]{figures/wgt_forest_t1c_active.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Vacant}
+    \includegraphics[width=\linewidth]{figures/wgt_forest_t1c_vacant.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{DNE}
+    \includegraphics[width=\linewidth]{figures/wgt_forest_t1c_dne.pdf}
+\end{subfigure}
+\end{figure}
+
+\subsection{Tier 1 IT/Legal/HR}
+
+\begin{figure}[H]
+\caption{Weighted: Tier 1 IT/Legal/HR}
+\centering
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Active}
+    \includegraphics[width=\linewidth]{figures/wgt_forest_t1i_active.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Vacant}
+    \includegraphics[width=\linewidth]{figures/wgt_forest_t1i_vacant.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{DNE}
+    \includegraphics[width=\linewidth]{figures/wgt_forest_t1i_dne.pdf}
+\end{subfigure}
+\end{figure}
+
+\clearpage
+\subsection{Tier 2 Business}
+
+\begin{figure}[H]
+\caption{Weighted: Tier 2 Business}
+\centering
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Active}
+    \includegraphics[width=\linewidth]{figures/wgt_forest_t2b_active.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Vacant}
+    \includegraphics[width=\linewidth]{figures/wgt_forest_t2b_vacant.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{DNE}
+    \includegraphics[width=\linewidth]{figures/wgt_forest_t2b_dne.pdf}
+\end{subfigure}
+\end{figure}
+
+\subsection{Tier 2 Clinical}
+
+\begin{figure}[H]
+\caption{Weighted: Tier 2 Clinical}
+\centering
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Active}
+    \includegraphics[width=\linewidth]{figures/wgt_forest_t2c_active.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Vacant}
+    \includegraphics[width=\linewidth]{figures/wgt_forest_t2c_vacant.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{DNE}
+    \includegraphics[width=\linewidth]{figures/wgt_forest_t2c_dne.pdf}
+\end{subfigure}
+\end{figure}
+
+\subsection{Tier 2 IT/Legal/HR}
+
+\begin{figure}[H]
+\caption{Weighted: Tier 2 IT/Legal/HR}
+\centering
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Active}
+    \includegraphics[width=\linewidth]{figures/wgt_forest_t2i_active.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{Vacant}
+    \includegraphics[width=\linewidth]{figures/wgt_forest_t2i_vacant.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.32\textwidth}
+    \caption{DNE}
+    \includegraphics[width=\linewidth]{figures/wgt_forest_t2i_dne.pdf}
+\end{subfigure}
+\end{figure}
+
+\clearpage
+
+% ============================================================
+\section{Joint Turnover Event Studies}
+% ============================================================
+
+\noindent Each figure shows the event study for the probability that \emph{both} roles in a pair turn over simultaneously around a CEO transition.
+
+\subsection{Event Studies by Pair}
+
+\begin{figure}[H]
+\caption{Effect of CEO turnover on joint c-suite turnover, by pair}
+\label{fig:joint_event}
+\centering
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{CEO $\times$ CFO}
+    \includegraphics[width=\linewidth]{figures/turnover_ceo_x_cfo_event.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{CEO $\times$ COO}
+    \includegraphics[width=\linewidth]{figures/turnover_ceo_x_coo_event.pdf}
+\end{subfigure}
+
+\vspace{0.5em}
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{CEO $\times$ CMO}
+    \includegraphics[width=\linewidth]{figures/turnover_ceo_x_cmo_event.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{CFO $\times$ COO}
+    \includegraphics[width=\linewidth]{figures/turnover_cfo_x_coo_event.pdf}
+\end{subfigure}
+
+\vspace{0.5em}
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{COO $\times$ CCO}
+    \includegraphics[width=\linewidth]{figures/turnover_coo_x_cco_event.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{CMO $\times$ CNO}
+    \includegraphics[width=\linewidth]{figures/turnover_cmo_x_cno_event.pdf}
+\end{subfigure}
+\end{figure}
+
+\clearpage
+\subsection{Summary Forest Plots}
+
+\begin{figure}[H]
+\caption{Joint turnover effects across all role pairs}
+\label{fig:joint_forest}
+\centering
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Raw effects}
+    \includegraphics[width=\linewidth]{figures/joint_turnover_forest.pdf}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+    \caption{Normalized by pre-period mean}
+    \includegraphics[width=\linewidth]{figures/joint_turnover_forest_wgt.pdf}
+\end{subfigure}
+\end{figure}
+
+\clearpage
+
+% ============================================================
+\section{CEO Joint C-Suite Turnover Decomposition}
+% ============================================================
+
+\noindent Each stacked bar chart decomposes CEO turnover into the share attributable to joint turnover (CEO \emph{and} at least one other role) vs.\ non-joint turnover (CEO alone). The comparison group definition is given in the subtitle.
+
+\begin{figure}[H]
+\caption{CEO turnover decomposition: joint vs.\ non-joint with CFO}
+\label{fig:decomp_cfo}
+\centering
+\includegraphics[width=0.8\linewidth]{figures/joint_csuite_ceo_cfo_decomp_event.pdf}
+\end{figure}
+
+\begin{figure}[H]
+\caption{CEO turnover decomposition: joint vs.\ non-joint with any c-suite role (CFO, CMO, COO, CCO, or CNO)}
+\label{fig:decomp_any}
+\centering
+\includegraphics[width=0.8\linewidth]{figures/joint_csuite_ceo_any_decomp_event.pdf}
+\end{figure}
+
+\begin{figure}[H]
+\caption{CEO turnover decomposition: joint vs.\ non-joint with CFO or COO}
+\label{fig:decomp_cfo_coo}
+\centering
+\includegraphics[width=0.8\linewidth]{figures/joint_csuite_ceo_cfo_coo_decomp_event.pdf}
+\end{figure}
+
+\begin{figure}[H]
+\caption{CEO turnover decomposition: joint vs.\ non-joint with CFO, COO, or CIO}
+\label{fig:decomp_cfo_coo_cio}
+\centering
+\includegraphics[width=0.8\linewidth]{figures/joint_csuite_ceo_cfo_coo_cio_decomp_event.pdf}
+\end{figure}
+
+\end{document}

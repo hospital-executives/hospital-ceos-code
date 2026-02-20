@@ -71,18 +71,36 @@ postclose `memhold'
 preserve
 use `results', clear
 
+* Create clean labels (avoid LaTeX underscore issues)
+gen outcome_label = ""
+local lbl_business1   "Business Tier 1"
+local lbl_business2   "Business Tier 2"
+local lbl_clinical1   "Clinical Tier 1"
+local lbl_clinical2   "Clinical Tier 2"
+local lbl_itlegalhr1  "IT/Legal/HR Tier 1"
+local lbl_itlegalhr2  "IT/Legal/HR Tier 2"
+local lbl_sh_active       "Share Active"
+local lbl_sh_vacant       "Share Vacant"
+local lbl_sh_dne          "Share DNE"
+local lbl_people_per_role "People per Role"
+foreach tier in business1 business2 clinical1 clinical2 itlegalhr1 itlegalhr2 {
+    foreach suf in sh_active sh_vacant sh_dne people_per_role {
+        replace outcome_label = "`lbl_`tier'': `lbl_`suf''" if outcome == "`tier'_`suf'"
+    }
+}
+
 * Round for display
 gen mean_fmt = string(mean, "%9.3f")
 gen sd_fmt = string(sd, "%9.3f")
 gen n_fmt = string(n, "%9.0f")
 
 * Export to LaTeX
-listtab outcome mean_fmt sd_fmt n_fmt using "${overleaf}/notes/Non CEO Event Study/tables/pre_treatment_means.tex", ///
+listtab outcome_label mean_fmt sd_fmt n_fmt using "${overleaf}/notes/Non CEO Event Study/tables/tier_pre_treatment_means.tex", ///
     rstyle(tabular) ///
     head("\begin{table}[H]" ///
          "\centering" ///
          "\caption{Pre-Treatment Means (2-Year Balanced Sample)}" ///
-         "\label{tab:pre_treatment_means}" ///
+         "\label{tab:tier_pre_treatment_means}" ///
          "\begin{tabular}{lccc}" ///
          "\hline\hline" ///
          "Outcome & Mean & SD & N \\\\") ///
@@ -167,7 +185,7 @@ forvalues s = 1/`nspecs' {
             plottype(scatter) ///
             ciplottype(rcap)
         
-        graph export "${overleaf}/notes/Non CEO Event Study/figures/file'_`outcome'.pdf", as(pdf) name("Graph") replace
+        graph export "${overleaf}/notes/Non CEO Event Study/figures/event_`outcome'.pdf", as(pdf) name("Graph") replace
     }
 }
 
