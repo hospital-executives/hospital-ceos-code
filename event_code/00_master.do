@@ -48,4 +48,5 @@ Goal: 			Master do-file for Hospital CEOs event-study.
 	* Run joint event studies
 	do "${github}/event_code/joint_turnover.do"
 	do "${github}/event_code/joint_csuite.do"
+	do "${github}/event_code/joint_heterogeneity.do"
 	
