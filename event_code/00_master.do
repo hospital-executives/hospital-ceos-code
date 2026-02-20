@@ -44,4 +44,8 @@ Goal: 			Master do-file for Hospital CEOs event-study.
 	do "${github}/event_code/roles_by_tier.do"
 	do "${github}/event_code/tier_decomposition.do"
 	do "${github}/event_code/wgt_tier_decomposition.do"
+
+	* Run joint event studies
+	do "${github}/event_code/joint_turnover.do"
+	do "${github}/event_code/joint_csuite.do"
 	
