@@ -40,6 +40,9 @@ Goal: 			Master do-file for Hospital CEOs event-study.
 	do "${github}/event_code/turnover_heterogeneity.do"
 	do "${github}/event_code/indiv_heterogeneity.do"
 
+	* Run DNE 
+	do "${github}/event_code/dne.do"
+
 	* Run event studies by tier
 	do "${github}/event_code/roles_by_tier.do"
 	do "${github}/event_code/tier_decomposition.do"
