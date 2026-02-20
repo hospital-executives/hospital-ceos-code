@@ -73,13 +73,21 @@ postclose `memhold'
 preserve
 use `results', clear
 
+* Create clean labels (avoid LaTeX underscore issues)
+gen outcome_label = ""
+foreach r in ceo cfo coo cmo cno cco cio {
+    local R = upper("`r'")
+    replace outcome_label = "Turnover: `R'" if outcome == "turnover_`r'"
+    replace outcome_label = "Vacancy: `R'"  if outcome == "vacant_`r'"
+}
+
 * Round for display
 gen mean_fmt = string(mean, "%9.3f")
 gen sd_fmt = string(sd, "%9.3f")
 gen n_fmt = string(n, "%9.0f")
 
 * Export to LaTeX
-listtab outcome mean_fmt sd_fmt n_fmt using "${overleaf}/notes/Non CEO Event Study/tables/pre_treatment_means.tex", ///
+listtab outcome_label mean_fmt sd_fmt n_fmt using "${overleaf}/notes/Non CEO Event Study/tables/pre_treatment_means.tex", ///
     rstyle(tabular) ///
     head("\begin{table}[H]" ///
          "\centering" ///
