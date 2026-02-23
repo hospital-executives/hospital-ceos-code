@@ -51,5 +51,8 @@ Goal: 			Master do-file for Hospital CEOs analysis.
 * Make files for TraMineR
 	do "${github}/analysis_code/07_make_wide_traminer_files.do"
 	
+* Make panel of hospital fianncial and quality metrics
+	do "${github}/analysis_code/XX_hosp_financial_qual_panel.do"
+	
 * Event studies
 // 	do "${github}/analysis_code/event_study_stats.do"
