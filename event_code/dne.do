@@ -223,10 +223,10 @@ local n_splits 7   // number of binary split variables
 // (assumes ev_lead* and ev_lag* already exist from your setup)
 // Collect them into a local for the regression call
 local evvars ""
-forvalues h = `=abs(`rmin')' (-1) 2 {          // leads (excl. lead1 = omitted)
+forvalues h = 2(-1) 2 {          // leads (excl. lead1 = omitted)
     local evvars "`evvars' ev_lead`h'"
 }
-forvalues h = 0/`rmax' {                        // lags
+forvalues h = 0/3 {                        // lags
     local evvars "`evvars' ev_lag`h'"
 }
 
@@ -268,12 +268,12 @@ forvalues s = 1/`n_splits' {
     // Leads (excluding lead1) for group 0 and 1
     local evvars0 ""
     local evvars1 ""
-    forvalues h = `=abs(`rmin')' (-1) 2 {
+    forvalues h = 2 (-1) 2 {
         local evvars0 "`evvars0' ev0_lead`h'"
         local evvars1 "`evvars1' ev1_lead`h'"
     }
     // Lags for group 0 and 1
-    forvalues h = 0/`rmax' {
+    forvalues h = 0/3 {
         local evvars0 "`evvars0' ev0_lag`h'"
         local evvars1 "`evvars1' ev1_lag`h'"
     }
@@ -283,6 +283,7 @@ forvalues s = 1/`n_splits' {
     local outcomes "`dne_outcomes'"
     local suffix   "_dne"
     local ptitle_fam "Does Not Exist"
+	local fam "dne"
 
         // Collect results
         tempfile forest_`fam'_`splitname'
@@ -376,7 +377,7 @@ forvalues s = 1/`n_splits' {
         }
 
         // ── PLOT A: Raw average treatment effects ───────────
-        local ptitle_fam = proper("`fam'")
+		 local ptitle_fam "Does Not Exist"
 
         twoway ///
             (rcap lo hi ypos if group == 0, ///
