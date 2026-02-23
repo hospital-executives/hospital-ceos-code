@@ -1,9 +1,22 @@
-/* EVENT_STUDY_STATS *************************************************************
+/* DNE ************************************************************************
 
-Program name: 	non_ceo_turnover.do
+Program name: 	dne.do
 Programmer: 	Katherine Papen
 
-Goal: 			Generate event study plots for non-CEO turnover measures
+Goal: 			Analyse "does not exist" (DNE) outcomes for C-suite titles
+				(CEO, CFO, COO, CMO, CNO, CCO, CIO) around CEO turnover events.
+
+Outputs:
+	1. Forest plots (raw and normalised) of average treatment effects by
+	   heterogeneity split (ownership, bed count, Medicaid, Medicare, FTE,
+	   teaching status, CAH status). Saved to:
+	       ${overleaf}/notes/Non CEO Event Study/figures/forest_dne_*.png
+	   Splits are skipped for a given title if any of the four cell counts
+	   (splitvar x yvar) fall below 20 observations.
+
+	2. Summary table of mean DNE rates by outcome and heterogeneity split.
+	   Saved to:
+	       ${overleaf}/notes/Non CEO Event Study/tables/dne_summary_table.tex
 
 *******************************************************************************/
 
@@ -466,4 +479,78 @@ forvalues s = 1/`n_splits' {
     // end outcome-family loop
 
 display _newline(2) as result "All forest plots saved."
+
+*-------------------------------------------------------------------------------
+* STEP 3: Summary table — mean DNE rate by outcome and split
+*-------------------------------------------------------------------------------
+
+local outcomes_tbl "ceo_dne cfo_dne coo_dne cmo_dne cno_dne cco_dne cio_dne"
+
+// Column spec: label + overall + 2 cols per split
+local colspec "l c"
+forvalues s = 1/`n_splits' {
+    local colspec "`colspec' cc"
+}
+
+// Cmidrule positions for split spans: split s occupies cols (2s+1)-(2s+2)
+local cmidrules ""
+forvalues s = 1/`n_splits' {
+    local c1 = 2 * `s' + 1
+    local c2 = 2 * `s' + 2
+    local cmidrules "`cmidrules' \cmidrule(lr){`c1'-`c2'}"
+}
+
+capture file close tbl
+file open tbl using "${overleaf}/notes/Non CEO Event Study/tables/dne_summary_table.tex", write replace
+
+file write tbl "\begin{table}[htbp]" _n
+file write tbl "\centering" _n
+file write tbl "\caption{Fraction of Hospital-Years Where Title Does Not Exist}" _n
+file write tbl "\label{tab:dne_summary}" _n
+file write tbl "\resizebox{\textwidth}{!}{%" _n
+file write tbl "\begin{tabular}{`colspec'}" _n
+file write tbl "\hline\hline" _n
+
+// Header row 1: Overall + split name spans
+file write tbl " & Overall"
+forvalues s = 1/`n_splits' {
+    file write tbl " & \multicolumn{2}{c}{`splitnice`s''}"
+}
+file write tbl " \\" _n
+file write tbl "`cmidrules'" _n
+
+// Header row 2: group labels within each split
+file write tbl " & "
+forvalues s = 1/`n_splits' {
+    file write tbl " & `label`s'_0' & `label`s'_1'"
+}
+file write tbl " \\" _n
+file write tbl "\hline" _n
+
+// Data rows
+foreach outcome of local outcomes_tbl {
+    local t = subinstr("`outcome'", "_dne", "", 1)
+    local onice "`nice_`t''"
+
+    quietly summarize `outcome' if (balanced_2_year_sample == 1 | never_tar == 1), meanonly
+    local tot = r(mean)
+    file write tbl "`onice' & " %5.3f (`tot')
+
+    forvalues s = 1/`n_splits' {
+        local sv "`binvar`s''"
+        quietly summarize `outcome' if (balanced_2_year_sample == 1 | never_tar == 1) & `sv' == 0, meanonly
+        local m0 = r(mean)
+        quietly summarize `outcome' if (balanced_2_year_sample == 1 | never_tar == 1) & `sv' == 1, meanonly
+        local m1 = r(mean)
+        file write tbl " & " %5.3f (`m0') " & " %5.3f (`m1')
+    }
+    file write tbl " \\" _n
+}
+
+file write tbl "\hline\hline" _n
+file write tbl "\end{tabular}}" _n
+file write tbl "\end{table}" _n
+
+file close tbl
+display as result "DNE summary table saved."
 
