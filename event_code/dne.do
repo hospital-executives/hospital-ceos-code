@@ -32,6 +32,26 @@ restrict_hosp_sample
 * will need to revisit for the cases where we're dropping observations still
 merge 1:1 entity_uniqueid year using "${dbdata}/derived/positions_by_tier.dta", keep(match) nogen
 
+* merge in profit data
+	* pull in parent profit info
+	preserve
+		use "${dbdata}/derived/temp/systems_nonharmonized_withprofit.dta", clear 
+		keep entity_uniqueid year forprofit
+		rename entity_uniqueid entity_uniqueid_parent 
+		rename forprofit forprofit_parent
+		tempfile sysprofit
+		save `sysprofit'
+	restore
+	merge m:1 entity_uniqueid_parent year using `sysprofit', gen(_merge_profit) keep(1 3) // only unmerged observations are systems plus the 23 ambulatory 
+	
+* pull in contextual data for parents - specifically want profit data
+	merge m:1 entity_uniqueid year using "${dbdata}/derived/temp/systems_nonharmonized_withprofit.dta", keep(1 3) gen(_merge_newprofit) keepusing(forprofit_imputed)
+	replace forprofit = forprofit_imputed if _merge_newprofit == 3 & !missing(forprofit_imputed) // this only changes things for parents
+	drop _merge_newprofit
+	
+* NEW: replacing facility forprofit info with parent info. 
+	replace forprofit = forprofit_parent if missing(forprofit) & !missing(forprofit_parent)
+
 make_target_sample
 
 sum tar_reltime, meanonly
@@ -170,11 +190,7 @@ foreach v of local vars {
 }
 
 // Prespecify your binary variables and labels
-gen fpstatus = .
-replace fpstatus = 1 if aha_own_fp == 1 & aha_own_np == 0
-replace fpstatus = 0 if aha_own_fp == 0 & aha_own_np == 1
-
-local binvar1 "fpstatus"
+local binvar1 "forprofit"
 local binname1 "fp"
 local label1_0 "NFP"
 local label1_1 "FP"
@@ -295,6 +311,24 @@ forvalues s = 1/`n_splits' {
 
             local yvar "`t'`suffix'"
             display _newline as text "  → `yvar' × `splitvar' (joint)"
+
+            // Skip if either group has fewer than 20 observations
+            quietly count if (balanced_2_year_sample == 1 | never_tar == 1) & `splitvar' == 0 & `yvar' == 1
+            local n0_a = r(N)
+            quietly count if (balanced_2_year_sample == 1 | never_tar == 1) & `splitvar' == 0 & `yvar' == 0
+            local n0_b = r(N)
+
+            quietly count if (balanced_2_year_sample == 1 | never_tar == 1) & `splitvar' == 1 & `yvar' == 1
+            local n1_a = r(N)
+            quietly count if (balanced_2_year_sample == 1 | never_tar == 1) & `splitvar' == 1 & `yvar' == 0
+            local n1_b = r(N)
+
+            if `n0_a' < 20 | `n0_b' < 20 | `n1_a' < 20 | `n1_b' < 20 {
+                display as text "  → Skipping: insufficient obs (n0_a=`n0_a', n0_b=`n0_b', n1_a=`n1_a', n1_b=`n1_b')"
+                post pf_handle ("`t'") (0) (.) (.) (.)
+                post pf_handle ("`t'") (1) (.) (.) (.)
+                continue
+            }
 
             capture {
                 // Single joint regression
