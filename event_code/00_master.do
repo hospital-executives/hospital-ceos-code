@@ -36,6 +36,7 @@ Goal: 			Master do-file for Hospital CEOs event-study.
 * EVENT STUDIES _________________________________________________________________	
 
 	* Run turnover event studies by role
+	do "${github}/event_code/turnover_counts.do" // counts for turnover + vacancy x splits
 	do "${github}/event_code/turnover.do"
 	do "${github}/event_code/turnover_heterogeneity.do"
 	do "${github}/event_code/indiv_heterogeneity.do"
