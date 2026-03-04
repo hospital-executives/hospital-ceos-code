@@ -52,18 +52,19 @@ local nice_cio "CIO"
 local vars aha_bdtot_orig aha_mcddc aha_mcrdc aha_fte
 
 foreach v of local vars {
-    // compute overall median
-    quietly summarize `v', detail
-    local med = r(p50)
-
-    // make short name suffix (e.g. beds, medicaid, medicare)
     local suffix : subinstr local v "aha_" "", all
 
-    // create above-median indicator
-    gen high_`suffix' = (`v' > `med')
+    * Compute each entity's median value of v across years
+    bys aha_id: egen entity_med_`suffix' = median(`v')
 
-    // flag entities where any observation is above the median
-    bys aha_id: egen above_median_`suffix' = max(high_`suffix')
+    * Compute the overall median of the entity-level medians
+    quietly summarize entity_med_`suffix', detail
+    local med = r(p50)
+
+    * Classify entity as above/below based on their entity-level median
+    gen above_median_`suffix' = (entity_med_`suffix' > `med')
+
+    drop entity_med_`suffix'
 }
 
 // Prespecify your binary variables and labels

@@ -33,22 +33,39 @@ local turnover_outcomes "turnover_ceo turnover_cfo turnover_coo turnover_cmo tur
 local vacancy_outcomes  "vacant_ceo vacant_cfo vacant_coo vacant_cmo vacant_cno vacant_cco vacant_cio"
 local all_outcomes "`turnover_outcomes' `vacancy_outcomes'"
 
+* ── Outcome nice labels ────────────────────────────────────
+local outnice_turnover_ceo "CEO Turnover"
+local outnice_turnover_cfo "CFO Turnover"
+local outnice_turnover_coo "COO Turnover"
+local outnice_turnover_cmo "CMO Turnover"
+local outnice_turnover_cno "CNO Turnover"
+local outnice_turnover_cco "CCO Turnover"
+local outnice_turnover_cio "CIO Turnover"
+local outnice_vacant_ceo   "CEO Vacancy"
+local outnice_vacant_cfo   "CFO Vacancy"
+local outnice_vacant_coo   "COO Vacancy"
+local outnice_vacant_cmo   "CMO Vacancy"
+local outnice_vacant_cno   "CNO Vacancy"
+local outnice_vacant_cco   "CCO Vacancy"
+local outnice_vacant_cio   "CIO Vacancy"
+
 * ── Splits ────────────────────────────────────────────────
 local vars aha_bdtot_orig aha_mcddc aha_mcrdc aha_fte
 
 foreach v of local vars {
-    // compute overall median
-    quietly summarize `v', detail
-    local med = r(p50)
-
-    // make short name suffix (e.g. beds, medicaid, medicare)
     local suffix : subinstr local v "aha_" "", all
 
-    // create above-median indicator
-    gen high_`suffix' = (`v' > `med')
+    * Compute each entity's median value of v across years
+    bys aha_id: egen entity_med_`suffix' = median(`v')
 
-    // flag entities where any observation is above the median
-    bys aha_id: egen above_median_`suffix' = max(high_`suffix')
+    * Compute the overall median of the entity-level medians
+    quietly summarize entity_med_`suffix', detail
+    local med = r(p50)
+
+    * Classify entity as above/below based on their entity-level median
+    gen above_median_`suffix' = (entity_med_`suffix' > `med')
+
+    drop entity_med_`suffix'
 }
 
 // Prespecify your binary variables and labels
@@ -116,6 +133,8 @@ foreach outcome of local all_outcomes {
     display _newline(2) as result "Outcome: `outcome'"
     display as result "{hline 50}"
 
+    local outnice "`outnice_`outcome''"
+
     * ── Aggregate (no split) ──────────────────────────────
     preserve
     keep if !missing(`outcome')
@@ -130,7 +149,7 @@ foreach outcome of local all_outcomes {
     local n_c : word count `tmp'
 
     display as text "  [Aggregate] Treated: `n_t'  |  Control: `n_c'"
-    post `memhold' ("`outcome'") ("Aggregate") ("All") (`n_t') (`n_c')
+    post `memhold' ("`outnice'") ("Aggregate") ("All") (`n_t') (`n_c')
 
     restore
 
@@ -155,7 +174,7 @@ foreach outcome of local all_outcomes {
             local n_c : word count `tmp'
 
             display as text "  [`splitnice' = `grp_label'] Treated: `n_t'  |  Control: `n_c'"
-            post `memhold' ("`outcome'") ("`splitnice'") ("`grp_label'") (`n_t') (`n_c')
+            post `memhold' ("`outnice'") ("`splitnice'") ("`grp_label'") (`n_t') (`n_c')
 
             restore
         }
@@ -165,32 +184,75 @@ foreach outcome of local all_outcomes {
 postclose `memhold'
 
 * ── Format and export ─────────────────────────────────────
-preserve
-use `results', clear
 
-* Display in Stata
+local sname1 "Ownership Type"
+local sname2 "Bed Count"
+local sname3 "Medicaid"
+local sname4 "Medicare"
+local sname5 "FTE"
+local sname6 "Teaching Status"
+local sname7 "CAH Status"
+
+local sfile1 "ownership_type"
+local sfile2 "bed_count"
+local sfile3 "medicaid"
+local sfile4 "medicare"
+local sfile5 "fte"
+local sfile6 "teaching_status"
+local sfile7 "cah_status"
+
+* ── Display full table in Stata ───────────────────────────
+use `results', clear
 list outcome split_name group_label n_treated n_control, ///
     separator(0) noobs abbreviate(20)
 
-* Export to CSV for easy inspection
-export delimited using "${overleaf}/notes/Non CEO Event Study/tables/sample_counts_by_outcome_split.csv", ///
+* ── Aggregate table ───────────────────────────────────────
+use `results', clear
+keep if split_name == "Aggregate"
+drop split_name group_label
+
+export delimited using "${overleaf}/notes/Non CEO Event Study/tables/sample_counts_aggregate.csv", ///
     replace
 
-* Export to LaTeX
-listtab outcome split_name group_label n_treated n_control ///
-    using "${overleaf}/notes/Non CEO Event Study/tables/sample_counts_by_outcome_split.tex", ///
+listtab outcome n_treated n_control ///
+    using "${overleaf}/notes/Non CEO Event Study/tables/sample_counts_aggregate.tex", ///
     rstyle(tabular) ///
     head("\begin{table}[H]" ///
          "\centering" ///
-         "\caption{Sample Counts by Outcome and Split}" ///
-         "\label{tab:sample_counts}" ///
-         "\begin{tabular}{llllrr}" ///
+         "\caption{Sample Counts -- Aggregate}" ///
+         "\label{tab:sample_counts_aggregate}" ///
+         "\begin{tabular}{lrr}" ///
          "\hline\hline" ///
-         "Outcome & Split & Group & N Treated & N Control \\\\") ///
+         "Outcome & N Treated & N Control \\\\") ///
     foot("\hline\hline" ///
          "\end{tabular}" ///
          "\end{table}") ///
     replace
 
+* ── One table per split ───────────────────────────────────
+forvalues s = 1/7 {
+
+    use `results', clear
+    keep if split_name == "`sname`s''"
+    drop split_name
+
+    export delimited using "${overleaf}/notes/Non CEO Event Study/tables/sample_counts_`sfile`s''.csv", ///
+        replace
+
+    listtab outcome group_label n_treated n_control ///
+        using "${overleaf}/notes/Non CEO Event Study/tables/sample_counts_`sfile`s''.tex", ///
+        rstyle(tabular) ///
+        head("\begin{table}[H]" ///
+             "\centering" ///
+             "\caption{Sample Counts -- `sname`s''}" ///
+             "\label{tab:sample_counts_`sfile`s''}" ///
+             "\begin{tabular}{llrr}" ///
+             "\hline\hline" ///
+             "Outcome & Group & N Treated & N Control \\\\") ///
+        foot("\hline\hline" ///
+             "\end{tabular}" ///
+             "\end{table}") ///
+        replace
+}
+
 display _newline(2) as result "Sample count report complete."
-restore

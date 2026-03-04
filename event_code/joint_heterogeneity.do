@@ -59,12 +59,21 @@ local nice_turnover_cmo_x_cno "CMO x CNO"
 local vars aha_bdtot_orig aha_mcddc aha_mcrdc aha_fte
 
 foreach v of local vars {
-    quietly summarize `v', detail
-    local med = r(p50)
     local suffix : subinstr local v "aha_" "", all
-    gen high_`suffix' = (`v' > `med')
-    bys aha_id: egen above_median_`suffix' = max(high_`suffix')
+
+    * Compute each entity's median value of v across years
+    bys aha_id: egen entity_med_`suffix' = median(`v')
+
+    * Compute the overall median of the entity-level medians
+    quietly summarize entity_med_`suffix', detail
+    local med = r(p50)
+
+    * Classify entity as above/below based on their entity-level median
+    gen above_median_`suffix' = (entity_med_`suffix' > `med')
+
+    drop entity_med_`suffix'
 }
+
 
 gen fpstatus = .
 replace fpstatus = 1 if aha_own_fp == 1 & aha_own_np == 0
