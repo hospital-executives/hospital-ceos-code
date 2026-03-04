@@ -32,8 +32,6 @@ restrict_hosp_sample
 * will need to revisit for the cases where we're dropping observations still
 merge 1:1 entity_uniqueid year using "${dbdata}/derived/hospitals_with_turnover.dta", keep(match) nogen
 
-make_target_sample
-
 * Define joint turnover outcomes (1 if both roles turn over)
 gen turnover_ceo_x_cfo = (turnover_ceo == 1 & turnover_cfo == 1) if !missing(turnover_ceo) & !missing(turnover_cfo)
 gen turnover_ceo_x_coo = (turnover_ceo == 1 & turnover_coo == 1) if !missing(turnover_ceo) & !missing(turnover_coo)
@@ -58,19 +56,6 @@ local spec1_file "2yrbalanced_never_tar"
 
 local nspecs = 1
 
-sum tar_reltime, meanonly
-local rmin = r(min)
-local rmax = r(max)
-
-* Create Relative Time Indicators
-forvalues h = 0/`rmax' {
-    gen byte ev_lag`h' = (tar_reltime == `h')
-}
-forvalues h = 1/`=abs(`rmin')' {
-    gen byte ev_lead`h' = (tar_reltime == -`h')
-}
-replace ev_lead1 = 0
-
 * Collect average effects from each regression
 tempfile joint_results
 postfile joint_handle str40 outcome double avg_effect double avg_se double pre_mean using `joint_results', replace
@@ -80,6 +65,21 @@ forvalues s = 1/`nspecs' {
     
     foreach outcome of local all_outcomes {
         
+		preserve
+		keep if !missing(`outcome')
+		make_target_sample
+		sum tar_reltime, meanonly
+		local rmin = r(min)
+		local rmax = r(max)
+
+		forvalues h = 0/`rmax' {
+			gen byte ev_lag`h' = (tar_reltime == `h')
+		}
+		forvalues h = 1/`=abs(`rmin')' {
+			gen byte ev_lead`h' = (tar_reltime == -`h')
+		}
+		replace ev_lead1 = 0
+				
         display _newline(2) "{hline 60}"
         display "Specification `s': `spec`s'_name' - `outcome'"
         display "{hline 60}"
@@ -157,6 +157,7 @@ forvalues s = 1/`nspecs' {
             ciplottype(rcap)
 
         graph export "${overleaf}/notes/Non CEO Event Study/figures/`outcome'_event.pdf", as(pdf) replace
+		restore
     }
 }
 
