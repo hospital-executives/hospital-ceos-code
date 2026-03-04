@@ -23,7 +23,6 @@ restrict_hosp_sample
 * merge in turnover outcomes
 merge 1:1 entity_uniqueid year using "${dbdata}/derived/hospitals_with_turnover.dta", keep(match) nogen
 
-make_target_sample
 
 *----------------------------------------------------------
 * Define specification
@@ -33,21 +32,6 @@ local spec1_control "never_tar == 1"
 local spec1_cohort "never_tar"
 local spec1_name "2yr Balanced, Never Treated"
 local spec1_file "2yrbalanced_never_tar"
-
-*----------------------------------------------------------
-* Relative time indicators
-*----------------------------------------------------------
-sum tar_reltime, meanonly
-local rmin = r(min)
-local rmax = r(max)
-
-forvalues h = 0/`rmax' {
-    gen byte ev_lag`h' = (tar_reltime == `h')
-}
-forvalues h = 1/`=abs(`rmin')' {
-    gen byte ev_lead`h' = (tar_reltime == -`h')
-}
-replace ev_lead1 = 0
 
 gen turnover_ceo_x_cfo = (turnover_ceo == 1 & turnover_cfo == 1) if !missing(turnover_ceo) & !missing(turnover_cfo)
 gen turnover_ceo_x_coo = (turnover_ceo == 1 & turnover_coo == 1) if !missing(turnover_ceo) & !missing(turnover_coo)
@@ -144,35 +128,6 @@ forvalues s = 1/`n_splits' {
     display as result " Split: `splitvar'  (`lab0' vs `lab1')"
     display as result "=============================================="
 
-    // ── Create interacted event-time dummies ─────────────────
-    capture drop ev0_lag* ev1_lag* ev0_lead* ev1_lead*
-
-    forvalues h = 0/`rmax' {
-        forvalues c = 0/1 {
-            cap gen byte ev`c'_lag`h' = ev_lag`h' * (`splitvar' == `c')
-        }
-    }
-    forvalues h = 1/`=abs(`rmin')' {
-        forvalues c = 0/1 {
-            cap gen byte ev`c'_lead`h' = ev_lead`h' * (`splitvar' == `c')
-        }
-    }
-    forvalues c = 0/1 {
-        replace ev`c'_lead1 = 0
-    }
-
-    // ── Build variable lists for regression ──────────────────
-    local evvars0 ""
-    local evvars1 ""
-    forvalues h = `=abs(`rmin')' (-1) 2 {
-        local evvars0 "`evvars0' ev0_lead`h'"
-        local evvars1 "`evvars1' ev1_lead`h'"
-    }
-    forvalues h = 0/`rmax' {
-        local evvars0 "`evvars0' ev0_lag`h'"
-        local evvars1 "`evvars1' ev1_lag`h'"
-    }
-
     // ── Collect results for all joint outcomes ───────────────
     tempfile forest_`splitname'
     capture postclose pf_handle
@@ -183,6 +138,56 @@ forvalues s = 1/`n_splits' {
 
         local nice "`nice_`yvar''"
         display _newline as text "  → `yvar' × `splitvar' (joint)"
+
+        preserve
+
+        * Drop missing and rebuild sample for this outcome
+        keep if !missing(`yvar')
+        make_target_sample
+
+        * Recreate base event-time dummies from new tar_reltime
+        sum tar_reltime, meanonly
+        local rmin_inner = r(min)
+        local rmax_inner = r(max)
+
+        forvalues h = 0/`rmax_inner' {
+            cap drop ev_lag`h'
+            gen byte ev_lag`h' = (tar_reltime == `h')
+        }
+        forvalues h = 1/`=abs(`rmin_inner')' {
+            cap drop ev_lead`h'
+            gen byte ev_lead`h' = (tar_reltime == -`h')
+        }
+        replace ev_lead1 = 0
+
+        * Recreate interacted dummies for this split
+        capture drop ev0_lag* ev1_lag* ev0_lead* ev1_lead*
+
+        forvalues h = 0/`rmax_inner' {
+            forvalues c = 0/1 {
+                cap gen byte ev`c'_lag`h' = ev_lag`h' * (`splitvar' == `c')
+            }
+        }
+        forvalues h = 1/`=abs(`rmin_inner')' {
+            forvalues c = 0/1 {
+                cap gen byte ev`c'_lead`h' = ev_lead`h' * (`splitvar' == `c')
+            }
+        }
+        forvalues c = 0/1 {
+            replace ev`c'_lead1 = 0
+        }
+
+        * Rebuild evvars0 and evvars1 from inner dims
+        local evvars0 ""
+        local evvars1 ""
+        forvalues h = `=abs(`rmin_inner')' (-1) 2 {
+            local evvars0 "`evvars0' ev0_lead`h'"
+            local evvars1 "`evvars1' ev1_lead`h'"
+        }
+        forvalues h = 0/`rmax_inner' {
+            local evvars0 "`evvars0' ev0_lag`h'"
+            local evvars1 "`evvars1' ev1_lag`h'"
+        }
 
         capture {
             eventstudyinteract `yvar' `evvars0' `evvars1' ///
@@ -221,6 +226,8 @@ forvalues s = 1/`n_splits' {
                & `splitvar' == 1 & tar_reltime < 0, meanonly
         local pmean1 = r(mean)
 
+        restore
+
         post pf_handle ("`nice'") (0) (`avg_b0') (`avg_se0') (`pmean0')
         post pf_handle ("`nice'") (1) (`avg_b1') (`avg_se1') (`pmean1')
     }
@@ -230,7 +237,6 @@ forvalues s = 1/`n_splits' {
     preserve
     use `forest_`splitname'', clear
 
-    // Numeric position for y-axis (like turnover_heterogeneity.do)
     encode outcome_label, gen(oid)
     quietly summarize oid
     local oidmax = r(max)
@@ -238,17 +244,14 @@ forvalues s = 1/`n_splits' {
     replace ypos = ypos + 0.15 if group == 0
     replace ypos = ypos - 0.15 if group == 1
 
-    // CIs
     gen lo = b - 1.96 * se
     gen hi = b + 1.96 * se
 
-    // Normalised version
     gen b_norm  = b / premean
     gen se_norm = se / abs(premean)
     gen lo_norm = b_norm - 1.96 * se_norm
     gen hi_norm = b_norm + 1.96 * se_norm
 
-    // Y-axis labels
     levelsof oid, local(olevels)
     local ylabs ""
     foreach lev of local olevels {
