@@ -180,9 +180,54 @@ Goal: 			Merge M&A data into hospital-level dataset
 	
 	drop if _merge_campus_aha == 2 | _merge_entity_aha == 2 
 	
+	
+* ADD CCN XWALK ________________________________________________________________ 
 
-	* remove trailing zeroes and sort by sysid?
+	preserve
+		
+			use "${dbdata}/supplemental/private_equity/crosswalk_94_23_enhanced.dta", clear
 
+			destring aha_id, gen(entity_aha) force // 198 missing obs created, all have "A" in the ID
+			
+			keep if !missing(entity_aha) // eventually want to get rid of this
+			
+			rename mcrnum mcrnum_newxwalk
+			
+			tempfile ma_data
+			save `ma_data'
+			
+			* make a graph with counts by year
+			gen count_ma = 1
+			collapse (rawsum) count_ma, by(year)
+			merge 1:1 year using `ccn_aha_counts'
+			keep if inrange(year,2009,2017)
+			graph bar count_ma count_entity_aha_all, over(year) ///
+				legend(position(bottom) label(1 "AHA/CCN x-walk") label(2 "AHA/HIMSS Hospitals")) ///
+				title("Count of Observations by Year: entity_aha") ///
+				blabel(bar, size(vsmall))
+			graph export "${overleaf}/notes/M&A Merge/figures/counts_entity_aha_ma_byyear_newxwalk.pdf", as(pdf) name("Graph") replace
+		
+	restore
+	
+	merge m:1 entity_aha year using `ma_data', gen(_merge_ccn_xwalk)
+	
+	tab year if _merge_ccn_xwalk == 1 & !missing(entity_aha)
+	
+	
+	* keep overlapping date ranges
+	keep if inrange(year,2009,2017)
+
+	* format and export merge results
+	label drop mergelab
+	label define mergelab 1 "Unmerged from AHA/HIMSS" 2 "Unmerged from CCN x-walk" 3 "Merged"
+	label values _merge_ccn_xwalk mergelab
+		export_merge, folder("M&A Merge") filename(merge1_tab_entity_aha_newxwalk) target(_merge_ccn_xwalk)
+		
+		gen cleaned_merge_ccn_xwalk = _merge_ccn_xwalk if !missing(entity_aha)
+		label values cleaned_merge_ccn_xwalk mergelab
+		export_merge, folder("M&A Merge") filename(merge1_tab_entity_aha_cleaned_newxwalk) target(cleaned_merge_ccn_xwalk)
+	
+	drop if _merge_ccn_xwalk == 2
 	
 * ADD PE DATA __________________________________________________________________ 
 

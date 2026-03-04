@@ -12,6 +12,9 @@ Goal: 			Compute descriptive stats for CEOs
 * check setup is complete
 	check_setup
 	
+* drop programs
+	cap program drop descriptives_table
+	
 * load data
 	use "${dbdata}/derived/temp/indiv_file_contextual.dta", clear
 	
@@ -25,11 +28,23 @@ program define descriptives_table
 	syntax , tabyear(integer) contact_corp(string)
 
 	* TO-DO: add contact_corp
-// 	if "`contact_corp'" == "y" {
-//		
-// 	}
+	* make a entity-role-year dataset that just shows whether it is contact_corp
+	if "`contact_corp'" == "y" {
+		preserve
+			use "${dbdata}/derived/temp/individuals_contact_corporate.dta", clear
+			tab year // missing 2017
+			gen contact_corp = status == "Contact Corporate"
+			keep entity_uniqueid year title_standardized_key contact_corp
+			rename title_standardized_key title_standardized
+			drop if missing(title_standardized) // TO-DO: check who this applies to
+			* sometimes there are both active and CC versions: 
+				bysort entity_uniqueid year title_standardized (contact_corp): keep if _n == 1 // keep "active"
+			tempfile contact_corp_dta
+			save `contact_corp_dta'
+		restore
+	}
 	
-  	preserve
+//   	preserve
 
 	* make a variable capturing whether a person is a system CEO this year
 		replace system_ceo = 0 if entity_type == "Single Hospital Health System"
@@ -79,6 +94,11 @@ program define descriptives_table
 		tempfile base
 		save `base'
 		
+		
+		if "`contact_corp'" == "y" {
+			merge 1:1 entity_uniqueid year title_standardized using `contact_corp_dta', gen(_merge_cc)
+		}
+		exit
 	* ------- make panel A variables for rows -------
 		
 		* for CEO, can use hosp_has_ceo indicator
@@ -207,7 +227,7 @@ program define descriptives_table
 		tempfile hosp_`tabyear'
 		save `hosp_`tabyear''
 		
-		local collapsevarsA "hosp_has_ceo hosp_has_coo hosp_has_cfo hosp_has_coo_cfo hosp_has_cco hosp_has_cnh hosp_has_cio hosp_has_mcs hosp_has_technical hosp_has_shared_ceo ndistinct_raw ndistinct_std ndistinct_title ndistinct_ind business1_sh_active business2_sh_active clinical1_sh_active clinical2_sh_active itlegalhr1_sh_active itlegalhr2_sh_active (rawsum) count"
+		local collapsevarsA "hosp_has_ceo hosp_has_coo hosp_has_cfo hosp_has_coo_cfo hosp_has_cco hosp_has_cnh hosp_has_cio hosp_has_mcs hosp_has_technical hosp_has_shared_ceo ndistinct_raw ndistinct_std ndistinct_title ndistinct_ind business1_sh_active business1_people_per_role business2_sh_active business2_people_per_role clinical1_sh_active   clinical1_people_per_role clinical2_sh_active clinical2_people_per_role itlegalhr1_sh_active itlegalhr1_people_per_role itlegalhr2_sh_active itlegalhr2_people_per_role (rawsum) count"
 		
 		* ALL
 		collapse `collapsevarsA', by(year)
@@ -299,6 +319,12 @@ program define descriptives_table
 		replace rowlabel = "IT/Legal/HR 2 Tier \% Active"          if _varname == "itlegalhr2_sh_active"
 		replace rowlabel = "Clinical 1 Tier \% Active"          if _varname == "clinical1_sh_active"
 		replace rowlabel = "Clinical 2 Tier \% Active"          if _varname == "clinical2_sh_active"
+		replace rowlabel = "Business 1 Tier People Per Role"          if _varname == "business1_people_per_role"
+		replace rowlabel = "Business 2 Tier People Per Role"          if _varname == "business2_people_per_role"
+		replace rowlabel = "IT/Legal/HR 1 Tier People Per Role"          if _varname == "itlegalhr1_people_per_role"
+		replace rowlabel = "IT/Legal/HR 2 Tier People Per Role"          if _varname == "itlegalhr2_people_per_role"
+		replace rowlabel = "Clinical 1 Tier People Per Role"          if _varname == "clinical1_people_per_role"
+		replace rowlabel = "Clinical 2 Tier People Per Role"          if _varname == "clinical2_people_per_role"
 		replace rowlabel = "Observations"			          if _varname == "count"
 		replace rowlabel = "Share"			          			if _varname == "share"
 		
@@ -1350,7 +1376,7 @@ program define descriptives_table
 end
 
 // descriptives_table, tabyear(2017) contact_corp(n)
-descriptives_table, tabyear(2015) contact_corp(n)
+descriptives_table, tabyear(2015) contact_corp(y)
 descriptives_table, tabyear(2010) contact_corp(n)
 
 * step-up graphs? EXPERIMENTING

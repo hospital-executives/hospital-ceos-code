@@ -191,7 +191,7 @@ Goal: 			Clean system ID variable from Cooper et al data
 		restrict_hosp_sample
 		
 		* clean variables
-		keep entity_uniqueid entity_name entity_type medicarenumber entity_city entity_state type year entity_aha system_id sysname aha_sys_name sysid tar any acq _merge_entity_aha syschng_system_id forprofit aha_hos_name entity_uniqueid_parent entity_name_parent entity_type_parent syschng_sysid
+		keep entity_uniqueid entity_name entity_type medicarenumber entity_city entity_state type year entity_aha system_id sysname aha_sys_name sysid tar any acq _merge_entity_aha syschng_system_id forprofit aha_hos_name entity_uniqueid_parent entity_name_parent entity_type_parent syschng_sysid mcrnum_newxwalk mcrnum_enhanced
 		
 		sort entity_uniqueid year
 		
@@ -201,7 +201,7 @@ Goal: 			Clean system ID variable from Cooper et al data
 		}
 		rename type entity_detail_type
 	
-		order entity_uniqueid year entity_name entity_type entity_detail_type entity_system_id entity_sysname entity_uniqueid_parent entity_type_parent entity_name_parent entity_medicarenumber entity_city entity_state entity_aha _merge_entity_aha aha_hos_name sysid aha_sys_name forprofit tar any acq syschng_sysid syschng_system_id 	
+		order entity_uniqueid year entity_name entity_type entity_detail_type entity_system_id entity_sysname entity_uniqueid_parent entity_type_parent entity_name_parent entity_medicarenumber entity_city entity_state entity_aha _merge_entity_aha aha_hos_name sysid aha_sys_name forprofit tar any acq syschng_sysid syschng_system_id mcrnum_newxwalk mcrnum_enhanced 	
 		
 		* pre-make flag variables
 		gen entity_misschange = tar ==1 & syschng_system_id == 0
@@ -332,7 +332,8 @@ Goal: 			Clean system ID variable from Cooper et al data
 			aha_* tar acq any hsanum hrrnum _merge_entity_aha _merge_campus_aha  ///
 			syschng_sysid_ma syschng_system_id syschng_ct_system_id syschng_ct_sysid_ma ///
 			forprofit gov_priv_type type entity_type *_parent ///
-			dealtype_PE PE_flag pe_acq_already pe_acq_window pe_acq_window_year // PE variables
+			dealtype_PE PE_flag pe_acq_already pe_acq_window pe_acq_window_year /// PE variables
+			mcrnum_newxwalk mcrnum_enhanced // new mcrnum vars
 			
 * make unique by entity_uniqueid year
 	bysort entity_uniqueid year: keep if _n == 1
