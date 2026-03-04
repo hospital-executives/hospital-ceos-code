@@ -32,32 +32,11 @@ restrict_hosp_sample
 * will need to revisit for the cases where we're dropping observations still
 merge 1:1 entity_uniqueid year using "${dbdata}/derived/positions_by_tier.dta", keep(match) nogen
 
-make_target_sample
-
-
-*----------------------------------------------------------
-* Define relative time indicators
-*----------------------------------------------------------
-
-sum tar_reltime, meanonly
-local rmin = r(min)
-local rmax = r(max)
-
-* Create Relative Time Indicators
-forvalues h = 0/`rmax' {
-    gen byte ev_lag`h' = (tar_reltime == `h')
-}
-forvalues h = 1/`=abs(`rmin')' {
-    gen byte ev_lead`h' = (tar_reltime == -`h')
-}
-replace ev_lead1 = 0
 
 ********************************************************************************
-* FOREST PLOTS BY TIER AND GROUP - IMPROVED VERSION
+* FOREST PLOTS BY TIER AND GROUP 
 ********************************************************************************
 
-// Install labmask if needed
-// ssc install labmask
 
 *-------------------------------------------------------------------------------
 * STEP 1: Define role mappings with clean labels
@@ -161,6 +140,7 @@ forvalues s = 1/`nspecs' {
             foreach role of local roles {
                 local ++i
                 
+				preserve
                 local outcome_var "`role'_`outcome_type'"
                 local role_label "``tg'_lab`i''"
                 
@@ -170,6 +150,20 @@ forvalues s = 1/`nspecs' {
                     display as text "  Skipping `outcome_var' (not found)"
                     continue
                 }
+				
+				keep if !missing(`outcome_var')
+				make_target_sample
+				sum tar_reltime, meanonly
+				local rmin = r(min)
+				local rmax = r(max)
+
+				forvalues h = 0/`rmax' {
+					gen byte ev_lag`h' = (tar_reltime == `h')
+				}
+				forvalues h = 1/`=abs(`rmin')' {
+					gen byte ev_lead`h' = (tar_reltime == -`h')
+				}
+				replace ev_lead1 = 0
                 
                 display as result _newline "Spec `s' | `tg' | `role_label' | `outcome_type'"
                 
@@ -193,6 +187,7 @@ forvalues s = 1/`nspecs' {
                     
                     post handle ("`tg'") ("`role'") ("`role_label'") ("`outcome_type'") ///
                                (`avg_eff') (`avg_se_val') (`s')
+					restore
                 }
                 
                 if _rc != 0 {
