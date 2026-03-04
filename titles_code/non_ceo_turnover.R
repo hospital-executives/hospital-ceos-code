@@ -51,9 +51,9 @@ csuite_data <- individuals %>%
       TRUE ~ NA
     )
   ) %>%
-  group_by(contact_uniqueid, entity_uniqueid, year) %>%
-  mutate(num_std_titles = n_distinct(num_std_titles)) %>%
-  ungroup() %>%
+  #group_by(contact_uniqueid, entity_uniqueid, year) %>%
+  #mutate(num_std_titles = n_distinct(num_std_titles)) %>%
+  #ungroup() %>%
   filter(title_standardized %in% csuite_roles | char_ceo) 
 
 # Step 2: For each person-hospital-role combo, find gaps
@@ -240,7 +240,28 @@ hospitals_df <- hospitals_df %>%
     vacancy_change_cio = if_else(is_consecutive_year,
                                  (all_cio == "Vacant" & lag(all_cio) == "Active") | 
                                    (all_cio == "Active" & lag(all_cio) == "Vacant"),
-                                 NA)
+                                 NA),
+    vacancy_constant_ceo = if_else(is_consecutive_year,
+                                   all_ceo == "Vacant" & lag(all_ceo) == "Vacant",
+                                   NA),
+    vacancy_constant_cfo = if_else(is_consecutive_year,
+                                   all_cfo == "Vacant" & lag(all_cfo) == "Vacant",
+                                   NA),
+    vacancy_constant_coo = if_else(is_consecutive_year,
+                                   all_coo == "Vacant" & lag(all_coo) == "Vacant",
+                                   NA),
+    vacancy_constant_cmo = if_else(is_consecutive_year,
+                                   all_cmo == "Vacant" & lag(all_cmo) == "Vacant",
+                                   NA),
+    vacancy_constant_cno = if_else(is_consecutive_year,
+                                   all_cno == "Vacant" & lag(all_cno) == "Vacant",
+                                   NA),
+    vacancy_constant_cco = if_else(is_consecutive_year,
+                                   all_cco == "Vacant" & lag(all_cco) == "Vacant",
+                                   NA),
+    vacancy_constant_cio = if_else(is_consecutive_year,
+                                   all_cio == "Vacant" & lag(all_cio) == "Vacant",
+                                   NA)
   ) %>%
   select(-is_consecutive_year) %>% # Remove helper column if not needed %>%
   ungroup() %>%
@@ -250,6 +271,7 @@ hospitals_df <- hospitals_df %>%
       gap_ceo == TRUE ~ 0,
       vacancy_change_ceo == TRUE ~ 1,
       !is.na(turnover_ceo) ~ turnover_ceo,
+      vacancy_constant_ceo ~ 0, 
       TRUE ~ NA_real_
     ),
     turnover_cfo = case_when(
@@ -257,6 +279,7 @@ hospitals_df <- hospitals_df %>%
       gap_cfo == TRUE ~ 0,
       vacancy_change_cfo == TRUE ~ 1,
       !is.na(turnover_cfo) ~ turnover_cfo,
+      vacancy_constant_cfo ~ 0, 
       TRUE ~ NA_real_
     ),
     turnover_coo = case_when(
@@ -264,6 +287,7 @@ hospitals_df <- hospitals_df %>%
       gap_coo == TRUE ~ 0,
       vacancy_change_coo == TRUE ~ 1,
       !is.na(turnover_coo) ~ turnover_coo,
+      vacancy_constant_coo ~ 0, 
       TRUE ~ NA_real_
     ),
     turnover_cmo = case_when(
@@ -271,6 +295,7 @@ hospitals_df <- hospitals_df %>%
       gap_cmo == TRUE ~ 0,
       vacancy_change_cmo == TRUE ~ 1,
       !is.na(turnover_cmo) ~ turnover_cmo,
+      vacancy_constant_cmo ~ 0, 
       TRUE ~ NA_real_
     ),
     turnover_cno = case_when(
@@ -278,6 +303,7 @@ hospitals_df <- hospitals_df %>%
       gap_cno == TRUE ~ 0,
       vacancy_change_cno == TRUE ~ 1,
       !is.na(turnover_cno) ~ turnover_cno,
+      vacancy_constant_cno ~ 0, 
       TRUE ~ NA_real_
     ),
     turnover_cco = case_when(
@@ -285,6 +311,7 @@ hospitals_df <- hospitals_df %>%
       gap_cco == TRUE ~ 0,
       vacancy_change_cco == TRUE ~ 1,
       !is.na(turnover_cco) ~ turnover_cco,
+      vacancy_constant_cco ~ 0, 
       TRUE ~ NA_real_
     ),
     turnover_cio = case_when(
@@ -292,6 +319,7 @@ hospitals_df <- hospitals_df %>%
       gap_cio == TRUE ~ 0,
       vacancy_change_cio == TRUE ~ 1,
       !is.na(turnover_cio) ~ turnover_cio,
+      vacancy_constant_cio ~ 0, 
       TRUE ~ NA_real_
     )
   )
@@ -306,6 +334,7 @@ export <- hospitals_df %>% select(year, entity_uniqueid,
                                   starts_with("turnover_"), 
                                   starts_with("vacant"), 
                                   starts_with("vacancy_change"),
+                                  starts_with("vacancy_constant"),
                                   starts_with("prev_gender"),
                                   starts_with("prev_md"))
 
