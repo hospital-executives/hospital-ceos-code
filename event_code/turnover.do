@@ -147,15 +147,31 @@ forvalues h = 1/`=abs(`rmin')' {
 }
 replace ev_lead1 = 0
 
+* Outcome title labels
+local lbl_turnover_ceo "CEO Turnover"
+local lbl_turnover_cfo "CFO Turnover"
+local lbl_turnover_coo "COO Turnover"
+local lbl_turnover_cmo "CMO Turnover"
+local lbl_turnover_cno "CNO Turnover"
+local lbl_turnover_cco "CCO Turnover"
+local lbl_turnover_cio "CIO Turnover"
+local lbl_vacant_ceo   "CEO Vacancy"
+local lbl_vacant_cfo   "CFO Vacancy"
+local lbl_vacant_coo   "COO Vacancy"
+local lbl_vacant_cmo   "CMO Vacancy"
+local lbl_vacant_cno   "CNO Vacancy"
+local lbl_vacant_cco   "CCO Vacancy"
+local lbl_vacant_cio   "CIO Vacancy"
+
 **** Loop through specifications and outcomes ****
 forvalues s = 1/`nspecs' {
-    
+
     foreach outcome of local all_outcomes {
-        
+
         display _newline(2) "{hline 60}"
         display "Specification `s': `spec`s'_name' - `outcome'"
         display "{hline 60}"
-        
+
         // First run: Calculate average effect
         eventstudyinteract `outcome' ev_lead* ev_lag* ///
             if (`spec`s'_treated' | `spec`s'_control'), ///
@@ -163,18 +179,18 @@ forvalues s = 1/`nspecs' {
             absorb(entity_uniqueid year) ///
             cohort(tar_event_year) ///
             control_cohort(`spec`s'_cohort')
-        
+
         matrix b = e(b_iw)
         matrix V = e(V_iw)
         ereturn post b V
-        
+
         display _newline "Average Treatment Effect (periods 0-2):"
         lincom (ev_lag0 + ev_lag1 + ev_lag2)/3
-        
+
         // Store the result rounded to 3 decimal places
         local avg_effect = round(r(estimate), 0.001)
         local avg_se = round(r(se), 0.001)
-        
+
         // Second run: Event plot with average effect in title
         eventstudyinteract `outcome' ev_lead* ev_lag* ///
             if (`spec`s'_treated' | `spec`s'_control'), ///
@@ -182,13 +198,13 @@ forvalues s = 1/`nspecs' {
             absorb(entity_uniqueid year) ///
             cohort(tar_event_year) ///
             control_cohort(`spec`s'_cohort')
-        
+
         event_plot e(b_iw)#e(V_iw), ///
             default_look ///
             graph_opt(xtitle("Periods since the event") ///
                       ytitle("Average effect") ///
                       xlabel(-3(1)3) ///
-                      title("Effect on `outcome'" ///
+                      title("Effect on `lbl_`outcome''" ///
                             "`spec`s'_name' | Avg: `avg_effect' (SE: `avg_se')", size(medium))) ///
             stub_lag(ev_lag#) ///
             stub_lead(ev_lead#) ///
@@ -196,7 +212,7 @@ forvalues s = 1/`nspecs' {
             trimlead(3) ///
             plottype(scatter) ///
             ciplottype(rcap)
-        
+
         graph export "${overleaf}/notes/Non CEO Event Study/figures/`spec`s'_file'_`outcome'.pdf", as(pdf) name("Graph") replace
     }
 }

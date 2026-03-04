@@ -271,7 +271,7 @@ forvalues i = 1/`ngroups' {
 		xtitle("Event time") ///
 		ytitle("Average effect") ///
 		title("CEO Turnover Decomposition: Joint vs Non-joint with `lbl'", size(medium)) ///
-		subtitle("Jt: `joint_avg_fmt' (SE: `joint_se_fmt') | Non-jt: `nonjoint_avg_fmt' (SE: `nonjoint_se_fmt') | Miss: `missing_avg_fmt' (SE: `missing_se_fmt')", size(small)) ///
+		subtitle("Jointt: `joint_avg_fmt' (SE: `joint_se_fmt') | Non-joint: `nonjoint_avg_fmt' (SE: `nonjoint_se_fmt') | Miss: `missing_avg_fmt' (SE: `missing_se_fmt')", size(small)) ///
 		legend(order(1 "Non-joint (CEO only, `lbl' observed)" 2 "Joint (CEO x `lbl')" 3 "CEO only (missing `lbl' data)") rows(3) position(6)) ///
 		graphregion(color(white))
 	graph export "${overleaf}/notes/Non CEO Event Study/figures/joint_csuite_ceo_`file'_decomp_event_v2.pdf", as(pdf) replace
