@@ -146,13 +146,13 @@ forvalues s = 1/`nspecs' {
             default_look ///
             graph_opt(xtitle("Periods since the event") ///
                       ytitle("Average effect") ///
-                      xlabel(-3(1)3) ///
+                      xlabel(-2(1)2) ///
                       title("`outcome_title'" ///
                             "`spec`s'_name' | Avg: `avg_effect_fmt' (SE: `avg_se_fmt')", size(medium))) ///
             stub_lag(ev_lag#) ///
             stub_lead(ev_lead#) ///
-            trimlag(3) ///
-            trimlead(3) ///
+            trimlag(2) ///
+            trimlead(2) ///
             plottype(scatter) ///
             ciplottype(rcap)
 
