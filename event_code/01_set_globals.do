@@ -108,13 +108,22 @@ Goal: 			Set globals for Hospital CEOs analysis
         gen temp_sample_3_years = ever_tar_1 & (tar_event_year >= 2012 & tar_event_year <= 2014)
 
         * create flags for pre/post sample
-        bys entity_uniqueid: egen ever_second_tar = max(tar == 1 & tar_reltime > 0)
+		xtset entity_uniqueid year 
+        gen bad_tar_event = 0
+		replace bad_tar_event = 1 if tar_reltime > 0 & tar == 1 & ///
+			( L.tar  != 0  | ///
+			  L2.tar != 0  | ///
+			  F.tar  != 0  | ///
+			  F2.tar != 0 )
 
-        gen full_treated_sample = full_tar_sample_temp & !ever_second_tar
-        gen balanced_2_year_sample = temp_sample_2_years & !ever_second_tar
-		gen balanced_3_year_sample = temp_sample_3_years & !ever_second_tar
+		* Exclude entity if ANY of its targeting events is bad
+		bys entity_uniqueid: egen ever_bad_tar = max(bad_tar_event)
+
+        gen full_treated_sample = full_tar_sample_temp & !ever_bad_tar
+        gen balanced_2_year_sample = temp_sample_2_years & !ever_bad_tar
+		gen balanced_3_year_sample = temp_sample_3_years & !ever_bad_tar
 		
-		drop full_tar_sample_temp temp_sample_2_years temp_sample_3_years ever_second_tar
+		drop full_tar_sample_temp temp_sample_2_years temp_sample_3_years bad_tar_event ever_bad_tar
 
     end
 	
