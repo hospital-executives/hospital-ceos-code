@@ -133,12 +133,21 @@ forvalues s = 1/`nspecs' {
         matrix b = e(b_iw)
         matrix V = e(V_iw)
 		
+        // Map outcome variable name to readable title
+        if "`outcome'" == "turnover_ceo_x_cfo" local outcome_title "Effect on Joint CEO and CFO Turnover"
+        else if "`outcome'" == "turnover_ceo_x_coo" local outcome_title "Effect on Joint CEO and COO Turnover"
+        else if "`outcome'" == "turnover_ceo_x_cmo" local outcome_title "Effect on Joint CEO and CMO Turnover"
+        else if "`outcome'" == "turnover_cfo_x_coo" local outcome_title "Effect on Joint CFO and COO Turnover"
+        else if "`outcome'" == "turnover_coo_x_cco" local outcome_title "Effect on Joint COO and CCO Turnover"
+        else if "`outcome'" == "turnover_cmo_x_cno" local outcome_title "Effect on Joint CMO and CNO Turnover"
+        else local outcome_title "Effect on `outcome'"
+
         event_plot e(b_iw)#e(V_iw), ///
             default_look ///
             graph_opt(xtitle("Periods since the event") ///
                       ytitle("Average effect") ///
                       xlabel(-3(1)3) ///
-                      title("Effect on `outcome'" ///
+                      title("`outcome_title'" ///
                             "`spec`s'_name' | Avg: `avg_effect_fmt' (SE: `avg_se_fmt')", size(medium))) ///
             stub_lag(ev_lag#) ///
             stub_lead(ev_lead#) ///
