@@ -137,6 +137,24 @@ forvalues h = 1/`=abs(`rmin')' {
 }
 replace ev_lead1 = 0
 
+* Outcome title labels
+local lbl_business1       "Business Tier 1"
+local lbl_business2       "Business Tier 2"
+local lbl_clinical1       "Clinical Tier 1"
+local lbl_clinical2       "Clinical Tier 2"
+local lbl_itlegalhr1      "IT/Legal/HR Tier 1"
+local lbl_itlegalhr2      "IT/Legal/HR Tier 2"
+local lbl_sh_active       "Share Active"
+local lbl_sh_vacant       "Share Vacant"
+local lbl_sh_dne          "Share Does Not Exist"
+local lbl_people_per_role "People per Role"
+
+foreach tier in business1 business2 clinical1 clinical2 itlegalhr1 itlegalhr2 {
+    foreach suf in sh_active sh_vacant sh_dne people_per_role {
+        local lbl_`tier'_`suf' "`lbl_`tier'' `lbl_`suf''"
+    }
+}
+
 **** Loop through specifications and outcomes ****
 forvalues s = 1/`nspecs' {
     
@@ -176,7 +194,7 @@ forvalues s = 1/`nspecs' {
             graph_opt(xtitle("Periods since the event") ///
                       ytitle("Average effect") ///
                       xlabel(-3(1)3) ///
-                      title("Effect on `outcome'" ///
+                      title("Effect on `lbl_`outcome''" ///
                             "`spec`s'_name' | Avg: `avg_effect' (SE: `avg_se')", size(medium))) ///
             stub_lag(ev_lag#) ///
             stub_lead(ev_lead#) ///
@@ -209,7 +227,7 @@ local lbl_itlegalhr2   "IT/Legal/HR Tier 2"
 * Nice labels for suffixes (for titles)
 local title_sh_active "Share Active"
 local title_sh_vacant "Share Vacant"
-local title_sh_dne    "Share DNE"
+local title_sh_dne    "Share Does Not Exist"
 
 forvalues s = 1/`nspecs' {
 
@@ -313,7 +331,7 @@ local lbl_itlegalhr2   "IT/Legal/HR Tier 2"
 * Nice labels for suffixes (for titles)
 local title_sh_active "Share Active"
 local title_sh_vacant "Share Vacant"
-local title_sh_dne    "Share DNE"
+local title_sh_dne    "Share Does Not Exist"
 
 forvalues s = 1/`nspecs' {
     foreach suf of local suffixes {
