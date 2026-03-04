@@ -34,6 +34,29 @@ local vacancy_outcomes  "vacant_ceo vacant_cfo vacant_coo vacant_cmo vacant_cno 
 local all_outcomes "`turnover_outcomes' `vacancy_outcomes'"
 
 * ── Splits ────────────────────────────────────────────────
+local vars aha_bdtot_orig aha_mcddc aha_mcrdc aha_fte
+
+foreach v of local vars {
+    // compute overall median
+    quietly summarize `v', detail
+    local med = r(p50)
+
+    // make short name suffix (e.g. beds, medicaid, medicare)
+    local suffix : subinstr local v "aha_" "", all
+
+    // create above-median indicator
+    gen high_`suffix' = (`v' > `med')
+
+    // flag entities where any observation is above the median
+    bys aha_id: egen above_median_`suffix' = max(high_`suffix')
+}
+
+// Prespecify your binary variables and labels
+gen fpstatus = .
+replace fpstatus = 1 if aha_own_fp == 1 & aha_own_np == 0
+replace fpstatus = 0 if aha_own_fp == 0 & aha_own_np == 1
+
+
 local binvar1 "fpstatus"
 local binvar2 "above_median_bdtot_orig"
 local binvar3 "above_median_mcddc"
@@ -50,13 +73,20 @@ local binname5 "fte"
 local binname6 "teaching"
 local binname7 "cah"
 
-local label1_0 "NFP"             ; local label1_1 "FP"
-local label2_0 "Below Median Bed Count" ; local label2_1 "Above Median Bed Count"
-local label3_0 "Below Median Medicaid"  ; local label3_1 "Above Median Medicaid"
-local label4_0 "Below Median Medicare"  ; local label4_1 "Above Median Medicare"
-local label5_0 "Below Median FTE"       ; local label5_1 "Above Median FTE"
-local label6_0 "Not Teaching"           ; local label6_1 "Teaching"
-local label7_0 "Not CAH"                ; local label7_1 "CAH"
+local label1_0 "NFP"             
+local label1_1 "FP"
+local label2_0 "Below Median Bed Count" 
+local label2_1 "Above Median Bed Count"
+local label3_0 "Below Median Medicaid"  
+local label3_1 "Above Median Medicaid"
+local label4_0 "Below Median Medicare"  
+local label4_1 "Above Median Medicare"
+local label5_0 "Below Median FTE"       
+local label5_1 "Above Median FTE"
+local label6_0 "Not Teaching"           
+local label6_1 "Teaching"
+local label7_0 "Not CAH"                
+local label7_1 "CAH"
 
 local splitnice1 "Ownership Type"
 local splitnice2 "Bed Count"
