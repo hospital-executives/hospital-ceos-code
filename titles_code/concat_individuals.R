@@ -2,6 +2,7 @@ rm(list = ls())
 library(rstudioapi)
 library(purrr)
 library(janitor)
+library(haven)
 
 # load data
 if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
@@ -22,19 +23,8 @@ if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable())
 
 ### get info for hosp sample only
 hospital_xwalk <- read_stata(paste0(derived_data, "/temp/merged_ma_sysid_xwalk.dta"))
-type <- read_stata(paste0(derived_data, "/temp/merged_ma_nonharmonized.dta")) %>%
+type_df <- read_stata(paste0(derived_data, "/temp/merged_ma_nonharmonized.dta")) %>%
   distinct(entity_uniqueid, year, type)
-
-hosp_sample <- hospital_xwalk %>% left_join(type, by = c("entity_uniqueid", "year")) %>%
-  filter(is_hospital == 1) %>%
-  mutate(
-    partofsample = type %in% c("General Medical","General Medical & Surgical","Critical Access")
-  ) %>%
-  group_by(entity_uniqueid) %>%
-  mutate(ever_partofsample = any(partofsample)) %>%
-  ungroup() %>%
-  filter(ever_partofsample) %>%
-  distinct(entity_uniqueid, year)
 
 #### load necessary himss data ###
 folders <- list.dirs(path = raw_data, full.names = TRUE, recursive = FALSE)
@@ -150,7 +140,7 @@ entity_level <- vacancies_df %>%
   left_join(individuals_mini, by = c('entity_uniqueid', 'year', 'title_standardized_key')) %>%
   left_join(hosp_chars)
 
-write.dta(entity_level, paste0(derived_data, "/temp/individuals_contact_corporate.dta"))
+write_dta(entity_level, paste0(derived_data, "/temp/individuals_contact_corporate.dta"))
 
 valid_hospitals <- hospitals %>% filter(is_hospital) %>% distinct(entity_uniqueid, year) %>% filter(year > 2008)
 check_merge <- valid_hospitals %>% left_join(entity_level) %>% filter(is.na(full_name))
