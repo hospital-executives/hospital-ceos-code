@@ -198,18 +198,22 @@ forvalues s = 1/`nspecs' {
             absorb(entity_uniqueid year) ///
             cohort(tar_event_year) ///
             control_cohort(`spec`s'_cohort')
+			
+		local x_width = 2
+		replace x_width = 2 if `s' == 1 | `s' == 3
+		replace x_width = 3 if `s' == 2 | `s' == 4
 
         event_plot e(b_iw)#e(V_iw), ///
             default_look ///
             graph_opt(xtitle("Periods since the event") ///
                       ytitle("Average effect") ///
-                      xlabel(-3(1)3) ///
+                      xlabel(-`x_width'(1)`x_width') ///
                       title("Effect on `lbl_`outcome''" ///
                             "`spec`s'_name' | Avg: `avg_effect' (SE: `avg_se')", size(medium))) ///
             stub_lag(ev_lag#) ///
             stub_lead(ev_lead#) ///
-            trimlag(3) ///
-            trimlead(3) ///
+            trimlag(2) ///
+            trimlead(2) ///
             plottype(scatter) ///
             ciplottype(rcap)
 
