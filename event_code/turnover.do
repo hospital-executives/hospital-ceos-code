@@ -32,8 +32,6 @@ restrict_hosp_sample
 * will need to revisit for the cases where we're dropping observations still
 merge 1:1 entity_uniqueid year using "${dbdata}/derived/hospitals_with_turnover.dta", keep(match) nogen
 
-make_target_sample
-
 * Define outcome variables
 local turnover_outcomes "turnover_ceo turnover_cfo turnover_coo turnover_cmo turnover_cno turnover_cco turnover_cio"
 local vacancy_outcomes "vacant_ceo vacant_cfo vacant_coo vacant_cmo vacant_cno vacant_cco vacant_cio"
@@ -49,7 +47,13 @@ postfile `memhold' str30 outcome double mean double sd double n using `results'
 
 * Loop through outcomes and calculate pre-treatment means
 foreach outcome of local all_outcomes {
-    quietly count if `outcome' != . & tar_reltime < 0 & balanced_2_year_sample == 1
+    preserve
+    
+    * Keep only non-missing observations for this outcome, then build sample
+    keep if !missing(`outcome')
+    make_target_sample
+    
+    quietly count if tar_reltime < 0 & balanced_2_year_sample == 1
     local obs = r(N)
     
     if `obs' > 0 {
@@ -65,6 +69,8 @@ foreach outcome of local all_outcomes {
     }
     
     post `memhold' ("`outcome'") (`m') (`s') (`n')
+    
+    restore
 }
 
 postclose `memhold'
@@ -132,20 +138,7 @@ local spec4_cohort "never_m_and_a"
 local spec4_name "3yr Balanced, Never M&A"
 local spec4_file "3yrbalanced_never_m_and_a"
 
-local nspecs = 4
-
-sum tar_reltime, meanonly
-local rmin = r(min)
-local rmax = r(max)
-
-* Create Relative Time Indicators
-forvalues h = 0/`rmax' {
-    gen byte ev_lag`h' = (tar_reltime == `h')
-}
-forvalues h = 1/`=abs(`rmin')' {
-    gen byte ev_lead`h' = (tar_reltime == -`h')
-}
-replace ev_lead1 = 0
+local nspecs = 1
 
 * Outcome title labels
 local lbl_turnover_ceo "CEO Turnover"
@@ -171,6 +164,24 @@ forvalues s = 1/`nspecs' {
         display _newline(2) "{hline 60}"
         display "Specification `s': `spec`s'_name' - `outcome'"
         display "{hline 60}"
+		
+		preserve 
+		
+		keep if !missing(`outcome')
+		make_target_sample
+		
+		sum tar_reltime, meanonly
+		local rmin = r(min)
+		local rmax = r(max)
+
+		* Create Relative Time Indicators
+		forvalues h = 0/`rmax' {
+			gen byte ev_lag`h' = (tar_reltime == `h')
+		}
+		forvalues h = 1/`=abs(`rmin')' {
+			gen byte ev_lead`h' = (tar_reltime == -`h')
+		}
+		replace ev_lead1 = 0
 
         // First run: Calculate average effect
         eventstudyinteract `outcome' ev_lead* ev_lag* ///
@@ -199,9 +210,12 @@ forvalues s = 1/`nspecs' {
             cohort(tar_event_year) ///
             control_cohort(`spec`s'_cohort')
 			
-		local x_width = 2
-		replace x_width = 2 if `s' == 1 | `s' == 3
-		replace x_width = 3 if `s' == 2 | `s' == 4
+		if `s' == 1 | `s' == 3 {
+			local x_width = 2
+		}
+		else if `s' == 2 | `s' == 4 {
+			local x_width = 3
+		}
 
         event_plot e(b_iw)#e(V_iw), ///
             default_look ///
@@ -212,11 +226,12 @@ forvalues s = 1/`nspecs' {
                             "`spec`s'_name' | Avg: `avg_effect' (SE: `avg_se')", size(medium))) ///
             stub_lag(ev_lag#) ///
             stub_lead(ev_lead#) ///
-            trimlag(2) ///
-            trimlead(2) ///
+            trimlag(`x_width') ///
+            trimlead(`x_width') ///
             plottype(scatter) ///
             ciplottype(rcap)
 
         graph export "${overleaf}/notes/Non CEO Event Study/figures/`spec`s'_file'_`outcome'.pdf", as(pdf) name("Graph") replace
+		restore 
     }
 }
