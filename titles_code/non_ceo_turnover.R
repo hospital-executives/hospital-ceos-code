@@ -261,66 +261,133 @@ hospitals_df <- hospitals_df %>%
                                    NA),
     vacancy_constant_cio = if_else(is_consecutive_year,
                                    all_cio == "Vacant" & lag(all_cio) == "Vacant",
-                                   NA)
+                                   NA),
+    dne_change_ceo = if_else(is_consecutive_year,
+                             (all_ceo == "Position does not exist" & lag(all_ceo) == "Active") |
+                               (all_ceo == "Active" & lag(all_ceo) == "Position does not exist"), NA),
+    dne_change_cfo = if_else(is_consecutive_year,
+                             (all_cfo == "Position does not exist" & lag(all_cfo) == "Active") |
+                               (all_cfo == "Active" & lag(all_cfo) == "Position does not exist"), NA),
+    dne_change_coo = if_else(is_consecutive_year,
+                             (all_coo == "Position does not exist" & lag(all_coo) == "Active") |
+                               (all_coo == "Active" & lag(all_coo) == "Position does not exist"), NA),
+    dne_change_cmo = if_else(is_consecutive_year,
+                             (all_cmo == "Position does not exist" & lag(all_cmo) == "Active") |
+                               (all_cmo == "Active" & lag(all_cmo) == "Position does not exist"), NA),
+    dne_change_cno = if_else(is_consecutive_year,
+                             (all_cno == "Position does not exist" & lag(all_cno) == "Active") |
+                               (all_cno == "Active" & lag(all_cno) == "Position does not exist"), NA),
+    dne_change_cco = if_else(is_consecutive_year,
+                             (all_cco == "Position does not exist" & lag(all_cco) == "Active") |
+                               (all_cco == "Active" & lag(all_cco) == "Position does not exist"), NA),
+    dne_change_cio = if_else(is_consecutive_year,
+                             (all_cio == "Position does not exist" & lag(all_cio) == "Active") |
+                               (all_cio == "Active" & lag(all_cio) == "Position does not exist"), NA),
+    
+    # --- Position does not exist <-> Vacant transitions ---
+    dne_vacant_change_ceo = if_else(is_consecutive_year,
+                                    (all_ceo == "Position does not exist" & lag(all_ceo) == "Vacant") |
+                                      (all_ceo == "Vacant" & lag(all_ceo) == "Position does not exist"), NA),
+    dne_vacant_change_cfo = if_else(is_consecutive_year,
+                                    (all_cfo == "Position does not exist" & lag(all_cfo) == "Vacant") |
+                                      (all_cfo == "Vacant" & lag(all_cfo) == "Position does not exist"), NA),
+    dne_vacant_change_coo = if_else(is_consecutive_year,
+                                    (all_coo == "Position does not exist" & lag(all_coo) == "Vacant") |
+                                      (all_coo == "Vacant" & lag(all_coo) == "Position does not exist"), NA),
+    dne_vacant_change_cmo = if_else(is_consecutive_year,
+                                    (all_cmo == "Position does not exist" & lag(all_cmo) == "Vacant") |
+                                      (all_cmo == "Vacant" & lag(all_cmo) == "Position does not exist"), NA),
+    dne_vacant_change_cno = if_else(is_consecutive_year,
+                                    (all_cno == "Position does not exist" & lag(all_cno) == "Vacant") |
+                                      (all_cno == "Vacant" & lag(all_cno) == "Position does not exist"), NA),
+    dne_vacant_change_cco = if_else(is_consecutive_year,
+                                    (all_cco == "Position does not exist" & lag(all_cco) == "Vacant") |
+                                      (all_cco == "Vacant" & lag(all_cco) == "Position does not exist"), NA),
+    dne_vacant_change_cio = if_else(is_consecutive_year,
+                                    (all_cio == "Position does not exist" & lag(all_cio) == "Vacant") |
+                                      (all_cio == "Vacant" & lag(all_cio) == "Position does not exist"), NA),
+    
+    # --- Position does not exist constant ---
+    dne_constant_ceo = if_else(is_consecutive_year, all_ceo == "Position does not exist" & lag(all_ceo) == "Position does not exist", NA),
+    dne_constant_cfo = if_else(is_consecutive_year, all_cfo == "Position does not exist" & lag(all_cfo) == "Position does not exist", NA),
+    dne_constant_coo = if_else(is_consecutive_year, all_coo == "Position does not exist" & lag(all_coo) == "Position does not exist", NA),
+    dne_constant_cmo = if_else(is_consecutive_year, all_cmo == "Position does not exist" & lag(all_cmo) == "Position does not exist", NA),
+    dne_constant_cno = if_else(is_consecutive_year, all_cno == "Position does not exist" & lag(all_cno) == "Position does not exist", NA),
+    dne_constant_cco = if_else(is_consecutive_year, all_cco == "Position does not exist" & lag(all_cco) == "Position does not exist", NA),
+    dne_constant_cio = if_else(is_consecutive_year, all_cio == "Position does not exist" & lag(all_cio) == "Position does not exist", NA)
   ) %>%
   select(-is_consecutive_year) %>% # Remove helper column if not needed %>%
   ungroup() %>%
   mutate(
     turnover_ceo = case_when(
-      year == 2009 ~ NA,
-      gap_ceo == TRUE ~ 0,
-      vacancy_change_ceo == TRUE ~ 1,
-      !is.na(turnover_ceo) ~ turnover_ceo,
-      vacancy_constant_ceo ~ 0, 
-      TRUE ~ NA_real_
+      year == 2009          ~ NA,
+      gap_ceo == TRUE       ~ 0,
+      vacancy_change_ceo    ~ 1,
+      !is.na(turnover_ceo)  ~ turnover_ceo,
+      vacancy_constant_ceo  ~ 0,
+      dne_change_ceo        ~ 1,
+      dne_constant_ceo      ~ 0,
+      TRUE                  ~ NA_real_
     ),
     turnover_cfo = case_when(
-      year == 2009 ~ NA,
-      gap_cfo == TRUE ~ 0,
-      vacancy_change_cfo == TRUE ~ 1,
-      !is.na(turnover_cfo) ~ turnover_cfo,
-      vacancy_constant_cfo ~ 0, 
-      TRUE ~ NA_real_
+      year == 2009          ~ NA,
+      gap_cfo == TRUE       ~ 0,
+      vacancy_change_cfo    ~ 1,
+      !is.na(turnover_cfo)  ~ turnover_cfo,
+      vacancy_constant_cfo  ~ 0,
+      dne_change_cfo        ~ 1,
+      dne_constant_cfo      ~ 0,
+      TRUE                  ~ NA_real_
     ),
     turnover_coo = case_when(
-      year == 2009 ~ NA,
-      gap_coo == TRUE ~ 0,
-      vacancy_change_coo == TRUE ~ 1,
-      !is.na(turnover_coo) ~ turnover_coo,
-      vacancy_constant_coo ~ 0, 
-      TRUE ~ NA_real_
+      year == 2009          ~ NA,
+      gap_coo == TRUE       ~ 0,
+      vacancy_change_coo    ~ 1,
+      !is.na(turnover_coo)  ~ turnover_coo,
+      vacancy_constant_coo  ~ 0,
+      dne_change_coo        ~ 1,
+      dne_constant_coo      ~ 0,
+      TRUE                  ~ NA_real_
     ),
     turnover_cmo = case_when(
-      year == 2009 ~ NA,
-      gap_cmo == TRUE ~ 0,
-      vacancy_change_cmo == TRUE ~ 1,
-      !is.na(turnover_cmo) ~ turnover_cmo,
-      vacancy_constant_cmo ~ 0, 
-      TRUE ~ NA_real_
+      year == 2009          ~ NA,
+      gap_cmo == TRUE       ~ 0,
+      vacancy_change_cmo    ~ 1,
+      !is.na(turnover_cmo)  ~ turnover_cmo,
+      vacancy_constant_cmo  ~ 0,
+      dne_change_cmo        ~ 1,
+      dne_constant_cmo      ~ 0,
+      TRUE                  ~ NA_real_
     ),
     turnover_cno = case_when(
-      year == 2009 ~ NA,
-      gap_cno == TRUE ~ 0,
-      vacancy_change_cno == TRUE ~ 1,
-      !is.na(turnover_cno) ~ turnover_cno,
-      vacancy_constant_cno ~ 0, 
-      TRUE ~ NA_real_
+      year == 2009          ~ NA,
+      gap_cno == TRUE       ~ 0,
+      vacancy_change_cno    ~ 1,
+      !is.na(turnover_cno)  ~ turnover_cno,
+      vacancy_constant_cno  ~ 0,
+      dne_change_cno        ~ 1,
+      dne_constant_cno      ~ 0,
+      TRUE                  ~ NA_real_
     ),
     turnover_cco = case_when(
-      year == 2009 ~ NA,
-      gap_cco == TRUE ~ 0,
-      vacancy_change_cco == TRUE ~ 1,
-      !is.na(turnover_cco) ~ turnover_cco,
-      vacancy_constant_cco ~ 0, 
-      TRUE ~ NA_real_
+      year == 2009          ~ NA,
+      gap_cco == TRUE       ~ 0,
+      vacancy_change_cco    ~ 1,
+      !is.na(turnover_cco)  ~ turnover_cco,
+      vacancy_constant_cco  ~ 0,
+      dne_change_cco        ~ 1,
+      dne_constant_cco      ~ 0,
+      TRUE                  ~ NA_real_
     ),
     turnover_cio = case_when(
-      year == 2009 ~ NA,
-      gap_cio == TRUE ~ 0,
-      vacancy_change_cio == TRUE ~ 1,
-      !is.na(turnover_cio) ~ turnover_cio,
-      vacancy_constant_cio ~ 0, 
-      TRUE ~ NA_real_
+      year == 2009          ~ NA,
+      gap_cio == TRUE       ~ 0,
+      vacancy_change_cio    ~ 1,
+      !is.na(turnover_cio)  ~ turnover_cio,
+      vacancy_constant_cio  ~ 0,
+      dne_change_cio        ~ 1,
+      dne_constant_cio      ~ 0,
+      TRUE                  ~ NA_real_
     )
   )
 
