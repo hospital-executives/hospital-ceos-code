@@ -32,7 +32,7 @@ restrict_hosp_sample
 * will need to revisit for the cases where we're dropping observations still
 merge 1:1 entity_uniqueid year using "${dbdata}/derived/positions_by_tier.dta", keep(match) nogen
 
-make_target_sample
+// make_target_sample
 
 * Define outcome variables
 local all_outcomes "business1_sh_active business2_sh_active clinical1_sh_active clinical2_sh_active itlegalhr1_sh_active itlegalhr2_sh_active business1_sh_vacant business2_sh_vacant clinical1_sh_vacant clinical2_sh_vacant itlegalhr1_sh_vacant itlegalhr2_sh_vacant business1_sh_dne business2_sh_dne clinical1_sh_dne clinical2_sh_dne itlegalhr1_sh_dne itlegalhr2_sh_dne business1_people_per_role business2_people_per_role clinical1_people_per_role clinical2_people_per_role itlegalhr1_people_per_role itlegalhr2_people_per_role"
@@ -47,6 +47,9 @@ postfile `memhold' str30 outcome double mean double sd double n using `results'
 
 * Loop through outcomes and calculate pre-treatment means
 foreach outcome of local all_outcomes {
+	preserve
+	keep if !missing(`outcome')
+	make_target_sample
     quietly count if `outcome' != . & tar_reltime < 0 & balanced_2_year_sample == 1
     local obs = r(N)
     
@@ -63,6 +66,7 @@ foreach outcome of local all_outcomes {
     }
     
     post `memhold' ("`outcome'") (`m') (`s') (`n')
+	restore
 }
 
 postclose `memhold'
@@ -124,23 +128,44 @@ local spec1_file "2yrbalanced_never_tar"
 
 local nspecs = 1
 
-sum tar_reltime, meanonly
-local rmin = r(min)
-local rmax = r(max)
+* Outcome title labels
+local lbl_business1       "Business Tier 1"
+local lbl_business2       "Business Tier 2"
+local lbl_clinical1       "Clinical Tier 1"
+local lbl_clinical2       "Clinical Tier 2"
+local lbl_itlegalhr1      "IT/Legal/HR Tier 1"
+local lbl_itlegalhr2      "IT/Legal/HR Tier 2"
+local lbl_sh_active       "Share Active"
+local lbl_sh_vacant       "Share Vacant"
+local lbl_sh_dne          "Share Does Not Exist"
+local lbl_people_per_role "People per Role"
 
-* Create Relative Time Indicators
-forvalues h = 0/`rmax' {
-    gen byte ev_lag`h' = (tar_reltime == `h')
+foreach tier in business1 business2 clinical1 clinical2 itlegalhr1 itlegalhr2 {
+    foreach suf in sh_active sh_vacant sh_dne people_per_role {
+        local lbl_`tier'_`suf' "`lbl_`tier'' `lbl_`suf''"
+    }
 }
-forvalues h = 1/`=abs(`rmin')' {
-    gen byte ev_lead`h' = (tar_reltime == -`h')
-}
-replace ev_lead1 = 0
 
 **** Loop through specifications and outcomes ****
 forvalues s = 1/`nspecs' {
     
     foreach outcome of local all_outcomes {
+		
+		preserve
+		keep if !missing(`outcome')
+		make_target_sample
+		sum tar_reltime, meanonly
+		local rmin = r(min)
+		local rmax = r(max)
+
+		* Create Relative Time Indicators
+		forvalues h = 0/`rmax' {
+			gen byte ev_lag`h' = (tar_reltime == `h')
+		}
+		forvalues h = 1/`=abs(`rmin')' {
+			gen byte ev_lead`h' = (tar_reltime == -`h')
+		}
+		replace ev_lead1 = 0
         
         display _newline(2) "{hline 60}"
         
@@ -175,17 +200,18 @@ forvalues s = 1/`nspecs' {
             default_look ///
             graph_opt(xtitle("Periods since the event") ///
                       ytitle("Average effect") ///
-                      xlabel(-3(1)3) ///
-                      title("Effect on `outcome'" ///
+                      xlabel(-2(1)2) ///
+                      title("Effect on `lbl_`outcome''" ///
                             "`spec`s'_name' | Avg: `avg_effect' (SE: `avg_se')", size(medium))) ///
             stub_lag(ev_lag#) ///
             stub_lead(ev_lead#) ///
-            trimlag(3) ///
-            trimlead(3) ///
+            trimlag(2) ///
+            trimlead(2) ///
             plottype(scatter) ///
             ciplottype(rcap)
         
         graph export "${overleaf}/notes/Non CEO Event Study/figures/event_`outcome'.pdf", as(pdf) name("Graph") replace
+		restore
     }
 }
 
@@ -209,7 +235,7 @@ local lbl_itlegalhr2   "IT/Legal/HR Tier 2"
 * Nice labels for suffixes (for titles)
 local title_sh_active "Share Active"
 local title_sh_vacant "Share Vacant"
-local title_sh_dne    "Share DNE"
+local title_sh_dne    "Share Does Not Exist"
 
 forvalues s = 1/`nspecs' {
 
@@ -219,9 +245,24 @@ forvalues s = 1/`nspecs' {
         local row = 1
         
         foreach tier of local tiers {
-            
+            preserve
             local outcome "`tier'_`suf'"
-            
+			
+			keep if !missing(`outcome')
+			make_target_sample
+			sum tar_reltime, meanonly
+			local rmin = r(min)
+			local rmax = r(max)
+
+			* Create Relative Time Indicators
+			forvalues h = 0/`rmax' {
+				gen byte ev_lag`h' = (tar_reltime == `h')
+			}
+			forvalues h = 1/`=abs(`rmin')' {
+				gen byte ev_lead`h' = (tar_reltime == -`h')
+			}
+			replace ev_lead1 = 0
+				
             display _newline(2) "{hline 60}"
             display "Forest plot component: `outcome' | Spec `s'"
             
@@ -245,6 +286,7 @@ forvalues s = 1/`nspecs' {
             local lab_`row' "`lbl_`tier''"
             
             local row = `row' + 1
+			restore
         }
         
         * ------ Build a small dataset for the forest plot ------
@@ -313,7 +355,7 @@ local lbl_itlegalhr2   "IT/Legal/HR Tier 2"
 * Nice labels for suffixes (for titles)
 local title_sh_active "Share Active"
 local title_sh_vacant "Share Vacant"
-local title_sh_dne    "Share DNE"
+local title_sh_dne    "Share Does Not Exist"
 
 forvalues s = 1/`nspecs' {
     foreach suf of local suffixes {
@@ -323,7 +365,22 @@ forvalues s = 1/`nspecs' {
         
         foreach tier of local tiers {
             
+			preserve
             local outcome "`tier'_`suf'"
+			keep if !missing(`outcome')
+			make_target_sample
+			sum tar_reltime, meanonly
+			local rmin = r(min)
+			local rmax = r(max)
+
+			* Create Relative Time Indicators
+			forvalues h = 0/`rmax' {
+				gen byte ev_lag`h' = (tar_reltime == `h')
+			}
+			forvalues h = 1/`=abs(`rmin')' {
+				gen byte ev_lead`h' = (tar_reltime == -`h')
+			}
+			replace ev_lead1 = 0
             
             display _newline(2) "{hline 60}"
             display "Forest plot component: `outcome' | Spec `s'"
@@ -353,6 +410,7 @@ forvalues s = 1/`nspecs' {
             local lab`row' "`lbl_`tier''"
             
             local row = `row' + 1
+			restore
         }
         
         * ------ Build a small dataset for the forest plot ------

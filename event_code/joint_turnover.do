@@ -32,8 +32,6 @@ restrict_hosp_sample
 * will need to revisit for the cases where we're dropping observations still
 merge 1:1 entity_uniqueid year using "${dbdata}/derived/hospitals_with_turnover.dta", keep(match) nogen
 
-make_target_sample
-
 * Define joint turnover outcomes (1 if both roles turn over)
 gen turnover_ceo_x_cfo = (turnover_ceo == 1 & turnover_cfo == 1) if !missing(turnover_ceo) & !missing(turnover_cfo)
 gen turnover_ceo_x_coo = (turnover_ceo == 1 & turnover_coo == 1) if !missing(turnover_ceo) & !missing(turnover_coo)
@@ -58,19 +56,6 @@ local spec1_file "2yrbalanced_never_tar"
 
 local nspecs = 1
 
-sum tar_reltime, meanonly
-local rmin = r(min)
-local rmax = r(max)
-
-* Create Relative Time Indicators
-forvalues h = 0/`rmax' {
-    gen byte ev_lag`h' = (tar_reltime == `h')
-}
-forvalues h = 1/`=abs(`rmin')' {
-    gen byte ev_lead`h' = (tar_reltime == -`h')
-}
-replace ev_lead1 = 0
-
 * Collect average effects from each regression
 tempfile joint_results
 postfile joint_handle str40 outcome double avg_effect double avg_se double pre_mean using `joint_results', replace
@@ -80,6 +65,21 @@ forvalues s = 1/`nspecs' {
     
     foreach outcome of local all_outcomes {
         
+		preserve
+		keep if !missing(`outcome')
+		make_target_sample
+		sum tar_reltime, meanonly
+		local rmin = r(min)
+		local rmax = r(max)
+
+		forvalues h = 0/`rmax' {
+			gen byte ev_lag`h' = (tar_reltime == `h')
+		}
+		forvalues h = 1/`=abs(`rmin')' {
+			gen byte ev_lead`h' = (tar_reltime == -`h')
+		}
+		replace ev_lead1 = 0
+				
         display _newline(2) "{hline 60}"
         display "Specification `s': `spec`s'_name' - `outcome'"
         display "{hline 60}"
@@ -133,21 +133,31 @@ forvalues s = 1/`nspecs' {
         matrix b = e(b_iw)
         matrix V = e(V_iw)
 		
+        // Map outcome variable name to readable title
+        if "`outcome'" == "turnover_ceo_x_cfo" local outcome_title "Effect on Joint CEO and CFO Turnover"
+        else if "`outcome'" == "turnover_ceo_x_coo" local outcome_title "Effect on Joint CEO and COO Turnover"
+        else if "`outcome'" == "turnover_ceo_x_cmo" local outcome_title "Effect on Joint CEO and CMO Turnover"
+        else if "`outcome'" == "turnover_cfo_x_coo" local outcome_title "Effect on Joint CFO and COO Turnover"
+        else if "`outcome'" == "turnover_coo_x_cco" local outcome_title "Effect on Joint COO and CCO Turnover"
+        else if "`outcome'" == "turnover_cmo_x_cno" local outcome_title "Effect on Joint CMO and CNO Turnover"
+        else local outcome_title "Effect on `outcome'"
+
         event_plot e(b_iw)#e(V_iw), ///
             default_look ///
             graph_opt(xtitle("Periods since the event") ///
                       ytitle("Average effect") ///
-                      xlabel(-3(1)3) ///
-                      title("Effect on `outcome'" ///
+                      xlabel(-2(1)2) ///
+                      title("`outcome_title'" ///
                             "`spec`s'_name' | Avg: `avg_effect_fmt' (SE: `avg_se_fmt')", size(medium))) ///
             stub_lag(ev_lag#) ///
             stub_lead(ev_lead#) ///
-            trimlag(3) ///
-            trimlead(3) ///
+            trimlag(2) ///
+            trimlead(2) ///
             plottype(scatter) ///
             ciplottype(rcap)
 
         graph export "${overleaf}/notes/Non CEO Event Study/figures/`outcome'_event.pdf", as(pdf) replace
+		restore
     }
 }
 

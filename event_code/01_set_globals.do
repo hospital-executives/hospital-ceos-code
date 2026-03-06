@@ -89,7 +89,16 @@ Goal: 			Set globals for Hospital CEOs analysis
 	program make_target_sample
 
         * get target relative time
-		bys entity_uniqueid (year): egen tar_event_year = min(cond(tar == 1, year, .))
+		bys entity_uniqueid (year): egen tar_event_year_window = min(cond(tar == 1 & inrange(year, 2011, 2015), year, .))
+
+		* First occurrence across all years (your original)
+		bys entity_uniqueid (year): egen tar_event_year_any = min(cond(tar == 1, year, .))
+
+		* Prefer the windowed year; fall back to any year if no event in 2011–2015
+		gen tar_event_year = cond(!missing(tar_event_year_window), tar_event_year_window, tar_event_year_any)
+		
+		drop tar_event_year_window tar_event_year_any
+
         gen tar_reltime = year - tar_event_year
         gen tar_treated = year >= tar_event_year
 
@@ -108,22 +117,29 @@ Goal: 			Set globals for Hospital CEOs analysis
         gen temp_sample_3_years = ever_tar_1 & (tar_event_year >= 2012 & tar_event_year <= 2014)
 
         * create flags for pre/post sample
-		xtset entity_uniqueid year 
-        gen bad_tar_event = 0
-		replace bad_tar_event = 1 if tar_reltime > 0 & tar == 1 & ///
-			( L.tar  != 0  | ///
-			  L2.tar != 0  | ///
-			  F.tar  != 0  | ///
-			  F2.tar != 0 )
+		xtset entity_uniqueid year
 
-		* Exclude entity if ANY of its targeting events is bad
-		bys entity_uniqueid: egen ever_bad_tar = max(bad_tar_event)
+		* --- 2-year window: ±2 years ---
+		gen bad_tar_2yr = 0
+		replace bad_tar_2yr = 1 if tar_reltime == 0 & ///
+			( L.tar  != 0 | L2.tar != 0 | ///
+			  F.tar  != 0 | F2.tar != 0 )
+		bys entity_uniqueid: egen ever_bad_tar_2yr = max(bad_tar_2yr)
 
-        gen full_treated_sample = full_tar_sample_temp & !ever_bad_tar
-        gen balanced_2_year_sample = temp_sample_2_years & !ever_bad_tar
-		gen balanced_3_year_sample = temp_sample_3_years & !ever_bad_tar
+		* --- 3-year window: ±3 years ---
+		gen bad_tar_3yr = 0
+		replace bad_tar_3yr = 1 if tar_reltime == 0 & ///
+			( L.tar  != 0 | L2.tar != 0 | L3.tar != 0 | ///
+			  F.tar  != 0 | F2.tar != 0 | F3.tar != 0 )
+		bys entity_uniqueid: egen ever_bad_tar_3yr = max(bad_tar_3yr)
+
+		* --- Final samples ---
+		gen balanced_2_year_sample  = temp_sample_2_years   & !ever_bad_tar_2yr
+		gen balanced_3_year_sample  = temp_sample_3_years   & !ever_bad_tar_3yr
+		gen full_treated_sample     = full_tar_sample_temp  & !ever_bad_tar_3yr
 		
-		drop full_tar_sample_temp temp_sample_2_years temp_sample_3_years bad_tar_event ever_bad_tar
+		drop full_tar_sample_temp temp_sample_2_years temp_sample_3_years ///
+		ever_bad_tar_2yr ever_bad_tar_3yr bad_tar_2yr bad_tar_3yr
 
     end
 	

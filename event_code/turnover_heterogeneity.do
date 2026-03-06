@@ -24,7 +24,7 @@ restrict_hosp_sample
 * will need to revisit for the cases where we're dropping observations still
 merge 1:1 entity_uniqueid year using "${dbdata}/derived/hospitals_with_turnover.dta", keep(match) nogen
 
-make_target_sample
+// make_target_sample
 
 * Define outcome variables
 local turnover_outcomes "turnover_ceo turnover_cfo turnover_coo turnover_cmo turnover_cno turnover_cco turnover_cio"
@@ -37,19 +37,6 @@ local all_outcomes "`turnover_outcomes' `vacancy_outcomes'"
 *==============================================================
 
 // ── 0. Prelims ──────────────────────────────────────────────
-// Get relative time range
-sum tar_reltime, meanonly
-local rmin = r(min)
-local rmax = r(max)
-
-// Create Relative Time Indicators
-forvalues h = 0/`rmax' {
-    cap gen byte ev_lag`h' = (tar_reltime == `h')
-}
-forvalues h = 1/`=abs(`rmin')' {
-    cap gen byte ev_lead`h' = (tar_reltime == -`h')
-}
-replace ev_lead1 = 0
 
 // Get Nice Titles
 local titles     "ceo cfo coo cmo cno cco cio"
@@ -65,18 +52,19 @@ local nice_cio "CIO"
 local vars aha_bdtot_orig aha_mcddc aha_mcrdc aha_fte
 
 foreach v of local vars {
-    // compute overall median
-    quietly summarize `v', detail
-    local med = r(p50)
-
-    // make short name suffix (e.g. beds, medicaid, medicare)
     local suffix : subinstr local v "aha_" "", all
 
-    // create above-median indicator
-    gen high_`suffix' = (`v' > `med')
+    * Compute each entity's median value of v across years
+    bys aha_id: egen entity_med_`suffix' = median(`v')
 
-    // flag entities where any observation is above the median
-    bys aha_id: egen above_median_`suffix' = max(high_`suffix')
+    * Compute the overall median of the entity-level medians
+    quietly summarize entity_med_`suffix', detail
+    local med = r(p50)
+
+    * Classify entity as above/below based on their entity-level median
+    gen above_median_`suffix' = (entity_med_`suffix' > `med')
+
+    drop entity_med_`suffix'
 }
 
 // Prespecify your binary variables and labels
@@ -132,19 +120,6 @@ local vacancy_outcomes  "vacant_ceo vacant_cfo vacant_coo vacant_cmo vacant_cno 
 
 local n_splits 7   // number of binary split variables
 
-// ── 1. Identify lead/lag variables ──────────────────────────
-// (assumes ev_lead* and ev_lag* already exist from your setup)
-// Collect them into a local for the regression call
-local evvars ""
-forvalues h = `=abs(`rmin')' (-1) 2 {          // leads (excl. lead1 = omitted)
-    local evvars "`evvars' ev_lead`h'"
-}
-forvalues h = 0/`rmax' {                        // lags
-    local evvars "`evvars' ev_lag`h'"
-}
-
-// ── 2. Master loop ──────────────────────────────────────────
-
 // ── 1. Master loop over splits ──────────────────────────────
 forvalues s = 1/`n_splits' {
 
@@ -157,39 +132,6 @@ forvalues s = 1/`n_splits' {
     display _newline(3) as result "=============================================="
     display as result " Split: `splitvar'  (`lab0' vs `lab1')"
     display as result "=============================================="
-
-    // ── Create interacted event-time dummies ────────────────
-    // (drop any prior versions first)
-    capture drop ev0_lag* ev1_lag* ev0_lead* ev1_lead*
-
-    forvalues h = 0/`rmax' {
-        forvalues c = 0/1 {
-            cap gen byte ev`c'_lag`h' = ev_lag`h' * (`splitvar' == `c')
-        }
-    }
-    forvalues h = 1/`=abs(`rmin')' {
-        forvalues c = 0/1 {
-            cap gen byte ev`c'_lead`h' = ev_lead`h' * (`splitvar' == `c')
-        }
-    }
-    // Set baseline (omit lead1 for both groups)
-    forvalues c = 0/1 {
-        replace ev`c'_lead1 = 0
-    }
-
-    // ── Build variable lists for regression ─────────────────
-    // Leads (excluding lead1) for group 0 and 1
-    local evvars0 ""
-    local evvars1 ""
-    forvalues h = `=abs(`rmin')' (-1) 2 {
-        local evvars0 "`evvars0' ev0_lead`h'"
-        local evvars1 "`evvars1' ev1_lead`h'"
-    }
-    // Lags for group 0 and 1
-    forvalues h = 0/`rmax' {
-        local evvars0 "`evvars0' ev0_lag`h'"
-        local evvars1 "`evvars1' ev1_lag`h'"
-    }
 
     // ── Loop over outcome families ──────────────────────────
     foreach fam in turnover vacancy {
@@ -211,55 +153,105 @@ forvalues s = 1/`n_splits' {
 
         foreach t of local titles {
 
-            local yvar "`prefix'`t'"
-            display _newline as text "  → `yvar' × `splitvar' (joint)"
+			local yvar "`prefix'`t'"
+			display _newline as text "  → `yvar' × `splitvar' (joint)"
 
-            capture {
-                // Single joint regression
-                eventstudyinteract `yvar' `evvars0' `evvars1' ///
-                    if (balanced_2_year_sample == 1 | never_tar == 1), ///
-                    vce(cluster entity_uniqueid) ///
-                    absorb(entity_uniqueid year) ///
-                    cohort(tar_event_year) ///
-                    control_cohort(never_tar)
+			preserve
 
-                matrix b = e(b_iw)
-                matrix V = e(V_iw)
-                ereturn post b V
+			* Drop missing and rebuild sample for this outcome
+			keep if !missing(`yvar')
+			make_target_sample
 
-                // Average effect for group 0 (periods 0–2)
-                lincom (ev0_lag0 + ev0_lag1 + ev0_lag2) / 3
-                local avg_b0  = r(estimate)
-                local avg_se0 = r(se)
+			* Recreate base event-time dummies from new tar_reltime
+			sum tar_reltime, meanonly
+			local rmin_inner = r(min)
+			local rmax_inner = r(max)
 
-                // Average effect for group 1 (periods 0–2)
-                lincom (ev1_lag0 + ev1_lag1 + ev1_lag2) / 3
-                local avg_b1  = r(estimate)
-                local avg_se1 = r(se)
-            }
-            if _rc != 0 {
-                local avg_b0  = .
-                local avg_se0 = .
-                local avg_b1  = .
-                local avg_se1 = .
-            }
+			forvalues h = 0/`rmax_inner' {
+				cap drop ev_lag`h'
+				gen byte ev_lag`h' = (tar_reltime == `h')
+			}
+			forvalues h = 1/`=abs(`rmin_inner')' {
+				cap drop ev_lead`h'
+				gen byte ev_lead`h' = (tar_reltime == -`h')
+			}
+			replace ev_lead1 = 0
 
-            // Pre-period means by group
-            quietly summarize `yvar' ///
-                if (balanced_2_year_sample == 1 | never_tar == 1) ///
-                   & `splitvar' == 0 ///
-                   & tar_reltime < 0, meanonly
-            local pmean0 = r(mean)
+			* Recreate interacted dummies for this split
+			capture drop ev0_lag* ev1_lag* ev0_lead* ev1_lead*
 
-            quietly summarize `yvar' ///
-                if (balanced_2_year_sample == 1 | never_tar == 1) ///
-                   & `splitvar' == 1 ///
-                   & tar_reltime < 0, meanonly
-            local pmean1 = r(mean)
+			forvalues h = 0/`rmax_inner' {
+				forvalues c = 0/1 {
+					cap gen byte ev`c'_lag`h' = ev_lag`h' * (`splitvar' == `c')
+				}
+			}
+			forvalues h = 1/`=abs(`rmin_inner')' {
+				forvalues c = 0/1 {
+					cap gen byte ev`c'_lead`h' = ev_lead`h' * (`splitvar' == `c')
+				}
+			}
+			forvalues c = 0/1 {
+				replace ev`c'_lead1 = 0
+			}
 
-            post pf_handle ("`t'") (0) (`avg_b0') (`avg_se0') (`pmean0')
-            post pf_handle ("`t'") (1) (`avg_b1') (`avg_se1') (`pmean1')
-        }
+			* Rebuild evvars0 and evvars1 from inner dims
+			local evvars0 ""
+			local evvars1 ""
+			forvalues h = `=abs(`rmin_inner')' (-1) 2 {
+				local evvars0 "`evvars0' ev0_lead`h'"
+				local evvars1 "`evvars1' ev1_lead`h'"
+			}
+			forvalues h = 0/`rmax_inner' {
+				local evvars0 "`evvars0' ev0_lag`h'"
+				local evvars1 "`evvars1' ev1_lag`h'"
+			}
+
+			capture {
+				eventstudyinteract `yvar' `evvars0' `evvars1' ///
+					if (balanced_2_year_sample == 1 | never_tar == 1), ///
+					vce(cluster entity_uniqueid) ///
+					absorb(entity_uniqueid year) ///
+					cohort(tar_event_year) ///
+					control_cohort(never_tar)
+
+				matrix b = e(b_iw)
+				matrix V = e(V_iw)
+				ereturn post b V
+
+				lincom (ev0_lag0 + ev0_lag1 + ev0_lag2) / 3
+				local avg_b0  = r(estimate)
+				local avg_se0 = r(se)
+
+				lincom (ev1_lag0 + ev1_lag1 + ev1_lag2) / 3
+				local avg_b1  = r(estimate)
+				local avg_se1 = r(se)
+			}
+			if _rc != 0 {
+				local avg_b0  = .
+				local avg_se0 = .
+				local avg_b1  = .
+				local avg_se1 = .
+			}
+
+			* Pre-period means by group
+			quietly summarize `yvar' ///
+				if (balanced_2_year_sample == 1 | never_tar == 1) ///
+				   & `splitvar' == 0 ///
+				   & tar_reltime < 0, meanonly
+			local pmean0 = r(mean)
+
+			quietly summarize `yvar' ///
+				if (balanced_2_year_sample == 1 | never_tar == 1) ///
+				   & `splitvar' == 1 ///
+				   & tar_reltime < 0, meanonly
+			local pmean1 = r(mean)
+
+			restore
+
+			post pf_handle ("`t'") (0) (`avg_b0') (`avg_se0') (`pmean0')
+			post pf_handle ("`t'") (1) (`avg_b1') (`avg_se1') (`pmean1')
+		}
+
         postclose pf_handle
 
         // ── Build forest plots ──────────────────────────────
