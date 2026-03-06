@@ -23,12 +23,13 @@ if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable())
 ### get info for hosp sample only
 hospital_xwalk <- read_stata(paste0(derived_data, "/temp/merged_ma_sysid_xwalk.dta"))
 type <- read_stata(paste0(derived_data, "/temp/merged_ma_nonharmonized.dta")) %>%
-  distinct(entity_uniqueid, year, type)
+  distinct(entity_uniqueid, year, type) %>%
+  rename(hosptype = type)
 
 hosp_sample <- hospital_xwalk %>% left_join(type, by = c("entity_uniqueid", "year")) %>%
   filter(is_hospital == 1) %>%
   mutate(
-    partofsample = type %in% c("General Medical","General Medical & Surgical","Critical Access")
+    partofsample = hosptype %in% c("General Medical","General Medical & Surgical","Critical Access")
   ) %>%
   group_by(entity_uniqueid) %>%
   mutate(ever_partofsample = any(partofsample)) %>%
@@ -266,12 +267,32 @@ cco_switch <- vacancies_df %>%
   distinct(entity_uniqueid, year, cco_switched_to_active)
 
 ## get individuals 
-indiv_summary <- cleaned_individuals %>% 
+indiv_turnover <- cleaned_individuals %>% 
   distinct(entity_uniqueid, year, title_standardized, full_name, contact_uniqueid, confirmed) %>%
   mutate(title_standardized_key = normalize_title_std(title_standardized)) %>%
   left_join(title_tier_group_map, by = "title_standardized_key") %>%
   filter(!is.na(tier)) %>%
   # Create clean tier_group variable
+  group_by(entity_uniqueid, title_standardized_key) %>%
+  arrange(year, .by_group = TRUE) %>%
+  mutate(
+    # Get previous year's info
+    prev_year = lag(year),
+    prev_contact = lag(contact_uniqueid),
+    prev_confirmed = lag(confirmed),
+    # Check if previous observation is actually year - 1 (not a gap)
+    is_consecutive = prev_year == year - 1
+  ) %>%
+  ungroup() %>%
+  mutate(
+    turnover = case_when(
+      !is_consecutive ~ NA_real_,
+      !confirmed | !prev_confirmed ~ NA_real_,
+      contact_uniqueid != prev_contact ~ 1,
+      contact_uniqueid == prev_contact ~ 0
+    ))
+
+indiv_summary <- indiv_turnover %>%
   mutate(
     tier_num = str_extract(tier, "\\d"),
     group_clean = tolower(group) %>% str_replace_all("[^a-z]", ""),
@@ -291,9 +312,69 @@ indiv_summary <- cleaned_individuals %>%
     names_glue = "{tier_group}_{.value}"
   )
 
+updated_turnover <- base_df %>% mutate(entity_uniqueid = as.numeric(entity_uniqueid)) %>%
+                    left_join(indiv_turnover) %>% filter(year > 2009) %>%
+                    select(-is_consecutive) %>%
+                    group_by(entity_uniqueid, title_standardized_key) %>%
+                    arrange(year, .by_group = TRUE) %>%
+                    mutate(
+                      is_consecutive_year = lag(year) == year - 1,
+                      vacancy_change = if_else(is_consecutive_year,
+                                                 (status == "Vacant" & lag(status) == "Active") | 
+                                                   (status == "Active" & lag(status) == "Vacant"),
+                                                 NA),
+                      dne_change = if_else(is_consecutive_year,
+                                               (status == "DNE" & lag(status) == "Active") | 
+                                                 (status == "Active" & lag(status) == "DNE"),
+                                               NA),
+                      vacancy_constant = if_else(is_consecutive_year,
+                                                 (status == "Vacant" & lag(status) == "Vacant"),
+                                                 NA),
+                      dne_constant = if_else(is_consecutive_year,
+                                            (status == "DNE" & lag(status) == "DNE"),
+                                             NA)
+                    ) %>%
+                    ungroup() %>%
+                    mutate(updated_turnover = case_when(
+                      !is.na(turnover) ~ turnover,
+                      vacancy_change == 1 | dne_change == 1 ~ 1,
+                      vacancy_constant == 1 | dne_constant == 1 ~ 0,
+                      TRUE ~ NA
+                    )) %>% select(-turnover) %>%
+                    rename(turnover = updated_turnover) 
+
+turnover_rates <- updated_turnover %>%
+  distinct(entity_uniqueid, year, tier_group, title_clean, turnover) %>%
+  group_by(entity_uniqueid, year) %>%
+  summarise(
+    # 1. Overall: all roles
+    rate_overall     = mean(turnover, na.rm = TRUE),
+    
+    # 2. Financial: tier 1 + tier 2
+    rate_financial   = mean(turnover[str_detect(tier_group, "(?i)business") & 
+                                       str_detect(tier_group, "[12]")], na.rm = TRUE),
+    
+    # 3. Clinical: tier 1 + tier 2
+    rate_clinical    = mean(turnover[str_detect(tier_group, "(?i)clinical") & 
+                                       str_detect(tier_group, "[12]")], na.rm = TRUE),
+    
+    # 4. Other admin: tier 1 + tier 2
+    rate_other_admin = mean(turnover[str_detect(tier_group, "(?i)itlegalhr") & 
+                                       str_detect(tier_group, "[12]")], na.rm = TRUE),
+    
+    # 5. Upper management: tier 1 only
+    rate_upper_mgmt  = mean(turnover[str_detect(tier_group, "1")], na.rm = TRUE),
+    
+    # 6. Middle management: tier 2 only
+    rate_middle_mgmt = mean(turnover[str_detect(tier_group, "2")], na.rm = TRUE),
+    
+    .groups = "drop"
+  )
+
 ## merge hospitals + individuals
 merged <- summary_df %>% mutate(entity_uniqueid = as.numeric(entity_uniqueid)) %>%
-  left_join(indiv_summary, by = c('entity_uniqueid', 'year'))
+  left_join(indiv_summary, by = c('entity_uniqueid', 'year')) %>%
+  left_join(turnover_rates, by = c('entity_uniqueid', 'year'))
 
 ## get number of roles in each tier for each year
 # Step 1: Calculate the number of existing titles per tier_group per year
@@ -339,8 +420,6 @@ roles_exist_by_year <- expand.grid(
   )
 
 
-
-
 merged <- merged %>%
   mutate(year = as.numeric(year)) %>%
   left_join(roles_exist_by_year, by = "year") %>%
@@ -383,6 +462,7 @@ merged_export <- merged %>%
     entity_uniqueid,
     year,
     # Share active
+    starts_with("rate"),
     ends_with("active"), ends_with("vacant"), ends_with("dne"), ends_with("per_role")
     ) %>% left_join(cco_switch %>% mutate(entity_uniqueid = as.numeric(entity_uniqueid))) %>%
   filter(!is.na(entity_uniqueid))
