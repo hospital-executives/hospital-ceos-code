@@ -284,6 +284,24 @@ hospitals_df <- hospitals_df %>%
                              (all_cio == "Position does not exist" & lag(all_cio) == "Active") |
                                (all_cio == "Active" & lag(all_cio) == "Position does not exist"), NA),
     
+    # --- DNE -> Active (position created/filled) ---
+    dne_to_active_ceo = if_else(is_consecutive_year, all_ceo == "Active" & lag(all_ceo) == "Position does not exist", NA),
+    dne_to_active_cfo = if_else(is_consecutive_year, all_cfo == "Active" & lag(all_cfo) == "Position does not exist", NA),
+    dne_to_active_coo = if_else(is_consecutive_year, all_coo == "Active" & lag(all_coo) == "Position does not exist", NA),
+    dne_to_active_cmo = if_else(is_consecutive_year, all_cmo == "Active" & lag(all_cmo) == "Position does not exist", NA),
+    dne_to_active_cno = if_else(is_consecutive_year, all_cno == "Active" & lag(all_cno) == "Position does not exist", NA),
+    dne_to_active_cco = if_else(is_consecutive_year, all_cco == "Active" & lag(all_cco) == "Position does not exist", NA),
+    dne_to_active_cio = if_else(is_consecutive_year, all_cio == "Active" & lag(all_cio) == "Position does not exist", NA),
+    
+    # --- Active -> DNE (position eliminated) ---
+    active_to_dne_ceo = if_else(is_consecutive_year, all_ceo == "Position does not exist" & lag(all_ceo) == "Active", NA),
+    active_to_dne_cfo = if_else(is_consecutive_year, all_cfo == "Position does not exist" & lag(all_cfo) == "Active", NA),
+    active_to_dne_coo = if_else(is_consecutive_year, all_coo == "Position does not exist" & lag(all_coo) == "Active", NA),
+    active_to_dne_cmo = if_else(is_consecutive_year, all_cmo == "Position does not exist" & lag(all_cmo) == "Active", NA),
+    active_to_dne_cno = if_else(is_consecutive_year, all_cno == "Position does not exist" & lag(all_cno) == "Active", NA),
+    active_to_dne_cco = if_else(is_consecutive_year, all_cco == "Position does not exist" & lag(all_cco) == "Active", NA),
+    active_to_dne_cio = if_else(is_consecutive_year, all_cio == "Position does not exist" & lag(all_cio) == "Active", NA),
+    
     # --- Position does not exist <-> Vacant transitions ---
     dne_vacant_change_ceo = if_else(is_consecutive_year,
                                     (all_ceo == "Position does not exist" & lag(all_ceo) == "Vacant") |
@@ -399,9 +417,8 @@ hospitals_df %>%
 
 export <- hospitals_df %>% select(year, entity_uniqueid,
                                   starts_with("turnover_"), 
-                                  starts_with("vacant"), 
-                                  starts_with("vacancy_change"),
-                                  starts_with("vacancy_constant"),
+                                  starts_with("vacant"), starts_with("vacancy_change"), starts_with("vacancy_constant"),
+                                  starts_with("dne_change"),starts_with("dne_to_active_"),starts_with("active_to_dne_"),
                                   starts_with("prev_gender"),
                                   starts_with("prev_md"))
 

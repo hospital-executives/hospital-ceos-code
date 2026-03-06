@@ -35,79 +35,102 @@ merge 1:1 entity_uniqueid year using "${dbdata}/derived/hospitals_with_turnover.
 * Define outcome variables
 local turnover_outcomes "turnover_ceo turnover_cfo turnover_coo turnover_cmo turnover_cno turnover_cco turnover_cio"
 local vacancy_outcomes "vacant_ceo vacant_cfo vacant_coo vacant_cmo vacant_cno vacant_cco vacant_cio"
-local all_outcomes "`turnover_outcomes' `vacancy_outcomes'"
+local vacant_to_active_outcomes "vacant_to_active_ceo vacant_to_active_cfo vacant_to_active_coo vacant_to_active_cmo vacant_to_active_cno vacant_to_active_cco vacant_to_active_cio"
+local vacancy_change_outcomes "vacancy_change_ceo vacancy_change_cfo vacancy_change_coo vacancy_change_cmo vacancy_change_cno vacancy_change_cco vacancy_change_cio"
+local dne_change_outcomes "dne_change_ceo dne_change_cfo dne_change_coo dne_change_cmo dne_change_cno dne_change_cco dne_change_cio"
+local dne_to_active_outcomes "dne_to_active_ceo dne_to_active_cfo dne_to_active_coo dne_to_active_cmo dne_to_active_cno dne_to_active_cco dne_to_active_cio"
+local active_to_vacant_outcomes "active_to_vacant_ceo active_to_vacant_cfo active_to_vacant_coo active_to_vacant_cmo active_to_vacant_cno active_to_vacant_cco active_to_vacant_cio"
+local active_to_dne_outcomes "active_to_dne_ceo active_to_dne_cfo active_to_dne_coo active_to_dne_cmo active_to_dne_cno active_to_dne_cco active_to_dne_cio"
+local table_1_outcomes "`turnover_outcomes'"
+local table_2_outcomes "`vacancy_outcomes' `vacant_to_active_outcomes' `vacancy_change_outcomes' `active_to_vacant_outcomes'"
+local table_3_outcomes "`dne_change_outcomes' `dne_to_active_outcomes' `active_to_dne_outcomes'"
+local all_outcomes "`turnover_outcomes' `vacancy_outcomes' `vacant_to_active_outcomes' `vacancy_change_outcomes' `dne_change_outcomes' `dne_to_active_outcomes' `active_to_vacant_outcomes' `active_to_dne_outcomes'"
+
+local table_1_caption "Pre-Treatment Means: Turnover (2-Year Balanced Sample)"
+local table_1_label   "pre_treatment_means_1"
+local table_1_file    "pre_treatment_means_1"
+
+local table_2_caption "Pre-Treatment Means: Vacancy (2-Year Balanced Sample)"
+local table_2_label   "pre_treatment_means_2"
+local table_2_file    "pre_treatment_means_2"
+
+local table_3_caption "Pre-Treatment Means: DNE (2-Year Balanced Sample)"
+local table_3_label   "pre_treatment_means_3"
+local table_3_file    "pre_treatment_means_3"
 
 *----------------------------------------------------------
 * Get summary stats
 *----------------------------------------------------------
-* Create a temporary file to store results
-tempname memhold
-tempfile results
-postfile `memhold' str30 outcome double mean double sd double n using `results'
+forvalues t = 1/3 {
 
-* Loop through outcomes and calculate pre-treatment means
-foreach outcome of local all_outcomes {
+    tempname memhold
+    tempfile results
+    postfile `memhold' str30 outcome double mean double sd double n using `results'
+
+    foreach outcome of local table_`t'_outcomes {
+        preserve
+
+        keep if !missing(`outcome')
+        make_target_sample
+
+        quietly count if tar_reltime < 0 & balanced_2_year_sample == 1
+        local obs = r(N)
+
+        if `obs' > 0 {
+            quietly summarize `outcome' if tar_reltime < 0 & balanced_2_year_sample == 1
+            local m = r(mean)
+            local s = r(sd)
+            local n = r(N)
+        }
+        else {
+            local m = .
+            local s = .
+            local n = 0
+        }
+
+        post `memhold' ("`outcome'") (`m') (`s') (`n')
+
+        restore
+    }
+
+    postclose `memhold'
+
     preserve
-    
-    * Keep only non-missing observations for this outcome, then build sample
-    keep if !missing(`outcome')
-    make_target_sample
-    
-    quietly count if tar_reltime < 0 & balanced_2_year_sample == 1
-    local obs = r(N)
-    
-    if `obs' > 0 {
-        quietly summarize `outcome' if tar_reltime < 0 & balanced_2_year_sample == 1
-        local m = r(mean)
-        local s = r(sd)
-        local n = r(N)
+    use `results', clear
+
+    gen outcome_label = ""
+    foreach r in ceo cfo coo cmo cno cco cio {
+        local R = upper("`r'")
+        replace outcome_label = "Turnover: `R'"         if outcome == "turnover_`r'"
+        replace outcome_label = "Vacancy: `R'"          if outcome == "vacant_`r'"
+        replace outcome_label = "Vacant to Active: `R'" if outcome == "vacant_to_active_`r'"
+        replace outcome_label = "Vacancy Change: `R'"   if outcome == "vacancy_change_`r'"
+        replace outcome_label = "DNE Change: `R'"       if outcome == "dne_change_`r'"
+        replace outcome_label = "DNE to Active: `R'"    if outcome == "dne_to_active_`r'"
+        replace outcome_label = "Active to Vacant: `R'" if outcome == "active_to_vacant_`r'"
+        replace outcome_label = "Active to DNE: `R'"    if outcome == "active_to_dne_`r'"
     }
-    else {
-        local m = .
-        local s = .
-        local n = 0
-    }
-    
-    post `memhold' ("`outcome'") (`m') (`s') (`n')
-    
+
+    gen mean_fmt = string(mean, "%9.3f")
+    gen sd_fmt = string(sd, "%9.3f")
+    gen n_fmt = string(n, "%9.0f")
+
+    listtab outcome_label mean_fmt sd_fmt n_fmt using "${overleaf}/notes/Non CEO Event Study/tables/`table_`t'_file'.tex", ///
+        rstyle(tabular) ///
+        head("\begin{table}[H]" ///
+             "\centering" ///
+             "\caption{`table_`t'_caption'}" ///
+             "\label{tab:`table_`t'_label'}" ///
+             "\begin{tabular}{lccc}" ///
+             "\hline\hline" ///
+             "Outcome & Mean & SD & N \\\\") ///
+        foot("\hline\hline" ///
+             "\end{tabular}" ///
+             "\end{table}") ///
+        replace
+
     restore
 }
-
-postclose `memhold'
-
-* Load results and format
-preserve
-use `results', clear
-
-* Create clean labels (avoid LaTeX underscore issues)
-gen outcome_label = ""
-foreach r in ceo cfo coo cmo cno cco cio {
-    local R = upper("`r'")
-    replace outcome_label = "Turnover: `R'" if outcome == "turnover_`r'"
-    replace outcome_label = "Vacancy: `R'"  if outcome == "vacant_`r'"
-}
-
-* Round for display
-gen mean_fmt = string(mean, "%9.3f")
-gen sd_fmt = string(sd, "%9.3f")
-gen n_fmt = string(n, "%9.0f")
-
-* Export to LaTeX
-listtab outcome_label mean_fmt sd_fmt n_fmt using "${overleaf}/notes/Non CEO Event Study/tables/pre_treatment_means.tex", ///
-    rstyle(tabular) ///
-    head("\begin{table}[H]" ///
-         "\centering" ///
-         "\caption{Pre-Treatment Means (2-Year Balanced Sample)}" ///
-         "\label{tab:pre_treatment_means}" ///
-         "\begin{tabular}{lccc}" ///
-         "\hline\hline" ///
-         "Outcome & Mean & SD & N \\\\") ///
-    foot("\hline\hline" ///
-         "\end{tabular}" ///
-         "\end{table}") ///
-    replace
-
-restore
 
 *----------------------------------------------------------
 * Define samples + run event studies
@@ -155,6 +178,48 @@ local lbl_vacant_cmo   "CMO Vacancy"
 local lbl_vacant_cno   "CNO Vacancy"
 local lbl_vacant_cco   "CCO Vacancy"
 local lbl_vacant_cio   "CIO Vacancy"
+local lbl_vacant_to_active_ceo "CEO Vacant to Active"
+local lbl_vacant_to_active_cfo "CFO Vacant to Active"
+local lbl_vacant_to_active_coo "COO Vacant to Active"
+local lbl_vacant_to_active_cmo "CMO Vacant to Active"
+local lbl_vacant_to_active_cno "CNO Vacant to Active"
+local lbl_vacant_to_active_cco "CCO Vacant to Active"
+local lbl_vacant_to_active_cio "CIO Vacant to Active"
+local lbl_vacancy_change_ceo "CEO Vacancy Change"
+local lbl_vacancy_change_cfo "CFO Vacancy Change"
+local lbl_vacancy_change_coo "COO Vacancy Change"
+local lbl_vacancy_change_cmo "CMO Vacancy Change"
+local lbl_vacancy_change_cno "CNO Vacancy Change"
+local lbl_vacancy_change_cco "CCO Vacancy Change"
+local lbl_vacancy_change_cio "CIO Vacancy Change"
+local lbl_dne_change_ceo "CEO DNE Change"
+local lbl_dne_change_cfo "CFO DNE Change"
+local lbl_dne_change_coo "COO DNE Change"
+local lbl_dne_change_cmo "CMO DNE Change"
+local lbl_dne_change_cno "CNO DNE Change"
+local lbl_dne_change_cco "CCO DNE Change"
+local lbl_dne_change_cio "CIO DNE Change"
+local lbl_dne_to_active_ceo "CEO DNE to Active"
+local lbl_dne_to_active_cfo "CFO DNE to Active"
+local lbl_dne_to_active_coo "COO DNE to Active"
+local lbl_dne_to_active_cmo "CMO DNE to Active"
+local lbl_dne_to_active_cno "CNO DNE to Active"
+local lbl_dne_to_active_cco "CCO DNE to Active"
+local lbl_dne_to_active_cio "CIO DNE to Active"
+local lbl_active_to_vacant_ceo "CEO Active to Vacant"
+local lbl_active_to_vacant_cfo "CFO Active to Vacant"
+local lbl_active_to_vacant_coo "COO Active to Vacant"
+local lbl_active_to_vacant_cmo "CMO Active to Vacant"
+local lbl_active_to_vacant_cno "CNO Active to Vacant"
+local lbl_active_to_vacant_cco "CCO Active to Vacant"
+local lbl_active_to_vacant_cio "CIO Active to Vacant"
+local lbl_active_to_dne_ceo "CEO Active to DNE"
+local lbl_active_to_dne_cfo "CFO Active to DNE"
+local lbl_active_to_dne_coo "COO Active to DNE"
+local lbl_active_to_dne_cmo "CMO Active to DNE"
+local lbl_active_to_dne_cno "CNO Active to DNE"
+local lbl_active_to_dne_cco "CCO Active to DNE"
+local lbl_active_to_dne_cio "CIO Active to DNE"
 
 **** Loop through specifications and outcomes ****
 forvalues s = 1/`nspecs' {
