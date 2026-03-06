@@ -26,7 +26,7 @@ merge 1:1 entity_uniqueid year using "${dbdata}/derived/positions_by_tier.dta", 
 
 
 ********************************************************************************
-* FOREST PLOTS BY TIER AND GROUP 
+* COUNTS BY TIER AND GROUP 
 ********************************************************************************
 
 
