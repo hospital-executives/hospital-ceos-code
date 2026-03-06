@@ -1,9 +1,22 @@
-/* EVENT_STUDY_STATS *************************************************************
+/* DNE ************************************************************************
 
-Program name: 	non_ceo_turnover.do
+Program name: 	dne.do
 Programmer: 	Katherine Papen
 
-Goal: 			Generate event study plots for non-CEO turnover measures
+Goal: 			Analyse "does not exist" (DNE) outcomes for C-suite titles
+				(CEO, CFO, COO, CMO, CNO, CCO, CIO) around CEO turnover events.
+
+Outputs:
+	1. Forest plots (raw and normalised) of average treatment effects by
+	   heterogeneity split (ownership, bed count, Medicaid, Medicare, FTE,
+	   teaching status, CAH status). Saved to:
+	       ${overleaf}/notes/Non CEO Event Study/figures/forest_dne_*.png
+	   Splits are skipped for a given title if any of the four cell counts
+	   (splitvar x yvar) fall below 20 observations.
+
+	2. Summary table of mean DNE rates by outcome and heterogeneity split.
+	   Saved to:
+	       ${overleaf}/notes/Non CEO Event Study/tables/dne_summary_table.tex
 
 *******************************************************************************/
 
@@ -31,6 +44,26 @@ restrict_hosp_sample
 
 * will need to revisit for the cases where we're dropping observations still
 merge 1:1 entity_uniqueid year using "${dbdata}/derived/positions_by_tier.dta", keep(match) nogen
+
+* merge in profit data
+	* pull in parent profit info
+	preserve
+		use "${dbdata}/derived/temp/systems_nonharmonized_withprofit.dta", clear 
+		keep entity_uniqueid year forprofit
+		rename entity_uniqueid entity_uniqueid_parent 
+		rename forprofit forprofit_parent
+		tempfile sysprofit
+		save `sysprofit'
+	restore
+	merge m:1 entity_uniqueid_parent year using `sysprofit', gen(_merge_profit) keep(1 3) // only unmerged observations are systems plus the 23 ambulatory 
+	
+* pull in contextual data for parents - specifically want profit data
+	merge m:1 entity_uniqueid year using "${dbdata}/derived/temp/systems_nonharmonized_withprofit.dta", keep(1 3) gen(_merge_newprofit) keepusing(forprofit_imputed)
+	replace forprofit = forprofit_imputed if _merge_newprofit == 3 & !missing(forprofit_imputed) // this only changes things for parents
+	drop _merge_newprofit
+	
+* NEW: replacing facility forprofit info with parent info. 
+	replace forprofit = forprofit_parent if missing(forprofit) & !missing(forprofit_parent)
 
 make_target_sample
 
@@ -170,11 +203,7 @@ foreach v of local vars {
 }
 
 // Prespecify your binary variables and labels
-gen fpstatus = .
-replace fpstatus = 1 if aha_own_fp == 1 & aha_own_np == 0
-replace fpstatus = 0 if aha_own_fp == 0 & aha_own_np == 1
-
-local binvar1 "fpstatus"
+local binvar1 "forprofit"
 local binname1 "fp"
 local label1_0 "NFP"
 local label1_1 "FP"
@@ -209,16 +238,24 @@ local binname7 "cah"
 local label7_0 "Not CAH"
 local label7_1 "CAH"
 
+local splitnice1 "Ownership Type"
+local splitnice2 "Bed Count"
+local splitnice3 "Medicaid"
+local splitnice4 "Medicare"
+local splitnice5 "FTE"
+local splitnice6 "Teaching Status"
+local splitnice7 "CAH Status"
+
 local n_splits 7   // number of binary split variables
 
 // ── 1. Identify lead/lag variables ──────────────────────────
 // (assumes ev_lead* and ev_lag* already exist from your setup)
 // Collect them into a local for the regression call
 local evvars ""
-forvalues h = `=abs(`rmin')' (-1) 2 {          // leads (excl. lead1 = omitted)
+forvalues h = 2(-1) 2 {          // leads (excl. lead1 = omitted)
     local evvars "`evvars' ev_lead`h'"
 }
-forvalues h = 0/`rmax' {                        // lags
+forvalues h = 0/3 {                        // lags
     local evvars "`evvars' ev_lag`h'"
 }
 
@@ -231,6 +268,7 @@ forvalues s = 1/`n_splits' {
     local splitname "`binname`s''"
     local lab0      "`label`s'_0'"
     local lab1      "`label`s'_1'"
+    local splitnice "`splitnice`s''"
 
     display _newline(3) as result "=============================================="
     display as result " Split: `splitvar'  (`lab0' vs `lab1')"
@@ -259,12 +297,12 @@ forvalues s = 1/`n_splits' {
     // Leads (excluding lead1) for group 0 and 1
     local evvars0 ""
     local evvars1 ""
-    forvalues h = `=abs(`rmin')' (-1) 2 {
+    forvalues h = 2 (-1) 2 {
         local evvars0 "`evvars0' ev0_lead`h'"
         local evvars1 "`evvars1' ev1_lead`h'"
     }
     // Lags for group 0 and 1
-    forvalues h = 0/`rmax' {
+    forvalues h = 0/3 {
         local evvars0 "`evvars0' ev0_lag`h'"
         local evvars1 "`evvars1' ev1_lag`h'"
     }
@@ -274,6 +312,7 @@ forvalues s = 1/`n_splits' {
     local outcomes "`dne_outcomes'"
     local suffix   "_dne"
     local ptitle_fam "Does Not Exist"
+	local fam "dne"
 
         // Collect results
         tempfile forest_`fam'_`splitname'
@@ -285,6 +324,24 @@ forvalues s = 1/`n_splits' {
 
             local yvar "`t'`suffix'"
             display _newline as text "  → `yvar' × `splitvar' (joint)"
+
+            // Skip if either group has fewer than 20 observations
+            quietly count if (balanced_2_year_sample == 1 | never_tar == 1) & `splitvar' == 0 & `yvar' == 1
+            local n0_a = r(N)
+            quietly count if (balanced_2_year_sample == 1 | never_tar == 1) & `splitvar' == 0 & `yvar' == 0
+            local n0_b = r(N)
+
+            quietly count if (balanced_2_year_sample == 1 | never_tar == 1) & `splitvar' == 1 & `yvar' == 1
+            local n1_a = r(N)
+            quietly count if (balanced_2_year_sample == 1 | never_tar == 1) & `splitvar' == 1 & `yvar' == 0
+            local n1_b = r(N)
+
+            if `n0_a' < 20 | `n0_b' < 20 | `n1_a' < 20 | `n1_b' < 20 {
+                display as text "  → Skipping: insufficient obs (n0_a=`n0_a', n0_b=`n0_b', n1_a=`n1_a', n1_b=`n1_b')"
+                post pf_handle ("`t'") (0) (.) (.) (.)
+                post pf_handle ("`t'") (1) (.) (.) (.)
+                continue
+            }
 
             capture {
                 // Single joint regression
@@ -367,7 +424,7 @@ forvalues s = 1/`n_splits' {
         }
 
         // ── PLOT A: Raw average treatment effects ───────────
-        local ptitle_fam = proper("`fam'")
+		 local ptitle_fam "Does Not Exist"
 
         twoway ///
             (rcap lo hi ypos if group == 0, ///
@@ -383,7 +440,7 @@ forvalues s = 1/`n_splits' {
             ylabel(`ylabs', angle(0) labsize(medium) nogrid) ///
             ytitle("") ///
             xtitle("Avg. Treatment Effect (t=0 to t=2)", size(medium)) ///
-            title("`ptitle_fam': `lab0' vs `lab1'", size(medlarge)) ///
+            title("`ptitle_fam' by `splitnice'", size(medlarge)) ///
             legend(order(2 "`lab0'" 4 "`lab1'") ///
                    rows(1) position(6) size(small)) ///
             graphregion(color(white)) plotregion(margin(l=2 r=2)) ///
@@ -407,7 +464,7 @@ forvalues s = 1/`n_splits' {
             ylabel(`ylabs', angle(0) labsize(medium) nogrid) ///
             ytitle("") ///
             xtitle("Avg. Effect / Pre-Period Mean", size(medium)) ///
-            title("`ptitle_fam' (Normalised): `lab0' vs `lab1'", ///
+            title("`ptitle_fam' (Normalised) by `splitnice'", ///
                   size(medlarge)) ///
             legend(order(2 "`lab0'" 4 "`lab1'") ///
                    rows(1) position(6) size(small)) ///
@@ -422,4 +479,78 @@ forvalues s = 1/`n_splits' {
     // end outcome-family loop
 
 display _newline(2) as result "All forest plots saved."
+
+*-------------------------------------------------------------------------------
+* STEP 3: Summary table — mean DNE rate by outcome and split
+*-------------------------------------------------------------------------------
+
+local outcomes_tbl "ceo_dne cfo_dne coo_dne cmo_dne cno_dne cco_dne cio_dne"
+
+// Column spec: label + overall + 2 cols per split
+local colspec "l c"
+forvalues s = 1/`n_splits' {
+    local colspec "`colspec' cc"
+}
+
+// Cmidrule positions for split spans: split s occupies cols (2s+1)-(2s+2)
+local cmidrules ""
+forvalues s = 1/`n_splits' {
+    local c1 = 2 * `s' + 1
+    local c2 = 2 * `s' + 2
+    local cmidrules "`cmidrules' \cmidrule(lr){`c1'-`c2'}"
+}
+
+capture file close tbl
+file open tbl using "${overleaf}/notes/Non CEO Event Study/tables/dne_summary_table.tex", write replace
+
+file write tbl "\begin{table}[htbp]" _n
+file write tbl "\centering" _n
+file write tbl "\caption{Fraction of Hospital-Years Where Title Does Not Exist}" _n
+file write tbl "\label{tab:dne_summary}" _n
+file write tbl "\resizebox{\textwidth}{!}{%" _n
+file write tbl "\begin{tabular}{`colspec'}" _n
+file write tbl "\hline\hline" _n
+
+// Header row 1: Overall + split name spans
+file write tbl " & Overall"
+forvalues s = 1/`n_splits' {
+    file write tbl " & \multicolumn{2}{c}{`splitnice`s''}"
+}
+file write tbl " \\" _n
+file write tbl "`cmidrules'" _n
+
+// Header row 2: group labels within each split
+file write tbl " & "
+forvalues s = 1/`n_splits' {
+    file write tbl " & `label`s'_0' & `label`s'_1'"
+}
+file write tbl " \\" _n
+file write tbl "\hline" _n
+
+// Data rows
+foreach outcome of local outcomes_tbl {
+    local t = subinstr("`outcome'", "_dne", "", 1)
+    local onice "`nice_`t''"
+
+    quietly summarize `outcome' if (balanced_2_year_sample == 1 | never_tar == 1), meanonly
+    local tot = r(mean)
+    file write tbl "`onice' & " %5.3f (`tot')
+
+    forvalues s = 1/`n_splits' {
+        local sv "`binvar`s''"
+        quietly summarize `outcome' if (balanced_2_year_sample == 1 | never_tar == 1) & `sv' == 0, meanonly
+        local m0 = r(mean)
+        quietly summarize `outcome' if (balanced_2_year_sample == 1 | never_tar == 1) & `sv' == 1, meanonly
+        local m1 = r(mean)
+        file write tbl " & " %5.3f (`m0') " & " %5.3f (`m1')
+    }
+    file write tbl " \\" _n
+}
+
+file write tbl "\hline\hline" _n
+file write tbl "\end{tabular}}" _n
+file write tbl "\end{table}" _n
+
+file close tbl
+display as result "DNE summary table saved."
 
